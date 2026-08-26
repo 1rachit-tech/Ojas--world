@@ -95,8 +95,11 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Restore missing Android wrapper files
+        run: flutter create . --platforms=android --org com.rachit.ojas --project-name ojas_world
+
       - name: Verify Gradle wrapper
-        run: chmod +x android/gradlew && android/gradlew --version
+        run: chmod +x android/gradlew && ./android/gradlew --version
 
       - name: Install dependencies
         run: flutter pub get
