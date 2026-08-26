@@ -2,7 +2,8 @@ name: Deploy and Build Ojas App
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -36,6 +37,13 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Restore missing web platform files
+        shell: bash
+        run: |
+          if [ ! -f web/index.html ] || [ ! -f web/flutter_bootstrap.js ]; then
+            flutter create . --platforms=web --org com.rachit.ojas --project-name ojas_world
+          fi
 
       - name: Install dependencies
         run: flutter pub get
@@ -96,10 +104,17 @@ jobs:
           cache: true
 
       - name: Restore missing Android wrapper files
-        run: flutter create . --platforms=android --org com.rachit.ojas --project-name ojas_world
+        shell: bash
+        run: |
+          if [ ! -f android/gradlew ] || [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            flutter create . --platforms=android --org com.rachit.ojas --project-name ojas_world
+          fi
 
       - name: Verify Gradle wrapper
-        run: chmod +x android/gradlew && ./android/gradlew --version
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          ./android/gradlew --version
 
       - name: Install dependencies
         run: flutter pub get
