@@ -1,122 +1,412 @@
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const OjasApp());
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class OjasApp extends StatelessWidget {
+  const OjasApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'OJAS',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF080D18),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFF5B942),
+          brightness: Brightness.dark,
+        ),
+        fontFamily: 'Arial',
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const OjasHomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class OjasHomePage extends StatefulWidget {
+  const OjasHomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<OjasHomePage> createState() => _OjasHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+class _OjasHomePageState extends State<OjasHomePage> {
+  int _selectedTab = 0;
+  final Set<int> _likedPosts = <int>{};
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        backgroundColor: const Color(0xFF0B1222),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 24,
+        title: const Text(
+          'OJAS',
+          style: TextStyle(
+            color: Color(0xFFF5B942),
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 3,
+          ),
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            tooltip: 'Notifications',
+            icon: const Icon(Icons.notifications_none_rounded),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(right: 20),
+            child: CircleAvatar(
+              radius: 17,
+              backgroundColor: Color(0xFFF5B942),
+              child: Text(
+                'AK',
+                style: TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isDesktop ? 1180 : double.infinity,
+              ),
+              child: _selectedTab == 0
+                  ? _buildFeed(context, isDesktop)
+                  : _buildPlaceholderTab(_selectedTab),
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: _buildNavigationBar(),
+    );
+  }
+
+  Widget _buildFeed(BuildContext context, bool isDesktop) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        isDesktop ? 36 : 18,
+        28,
+        isDesktop ? 36 : 18,
+        40,
+      ),
+      children: [
+        Text(
+          'GOOD MORNING, AKASH',
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: const Color(0xFFF5B942),
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Your creative space',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 24),
+        _sectionHeader('Trending today', 'View all'),
+        const SizedBox(height: 14),
+        _buildPostCard(
+          id: 1,
+          name: 'Maya Chen',
+          handle: '@mayamakes',
+          time: '2h ago',
+          title: 'Finding quiet in the middle of the city.',
+          body:
+              'A study in soft light, hard lines, and the small pauses between everything.',
+          tags: const ['#urban', '#photography'],
+          imageColor: const Color(0xFFB46A42),
+          icon: Icons.wb_twilight_rounded,
+          likes: '248',
+          isDesktop: isDesktop,
+        ),
+        const SizedBox(height: 18),
+        _buildPostCard(
+          id: 2,
+          name: 'Rohan Mehta',
+          handle: '@rohanbuilds',
+          time: '5h ago',
+          title: 'The tools that make ideas feel possible.',
+          body:
+              'Sharing my minimal desk setup and the little rituals that keep the work moving.',
+          tags: const ['#workspace', '#process'],
+          imageColor: const Color(0xFF4A6C72),
+          icon: Icons.auto_awesome_rounded,
+          likes: '186',
+          isDesktop: isDesktop,
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionHeader(String title, String action) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      ),
+      TextButton(
+        onPressed: () {},
+        child: Text(action, style: const TextStyle(color: Color(0xFFF5B942))),
+      ),
+    ],
+  );
+
+  Widget _buildPostCard({
+    required int id,
+    required String name,
+    required String handle,
+    required String time,
+    required String title,
+    required String body,
+    required List<String> tags,
+    required Color imageColor,
+    required IconData icon,
+    required String likes,
+    required bool isDesktop,
+  }) {
+    final liked = _likedPosts.contains(id);
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF111A2B),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF253149)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: imageColor.withValues(alpha: .7),
+                  child: Text(name[0]),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '$handle  ·  $time',
+                        style: const TextStyle(
+                          color: Color(0xFF8C98AE),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.more_horiz_rounded),
+                  tooltip: 'More options',
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    color: Color(0xFFAFB9C9),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 13),
+                Wrap(
+                  spacing: 8,
+                  children: tags
+                      .map(
+                        (tag) => Text(
+                          tag,
+                          style: const TextStyle(
+                            color: Color(0xFFF5B942),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          AspectRatio(
+            aspectRatio: isDesktop ? 2.7 : 1.65,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: imageColor),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: CustomPaint(painter: _GridPainter())),
+                  Center(
+                    child: Icon(
+                      icon,
+                      size: 58,
+                      color: Colors.white.withValues(alpha: .82),
+                    ),
+                  ),
+                  const Positioned(
+                    left: 16,
+                    bottom: 14,
+                    child: Text(
+                      'OJAS / VISUAL DIARY',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => setState(() {
+                    liked ? _likedPosts.remove(id) : _likedPosts.add(id);
+                  }),
+                  icon: Icon(
+                    liked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: liked ? const Color(0xFFEF6B73) : null,
+                  ),
+                  tooltip: 'Like',
+                ),
+                Text(
+                  liked ? '${int.parse(likes) + 1}' : likes,
+                  style: const TextStyle(color: Color(0xFFAFB9C9)),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.mode_comment_outlined),
+                  tooltip: 'Comment',
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () {},
+                  icon: const Icon(Icons.ios_share_rounded),
+                  tooltip: 'Share',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholderTab(int tab) {
+    final labels = ['Discover', 'Create something', 'Your profile'];
+    final icons = [
+      Icons.explore_rounded,
+      Icons.add_circle_outline_rounded,
+      Icons.person_outline_rounded,
+    ];
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
+          children: [
+            Icon(icons[tab - 1], size: 54, color: const Color(0xFFF5B942)),
+            const SizedBox(height: 16),
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              labels[tab - 1],
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This space is ready for your next idea.',
+              style: TextStyle(color: Color(0xFF9CA8BB)),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
+
+  Widget _buildNavigationBar() {
+    const items = [
+      (Icons.home_rounded, 'Home'),
+      (Icons.explore_outlined, 'Discover'),
+      (Icons.add_box_outlined, 'Create'),
+      (Icons.person_outline_rounded, 'Profile'),
+    ];
+    return NavigationBar(
+      selectedIndex: _selectedTab,
+      onDestinationSelected: (index) => setState(() => _selectedTab = index),
+      backgroundColor: const Color(0xFF0B1222),
+      indicatorColor: const Color(0xFFF5B942).withValues(alpha: .16),
+      destinations: items
+          .map(
+            (item) =>
+                NavigationDestination(icon: Icon(item.$1), label: item.$2),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: .1)
+      ..strokeWidth = 1;
+    for (var x = 0.0; x < size.width; x += 34) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (var y = 0.0; y < size.height; y += 34) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
