@@ -28,15 +28,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        shell: bash
-        run: |
-          set -e
-          if flutter build web --release --web-renderer html --base-href "/Ojas--world/"; then
-            echo "HTML renderer build succeeded."
-          else
-            echo "HTML renderer build failed; retrying with canvaskit renderer."
-            flutter build web --release --web-renderer canvaskit --base-href "/Ojas--world/"
-          fi
+        run: flutter build web --release --base-href "/Ojas--world/"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
