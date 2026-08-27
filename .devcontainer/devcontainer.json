@@ -1,0 +1,8 @@
+{
+  "name": "OJAS Flutter",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteEnv": {
+    "PATH": "/home/codespace/flutter/bin:${containerEnv:PATH}"
+  },
+  "postCreateCommand": "bash .devcontainer/setup-flutter.sh"
+}
