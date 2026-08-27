@@ -1,7 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'firebase_options.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_guard.dart';
 import 'services/auth_service.dart';
@@ -10,11 +10,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    if (kIsWeb) {
-      await Firebase.initializeApp();
-    } else {
-      await Firebase.initializeApp();
-    }
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } catch (error, stackTrace) {
     FlutterError.reportError(
       FlutterErrorDetails(
@@ -40,11 +38,11 @@ class OjasApp extends StatelessWidget {
       title: 'OJAS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF080D18),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFF5B942),
-          brightness: Brightness.dark,
+          brightness: Brightness.light,
         ),
         fontFamily: 'Arial',
       ),
@@ -66,66 +64,82 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0B1222),
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 24,
-        title: const Text(
-          'OJAS',
-          style: TextStyle(
-            color: Color(0xFFF5B942),
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 3,
+    return PopScope<void>(
+      canPop: _selectedTab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectedTab != 0) {
+          setState(() => _selectedTab = 0);
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          titleSpacing: 24,
+          title: const Text(
+            'OJAS',
+            style: TextStyle(
+              color: Color(0xFFF5B942),
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 3,
+            ),
           ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {},
-            tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_none_rounded),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(right: 20),
-            child: CircleAvatar(
-              radius: 17,
-              backgroundColor: Color(0xFFF5B942),
-              child: Text(
-                'AK',
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
+          actions: [
+            IconButton(
+              onPressed: () {},
+              tooltip: 'Notifications',
+              icon: const Icon(Icons.notifications_none_rounded),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(right: 20),
+              child: CircleAvatar(
+                radius: 17,
+                backgroundColor: Color(0xFFF5B942),
+                child: Text(
+                  'AK',
+                  style: TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 900;
-          return Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: isDesktop ? 1180 : double.infinity,
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isDesktop = constraints.maxWidth >= 900;
+            return Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isDesktop ? 1180 : double.infinity,
+                ),
+                child: IndexedStack(
+                  index: _selectedTab,
+                  children: [
+                    _buildFeed(context, isDesktop),
+                    _buildOjsTab(),
+                    _buildPlaceholderTab('Create', Icons.add_box_outlined),
+                    _buildPlaceholderTab('World', Icons.explore_outlined),
+                    _buildProfileTab(),
+                  ],
+                ),
               ),
-              child: _selectedTab == 0
-                  ? _buildFeed(context, isDesktop)
-                  : _buildPlaceholderTab(_selectedTab),
-            ),
-          );
-        },
+            );
+          },
+        ),
+        bottomNavigationBar: _buildNavigationBar(),
       ),
-      bottomNavigationBar: _buildNavigationBar(),
     );
   }
 
   Widget _buildFeed(BuildContext context, bool isDesktop) {
     return ListView(
+      key: const PageStorageKey<String>('ojas-home-feed'),
       padding: EdgeInsets.fromLTRB(
         isDesktop ? 36 : 18,
         28,
@@ -146,7 +160,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
           'Your creative space',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w800,
-            color: Colors.white,
+            color: const Color(0xFF111827),
           ),
         ),
         const SizedBox(height: 24),
@@ -215,9 +229,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
     final liked = _likedPosts.contains(id);
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF111A2B),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF253149)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -245,7 +259,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                       Text(
                         '$handle  ·  $time',
                         style: const TextStyle(
-                          color: Color(0xFF8C98AE),
+                          color: Color(0xFF6B7280),
                           fontSize: 12,
                         ),
                       ),
@@ -276,7 +290,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 Text(
                   body,
                   style: const TextStyle(
-                    color: Color(0xFFAFB9C9),
+                    color: Color(0xFF4B5563),
                     height: 1.45,
                   ),
                 ),
@@ -350,7 +364,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 ),
                 Text(
                   liked ? '${int.parse(likes) + 1}' : likes,
-                  style: const TextStyle(color: Color(0xFFAFB9C9)),
+                  style: const TextStyle(color: Color(0xFF6B7280)),
                 ),
                 const SizedBox(width: 12),
                 IconButton(
@@ -376,24 +390,17 @@ class _OjasHomePageState extends State<OjasHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Widget _buildPlaceholderTab(int tab) {
-    if (tab == 3) return _buildProfileTab();
-    final labels = ['Discover', 'Create something', 'Your profile'];
-    final icons = [
-      Icons.explore_rounded,
-      Icons.add_circle_outline_rounded,
-      Icons.person_outline_rounded,
-    ];
+  Widget _buildPlaceholderTab(String title, IconData icon) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icons[tab - 1], size: 54, color: const Color(0xFFF5B942)),
+            Icon(icon, size: 54, color: const Color(0xFFF5B942)),
             const SizedBox(height: 16),
             Text(
-              labels[tab - 1],
+              title,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -407,7 +414,86 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
+  Widget _buildOjsTab() {
+    return Theme(
+      data: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.black,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFF5B942),
+          brightness: Brightness.dark,
+        ),
+      ),
+      child: const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            'OJS',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildProfileTab() {
+    return _ProfileTab(
+      isActive: _selectedTab == 4,
+      onLoggedOut: () {
+        if (mounted) setState(() => _selectedTab = 0);
+      },
+    );
+  }
+
+  Widget _buildNavigationBar() {
+    const items = [
+      (Icons.home_outlined, Icons.home_rounded, 'Home'),
+      (Icons.smart_display_outlined, Icons.smart_display_rounded, 'OJS'),
+      (Icons.add_box_outlined, Icons.add_box, 'Create'),
+      (Icons.explore_outlined, Icons.explore, 'World'),
+      (Icons.person_outline_rounded, Icons.person_rounded, 'You'),
+    ];
+    return NavigationBar(
+      selectedIndex: _selectedTab,
+      onDestinationSelected: (index) {
+        if (index == _selectedTab) return;
+        if (index == 2) {
+          requireAuth(context, () => setState(() => _selectedTab = index));
+          return;
+        }
+        setState(() => _selectedTab = index);
+      },
+      backgroundColor: Colors.white,
+      indicatorColor: const Color(0xFFF5B942).withValues(alpha: .16),
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      height: 68,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+      destinations: items
+          .map(
+            (item) =>
+                NavigationDestination(
+                  icon: Icon(item.$1, size: 28),
+                  selectedIcon: Icon(item.$2, size: 28),
+                  label: item.$3,
+                  tooltip: item.$3,
+                ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _ProfileTab extends StatelessWidget {
+  const _ProfileTab({required this.isActive, required this.onLoggedOut});
+
+  final bool isActive;
+  final VoidCallback onLoggedOut;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isActive) return const SizedBox.shrink();
+
     return StreamBuilder(
       stream: AuthService.instance.authStateChanges,
       initialData: AuthService.instance.currentUser,
@@ -445,7 +531,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
               OutlinedButton.icon(
                 onPressed: () async {
                   await AuthService.instance.signOut();
-                  if (mounted) setState(() => _selectedTab = 0);
+                  onLoggedOut();
                 },
                 icon: const Icon(Icons.logout_rounded),
                 label: const Text('Log out'),
@@ -454,33 +540,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildNavigationBar() {
-    const items = [
-      (Icons.home_rounded, 'Home'),
-      (Icons.explore_outlined, 'Discover'),
-      (Icons.add_box_outlined, 'Create'),
-      (Icons.person_outline_rounded, 'Profile'),
-    ];
-    return NavigationBar(
-      selectedIndex: _selectedTab,
-      onDestinationSelected: (index) {
-        if (index == 2) {
-          requireAuth(context, () => setState(() => _selectedTab = index));
-          return;
-        }
-        setState(() => _selectedTab = index);
-      },
-      backgroundColor: const Color(0xFF0B1222),
-      indicatorColor: const Color(0xFFF5B942).withValues(alpha: .16),
-      destinations: items
-          .map(
-            (item) =>
-                NavigationDestination(icon: Icon(item.$1), label: item.$2),
-          )
-          .toList(),
     );
   }
 }

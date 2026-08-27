@@ -17,7 +17,7 @@ void main() {
     expect(find.text('Your creative space'), findsOneWidget);
     expect(find.text('Maya Chen'), findsOneWidget);
 
-    await tester.tap(find.text('Discover'));
+    await tester.tap(find.byTooltip('World'));
     await tester.pump();
 
     expect(find.text('Discover'), findsAtLeastNWidgets(1));
