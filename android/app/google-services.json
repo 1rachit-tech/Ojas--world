@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1076759095973",
+    "project_id": "ojas-e8161",
+    "storage_bucket": "ojas-e8161.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1076759095973:android:6eb79eb65332688646bb4c",
+        "android_client_info": {
+          "package_name": "com.rachit.ojas"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1076759095973-3rs7laht57hqh87ks7gfujdi139gl69i.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rachit.ojas",
+            "certificate_hash": "a5a247806c6ff4cb42bdf283cc799ae10ae4fb51"
+          }
+        },
+        {
+          "client_id": "1076759095973-i3dpkctmihia89dcin2q0406p57is7mv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAgyuOk27w5yWNPAfZVXImmkJfTsy0cWyI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1076759095973-i3dpkctmihia89dcin2q0406p57is7mv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
