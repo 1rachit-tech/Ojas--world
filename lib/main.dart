@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/login_screen.dart';
@@ -7,7 +8,26 @@ import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+
+  try {
+    if (kIsWeb) {
+      await Firebase.initializeApp();
+    } else {
+      await Firebase.initializeApp();
+    }
+  } catch (error, stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Firebase initialization',
+        context: ErrorSummary(
+          'Firebase could not initialize in this environment. Continuing without Firebase for web preview.',
+        ),
+      ),
+    );
+  }
+
   runApp(const OjasApp());
 }
 
