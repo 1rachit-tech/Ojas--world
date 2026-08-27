@@ -1,6 +1,10 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'screens/login_screen.dart';
+import 'services/auth_guard.dart';
+import 'services/auth_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -311,8 +315,10 @@ class _OjasHomePageState extends State<OjasHomePage> {
             child: Row(
               children: [
                 IconButton(
-                  onPressed: () => setState(() {
-                    liked ? _likedPosts.remove(id) : _likedPosts.add(id);
+                  onPressed: () => requireAuth(context, () {
+                    setState(() {
+                      liked ? _likedPosts.remove(id) : _likedPosts.add(id);
+                    });
                   }),
                   icon: Icon(
                     liked
@@ -328,13 +334,13 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 ),
                 const SizedBox(width: 12),
                 IconButton(
-                  onPressed: () {},
+                  onPressed: () => requireAuth(context, () => _showActionMessage('Comments are ready for your thoughts.')),
                   icon: const Icon(Icons.mode_comment_outlined),
                   tooltip: 'Comment',
                 ),
                 const Spacer(),
                 IconButton(
-                  onPressed: () {},
+                  onPressed: () => requireAuth(context, () => _showActionMessage('Post shared.')),
                   icon: const Icon(Icons.ios_share_rounded),
                   tooltip: 'Share',
                 ),
@@ -346,7 +352,12 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
+  void _showActionMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Widget _buildPlaceholderTab(int tab) {
+    if (tab == 3) return _buildProfileTab();
     final labels = ['Discover', 'Create something', 'Your profile'];
     final icons = [
       Icons.explore_rounded,
@@ -376,6 +387,56 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
+  Widget _buildProfileTab() {
+    return StreamBuilder(
+      stream: AuthService.instance.authStateChanges,
+      initialData: AuthService.instance.currentUser,
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user == null) {
+          return Center(
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
+              ),
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('Log in to view your profile'),
+            ),
+          );
+        }
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 36,
+                backgroundColor: const Color(0xFFF5B942),
+                child: Text(
+                  (user.displayName?.isNotEmpty == true
+                          ? user.displayName![0]
+                          : user.email![0])
+                      .toUpperCase(),
+                  style: const TextStyle(color: Color(0xFF111827), fontSize: 25, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(user.displayName ?? user.email ?? 'OJAS creator', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await AuthService.instance.signOut();
+                  if (mounted) setState(() => _selectedTab = 0);
+                },
+                icon: const Icon(Icons.logout_rounded),
+                label: const Text('Log out'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildNavigationBar() {
     const items = [
       (Icons.home_rounded, 'Home'),
@@ -385,7 +446,13 @@ class _OjasHomePageState extends State<OjasHomePage> {
     ];
     return NavigationBar(
       selectedIndex: _selectedTab,
-      onDestinationSelected: (index) => setState(() => _selectedTab = index),
+      onDestinationSelected: (index) {
+        if (index == 2) {
+          requireAuth(context, () => setState(() => _selectedTab = index));
+          return;
+        }
+        setState(() => _selectedTab = index);
+      },
       backgroundColor: const Color(0xFF0B1222),
       indicatorColor: const Color(0xFFF5B942).withValues(alpha: .16),
       destinations: items
