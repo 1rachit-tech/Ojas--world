@@ -1,4 +1,4 @@
-package com.example.ojas_app
+package com.rachit.ojas
 
 import io.flutter.embedding.android.FlutterActivity
 
