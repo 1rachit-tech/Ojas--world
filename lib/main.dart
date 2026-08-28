@@ -3,10 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
 
 import 'firebase_options.dart';
-import 'screens/login_screen.dart';
 import 'screens/ojs_feed_screen.dart';
+import 'screens/you_hub_screen.dart';
 import 'services/auth_guard.dart';
-import 'services/auth_service.dart';
 
 Future<void> main() async {
   debugPrint('MAIN STARTED');
@@ -439,8 +438,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
   }
 
   Widget _buildProfileTab() {
-    return _ProfileTab(
-      isActive: _selectedTab == 4,
+    return YouHubScreen(
       onLoggedOut: () {
         if (mounted) setState(() => _selectedTab = 0);
       },
@@ -482,76 +480,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
             ),
           )
           .toList(),
-    );
-  }
-}
-
-class _ProfileTab extends StatelessWidget {
-  const _ProfileTab({required this.isActive, required this.onLoggedOut});
-
-  final bool isActive;
-  final VoidCallback onLoggedOut;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!isActive) return const SizedBox.shrink();
-
-    return StreamBuilder(
-      stream: AuthService.instance.authStateChanges,
-      initialData: AuthService.instance.currentUser,
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        if (user == null) {
-          return Center(
-            child: FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
-              ),
-              icon: const Icon(Icons.login_rounded),
-              label: const Text('Log in to view your profile'),
-            ),
-          );
-        }
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: const Color(0xFFF5B942),
-                child: Text(
-                  (user.displayName?.isNotEmpty == true
-                          ? user.displayName![0]
-                          : user.email![0])
-                      .toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF111827),
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                user.displayName ?? user.email ?? 'OJAS creator',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await AuthService.instance.signOut();
-                  onLoggedOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('Log out'),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
