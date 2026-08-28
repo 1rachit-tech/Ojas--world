@@ -27,12 +27,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAgyuOk27w5yWNPAfZVXImmkJfTsy0cWyI',
-    appId: '1:1076759095973:android:6eb79eb65332688646bb4c',
+    apiKey: 'AIzaSyCu0hF5tJL9Zs1LmgKRGxJ5yAvsMb9hJkk',
+    appId: '1:1076759095973:web:86efb6d03853606846bb4c',
     messagingSenderId: '1076759095973',
     projectId: 'ojas-e8161',
     authDomain: 'ojas-e8161.firebaseapp.com',
     storageBucket: 'ojas-e8161.firebasestorage.app',
+    measurementId: 'G-FH4179BBJF',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
