@@ -20,7 +20,7 @@ void main() {
     await tester.tap(find.byTooltip('World'));
     await tester.pump();
 
-    expect(find.text('Discover'), findsAtLeastNWidgets(1));
+    expect(find.text('World'), findsAtLeastNWidgets(1));
     expect(find.text('Create something'), findsNothing);
   });
 }
