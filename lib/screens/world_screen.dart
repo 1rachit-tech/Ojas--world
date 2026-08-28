@@ -151,9 +151,18 @@ class _WorldScreenState extends State<WorldScreen> {
               focusNode: _searchFocusNode,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded),
-                hintText: _searching
-                    ? 'Search creators, sounds, hashtags...'
-                    : 'Search the world',
+                hint: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: Text(
+                    _searching
+                        ? 'Search creators, sounds, hashtags...'
+                        : 'Search the world',
+                    key: ValueKey<bool>(_searching),
+                    style: const TextStyle(color: Color(0xFF9CA3AF)),
+                  ),
+                ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 16),
               ),
