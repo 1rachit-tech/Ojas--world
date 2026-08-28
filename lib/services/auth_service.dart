@@ -30,14 +30,27 @@ class AuthService {
   }
 
   Future<UserCredential> signInWithGoogle() async {
+    await initializeGoogleSignIn();
+
+    final GoogleSignInAccount account = await _googleSignIn.authenticate();
+    return signInWithGoogleAccount(account);
+  }
+
+  Stream<GoogleSignInAuthenticationEvent> get googleAuthenticationEvents =>
+      _googleSignIn.authenticationEvents;
+
+  Future<void> initializeGoogleSignIn() async {
     _googleInitialization ??= _googleSignIn.initialize(
       clientId: kIsWeb
           ? '1076759095973-i3dpkctmihia89dcin2q0406p57is7mv.apps.googleusercontent.com'
           : null,
     );
     await _googleInitialization;
+  }
 
-    final GoogleSignInAccount account = await _googleSignIn.authenticate();
+  Future<UserCredential> signInWithGoogleAccount(
+    GoogleSignInAccount account,
+  ) async {
     final String? idToken = account.authentication.idToken;
     if (idToken == null) {
       throw FirebaseAuthException(

@@ -1,6 +1,11 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
+import '../google_sign_in_button.dart';
 import '../services/auth_service.dart';
 import 'signup_screen.dart';
 
@@ -18,9 +23,25 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   String? _error;
+  StreamSubscription<GoogleSignInAuthenticationEvent>?
+      _googleAuthenticationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      unawaited(AuthService.instance.initializeGoogleSignIn());
+      _googleAuthenticationSubscription =
+          AuthService.instance.googleAuthenticationEvents.listen(
+            _handleGoogleAuthenticationEvent,
+            onError: _handleGoogleAuthenticationError,
+          );
+    }
+  }
 
   @override
   void dispose() {
+    _googleAuthenticationSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -56,12 +77,40 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
-    } catch (error, stackTrace) {
-      debugPrint('GOOGLE SIGNIN REAL ERROR: ${error.runtimeType} - $error');
-      debugPrintStack(stackTrace: stackTrace);
-      _showError('DEBUG: ${error.runtimeType} - $error');
+    } catch (_) {
+      _showError('Google sign-in failed. Please try again.');
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _handleGoogleAuthenticationEvent(
+    GoogleSignInAuthenticationEvent event,
+  ) {
+    if (event is GoogleSignInAuthenticationEventSignIn) {
+      unawaited(_completeWebGoogleSignIn(event.user));
+    }
+  }
+
+  void _handleGoogleAuthenticationError(Object error, StackTrace stackTrace) {
+    if (mounted) _showError('Google sign-in failed. Please try again.');
+  }
+
+  Future<void> _completeWebGoogleSignIn(GoogleSignInAccount account) async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await AuthService.instance.signInWithGoogleAccount(account);
+      if (mounted) Navigator.of(context).pop(true);
+    } on FirebaseAuthException catch (error) {
+      _showError(_messageFor(error));
+    } catch (_) {
+      _showError('Google sign-in failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _forgotPassword() async {
@@ -168,7 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 8),
             _primaryButton('Log in', _submit),
             const SizedBox(height: 14),
-            _googleButton(_googleSignIn),
+            kIsWeb ? _googleWebButton() : _googleButton(_googleSignIn),
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -236,6 +285,13 @@ class _LoginScreenState extends State<LoginScreen> {
     ),
     style: const TextStyle(color: Color(0xFF111827)),
   );
+
+  Widget _googleWebButton() => SizedBox(
+    width: double.infinity,
+    height: 54,
+    child: buildGoogleSignInButton(),
+  );
+
   Widget _primaryButton(String label, VoidCallback action) => SizedBox(
     width: double.infinity,
     height: 54,

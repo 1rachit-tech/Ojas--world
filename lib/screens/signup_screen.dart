@@ -1,6 +1,11 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
+import '../google_sign_in_button.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 
@@ -18,9 +23,25 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _loading = false;
   bool _obscure = true;
   String? _error;
+  StreamSubscription<GoogleSignInAuthenticationEvent>?
+      _googleAuthenticationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      unawaited(AuthService.instance.initializeGoogleSignIn());
+      _googleAuthenticationSubscription =
+          AuthService.instance.googleAuthenticationEvents.listen(
+            _handleGoogleAuthenticationEvent,
+            onError: _handleGoogleAuthenticationError,
+          );
+    }
+  }
 
   @override
   void dispose() {
+    _googleAuthenticationSubscription?.cancel();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
@@ -52,16 +73,46 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       await AuthService.instance.signInWithGoogle();
       if (mounted) Navigator.of(context).pop(true);
-    } catch (error, stackTrace) {
-      debugPrint('GOOGLE SIGNIN REAL ERROR: ${error.runtimeType} - $error');
-      debugPrintStack(stackTrace: stackTrace);
+    } catch (_) {
       if (mounted) {
-        setState(
-          () => _error = 'DEBUG: ${error.runtimeType} - $error',
-        );
+        setState(() => _error = 'Google sign-in failed. Please try again.');
       }
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _handleGoogleAuthenticationEvent(
+    GoogleSignInAuthenticationEvent event,
+  ) {
+    if (event is GoogleSignInAuthenticationEventSignIn) {
+      unawaited(_completeWebGoogleSignIn(event.user));
+    }
+  }
+
+  void _handleGoogleAuthenticationError(Object error, StackTrace stackTrace) {
+    if (mounted) {
+      setState(() => _error = 'Google sign-in failed. Please try again.');
+    }
+  }
+
+  Future<void> _completeWebGoogleSignIn(GoogleSignInAccount account) async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await AuthService.instance.signInWithGoogleAccount(account);
+      if (mounted) Navigator.of(context).pop(true);
+    } on FirebaseAuthException catch (error) {
+      if (mounted) setState(() => _error = _messageFor(error));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   String _messageFor(FirebaseAuthException error) {
@@ -193,24 +244,30 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: OutlinedButton.icon(
-                            onPressed: _loading ? null : _googleSignIn,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF111827),
-                              side: const BorderSide(
-                                color: Color(0xFF111827),
+                        kIsWeb
+                            ? SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: buildGoogleSignInButton(),
+                              )
+                            : SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: OutlinedButton.icon(
+                                  onPressed: _loading ? null : _googleSignIn,
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF111827),
+                                    side: const BorderSide(
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.g_mobiledata_rounded,
+                                    size: 30,
+                                  ),
+                                  label: const Text('Continue with Google'),
+                                ),
                               ),
-                            ),
-                            icon: const Icon(
-                              Icons.g_mobiledata_rounded,
-                              size: 30,
-                            ),
-                            label: const Text('Continue with Google'),
-                          ),
-                        ),
                         const SizedBox(height: 24),
                         TextButton(
                           onPressed: _loading
