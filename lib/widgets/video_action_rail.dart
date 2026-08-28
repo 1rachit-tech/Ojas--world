@@ -39,54 +39,22 @@ class VideoActionRail extends StatelessWidget {
       children: [
         SizedBox(
           width: 48,
-          height: 58,
-          child: Stack(
-            alignment: Alignment.topCenter,
-            clipBehavior: Clip.none,
-            children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: Color(avatarColor),
-                child: Text(
-                  creator.substring(0, 1),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
+          height: 44,
+          child: Center(
+            child: CircleAvatar(
+              radius: 21,
+              backgroundColor: Color(avatarColor),
+              child: Text(
+                creator.substring(0, 1),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              Positioned(
-                bottom: -1,
-                child: GestureDetector(
-                  onTap: onFollow,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: isFollowing
-                          ? const Color(0xff27323a)
-                          : const Color(0xfff5b942),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.black, width: 2),
-                    ),
-                    child: SizedBox(
-                      width: 19,
-                      height: 19,
-                      child: Icon(
-                        isFollowing
-                            ? (isFollowingFeed
-                                  ? Icons.remove_rounded
-                                  : Icons.check_rounded)
-                            : Icons.add_rounded,
-                        size: 14,
-                        color: isFollowing ? Colors.white : Colors.black,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-        const SizedBox(height: 12),
+        _FollowButton(isFollowing: isFollowing, onTap: onFollow),
         _ActionButton(
           icon: isLiked
               ? Icons.favorite_rounded
@@ -114,7 +82,96 @@ class VideoActionRail extends StatelessWidget {
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.more_horiz_rounded, color: Colors.white),
         ),
+        const _AudioDisc(),
       ],
+    );
+  }
+}
+
+class _FollowButton extends StatelessWidget {
+  const _FollowButton({required this.isFollowing, required this.onTap});
+
+  final bool isFollowing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 28,
+      child: Center(
+        child: GestureDetector(
+          onTap: onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isFollowing
+                  ? const Color(0xff27323a)
+                  : const Color(0xfff5b942),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.black, width: 2),
+            ),
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: Icon(
+                isFollowing ? Icons.remove_rounded : Icons.add_rounded,
+                size: 15,
+                color: isFollowing ? Colors.white : Colors.black,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioDisc extends StatefulWidget {
+  const _AudioDisc();
+
+  @override
+  State<_AudioDisc> createState() => _AudioDiscState();
+}
+
+class _AudioDiscState extends State<_AudioDisc>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 4),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 38,
+      child: Center(
+        child: RotationTransition(
+          turns: _controller,
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: Color(0xff15191d),
+              shape: BoxShape.circle,
+              border: Border.fromBorderSide(
+                BorderSide(color: Colors.white54, width: 1),
+              ),
+            ),
+            child: const Icon(
+              Icons.music_note_rounded,
+              color: Color(0xfff5b942),
+              size: 16,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

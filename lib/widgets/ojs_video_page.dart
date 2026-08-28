@@ -129,7 +129,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               ),
             ),
           ),
-          Positioned(left: 16, right: 72, bottom: 18, child: _buildCaption()),
+          Positioned(left: 16, right: 76, bottom: 18, child: _buildCaption()),
           Positioned(
             right: 10,
             bottom: 14,

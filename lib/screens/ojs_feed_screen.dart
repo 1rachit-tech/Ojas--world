@@ -110,30 +110,47 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   Widget _buildTopBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 10, 0),
-        child: Row(
-          children: [
-            const Spacer(),
-            _FeedTab(
-              label: 'For You',
-              isActive: _selectedFeed == 0,
-              onTap: () => _selectFeed(0),
-            ),
-            const SizedBox(width: 26),
-            _FeedTab(
-              label: 'Following',
-              isActive: _selectedFeed == 1,
-              onTap: () => _selectFeed(1),
-            ),
-            const Spacer(),
-            IconButton(
-              onPressed: _showFilters,
-              tooltip: 'Filter categories',
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-            ),
-          ],
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+          child: Row(
+            children: [
+              const Spacer(),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: .24),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedTab(
+                      label: 'For You',
+                      isActive: _selectedFeed == 0,
+                      onTap: () => _selectFeed(0),
+                    ),
+                    _FeedTab(
+                      label: 'Following',
+                      isActive: _selectedFeed == 1,
+                      onTap: () => _selectFeed(1),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: _showFilters,
+                tooltip: 'Filter categories',
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -188,7 +205,7 @@ class _FeedTab extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         child: Column(
           children: [
             Text(

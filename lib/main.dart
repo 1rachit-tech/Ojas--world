@@ -79,43 +79,46 @@ class _OjasHomePageState extends State<OjasHomePage> {
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          titleSpacing: 24,
-          title: const Text(
-            'OJAS',
-            style: TextStyle(
-              color: Color(0xFFF5B942),
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 3,
-            ),
-          ),
-          actions: [
-            IconButton(
-              onPressed: () {},
-              tooltip: 'Notifications',
-              icon: const Icon(Icons.notifications_none_rounded),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(right: 20),
-              child: CircleAvatar(
-                radius: 17,
-                backgroundColor: Color(0xFFF5B942),
-                child: Text(
-                  'AK',
+        extendBody: _selectedTab == 1,
+        appBar: _selectedTab == 1
+            ? null
+            : AppBar(
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                titleSpacing: 24,
+                title: const Text(
+                  'OJAS',
                   style: TextStyle(
-                    color: Color(0xFF111827),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFF5B942),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 3,
                   ),
                 ),
+                actions: [
+                  IconButton(
+                    onPressed: () {},
+                    tooltip: 'Notifications',
+                    icon: const Icon(Icons.notifications_none_rounded),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(right: 20),
+                    child: CircleAvatar(
+                      radius: 17,
+                      backgroundColor: Color(0xFFF5B942),
+                      child: Text(
+                        'AK',
+                        style: TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
         body: LayoutBuilder(
           builder: (context, constraints) {
             final isDesktop = constraints.maxWidth >= 900;
@@ -467,7 +470,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       elevation: 0,
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      height: 68,
+      height: 60,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
       destinations: items
           .map(
