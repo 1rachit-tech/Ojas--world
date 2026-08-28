@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' hide debugPrint;
 
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
@@ -8,17 +9,17 @@ import 'services/auth_guard.dart';
 import 'services/auth_service.dart';
 
 Future<void> main() async {
-  print('MAIN STARTED');
+  debugPrint('MAIN STARTED');
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('FIREBASE OK');
+    debugPrint('FIREBASE OK');
   } catch (error, stackTrace) {
-    print('FIREBASE FAILED: $error');
-    print(stackTrace);
+    debugPrint('FIREBASE FAILED: $error');
+    debugPrint(stackTrace.toString());
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -31,7 +32,7 @@ Future<void> main() async {
     );
   }
 
-  print('ABOUT TO CALL runApp');
+  debugPrint('ABOUT TO CALL runApp');
   runApp(const OjasApp());
 }
 
