@@ -57,12 +57,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) Navigator.of(context).pop(true);
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
-    } catch (_) {
-      _showError(
-        kIsWeb
-            ? 'Google sign-in is not configured for this web preview. Use Continue as Guest or configure Google OAuth credentials.'
-            : 'Google sign-in was cancelled or unavailable.',
-      );
+    } catch (error, stackTrace) {
+      debugPrint('GOOGLE SIGNIN REAL ERROR: ${error.runtimeType} - $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showError('DEBUG: ${error.runtimeType} - $error');
     }
     if (mounted) setState(() => _loading = false);
   }

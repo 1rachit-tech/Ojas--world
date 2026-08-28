@@ -53,12 +53,12 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       await AuthService.instance.signInWithGoogle();
       if (mounted) Navigator.of(context).pop(true);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('GOOGLE SIGNIN REAL ERROR: ${error.runtimeType} - $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         setState(
-          () => _error = kIsWeb
-              ? 'Google sign-in is not configured for this web preview. Return to login and use Continue as Guest, or configure Google OAuth credentials.'
-              : 'Google sign-in was cancelled or unavailable.',
+          () => _error = 'DEBUG: ${error.runtimeType} - $error',
         );
       }
     }
