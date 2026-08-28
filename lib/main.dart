@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide debugPrint;
 
 import 'firebase_options.dart';
 import 'screens/ojs_feed_screen.dart';
+import 'screens/world_screen.dart';
 import 'screens/you_hub_screen.dart';
 import 'services/auth_guard.dart';
 
@@ -133,7 +134,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                     _buildFeed(context, isDesktop),
                     _buildOjsTab(),
                     _buildPlaceholderTab('Create', Icons.add_box_outlined),
-                    _buildPlaceholderTab('World', Icons.explore_outlined),
+                    const WorldScreen(),
                     _buildProfileTab(),
                   ],
                 ),
