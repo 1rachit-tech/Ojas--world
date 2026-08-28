@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
@@ -29,7 +30,11 @@ class AuthService {
   }
 
   Future<UserCredential> signInWithGoogle() async {
-    _googleInitialization ??= _googleSignIn.initialize();
+    _googleInitialization ??= _googleSignIn.initialize(
+      clientId: kIsWeb
+          ? '1076759095973-i3dpkctmihia89dcin2q0406p57is7mv.apps.googleusercontent.com'
+          : null,
+    );
     await _googleInitialization;
 
     final GoogleSignInAccount account = await _googleSignIn.authenticate();
