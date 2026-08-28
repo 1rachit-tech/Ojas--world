@@ -7,6 +7,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../google_sign_in_button.dart';
 import '../services/auth_service.dart';
+import '../services/auth_guard.dart';
+import 'profile_setup_screen.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -56,7 +58,11 @@ class _SignupScreenState extends State<SignupScreen> {
     });
     try {
       await AuthService.instance.signUpWithEmail(_email.text, _password.text);
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+        );
+      }
     } on FirebaseAuthException catch (error) {
       setState(() => _error = _messageFor(error));
     } catch (_) {
@@ -72,7 +78,7 @@ class _SignupScreenState extends State<SignupScreen> {
     });
     try {
       await AuthService.instance.signInWithGoogle();
-      if (mounted) Navigator.of(context).pop(true);
+      await _finishAuthentication();
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Google sign-in failed. Please try again.');
@@ -103,7 +109,7 @@ class _SignupScreenState extends State<SignupScreen> {
     });
     try {
       await AuthService.instance.signInWithGoogleAccount(account);
-      if (mounted) Navigator.of(context).pop(true);
+      await _finishAuthentication();
     } on FirebaseAuthException catch (error) {
       if (mounted) setState(() => _error = _messageFor(error));
     } catch (_) {
@@ -126,6 +132,12 @@ class _SignupScreenState extends State<SignupScreen> {
       default:
         return error.message ?? 'Sign-up failed. Please try again.';
     }
+  }
+
+  Future<void> _finishAuthentication() async {
+    if (!mounted) return;
+    final complete = await ensureProfile(context);
+    if (complete && mounted) Navigator.of(context).pop(true);
   }
 
   @override

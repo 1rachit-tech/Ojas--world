@@ -7,6 +7,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../google_sign_in_button.dart';
 import '../services/auth_service.dart';
+import '../services/auth_guard.dart';
+import 'ojas_id_login_screen.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -58,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _emailController.text,
         _passwordController.text,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      await _finishAuthentication();
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
     } catch (_) {
@@ -74,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await AuthService.instance.signInWithGoogle();
-      if (mounted) Navigator.of(context).pop(true);
+      await _finishAuthentication();
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
     } catch (_) {
@@ -103,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await AuthService.instance.signInWithGoogleAccount(account);
-      if (mounted) Navigator.of(context).pop(true);
+      await _finishAuthentication();
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
     } catch (_) {
@@ -147,11 +149,24 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _openOjasIdLogin() async {
+    final authenticated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const OjasIdLoginScreen()),
+    );
+    if (authenticated == true && mounted) Navigator.of(context).pop(true);
+  }
+
   void _showError(String message) => setState(() => _error = message);
 
   void _showMessage(String message) => ScaffoldMessenger.of(
     context,
   ).showSnackBar(SnackBar(content: Text(message)));
+
+  Future<void> _finishAuthentication() async {
+    if (!mounted) return;
+    final complete = await ensureProfile(context);
+    if (complete && mounted) Navigator.of(context).pop(true);
+  }
 
   String _messageFor(FirebaseAuthException error) {
     switch (error.code) {
@@ -216,6 +231,18 @@ class _LoginScreenState extends State<LoginScreen> {
             if (_error != null) _ErrorText(_error!),
             const SizedBox(height: 8),
             _primaryButton('Log in', _submit),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: OutlinedButton.icon(
+                onPressed: _loading
+                    ? null
+                    : _openOjasIdLogin,
+                icon: const Icon(Icons.alternate_email_rounded),
+                label: const Text('Log in with OJAS ID'),
+              ),
+            ),
             const SizedBox(height: 14),
             kIsWeb ? _googleWebButton() : _googleButton(_googleSignIn),
             const SizedBox(height: 10),
