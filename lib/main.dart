@@ -3,17 +3,22 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'screens/ojs_feed_screen.dart';
 import 'services/auth_guard.dart';
 import 'services/auth_service.dart';
 
 Future<void> main() async {
+  print('MAIN STARTED');
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    print('FIREBASE OK');
   } catch (error, stackTrace) {
+    print('FIREBASE FAILED: $error');
+    print(stackTrace);
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -26,6 +31,7 @@ Future<void> main() async {
     );
   }
 
+  print('ABOUT TO CALL runApp');
   runApp(const OjasApp());
 }
 
@@ -368,13 +374,21 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 ),
                 const SizedBox(width: 12),
                 IconButton(
-                  onPressed: () => requireAuth(context, () => _showActionMessage('Comments are ready for your thoughts.')),
+                  onPressed: () => requireAuth(
+                    context,
+                    () => _showActionMessage(
+                      'Comments are ready for your thoughts.',
+                    ),
+                  ),
                   icon: const Icon(Icons.mode_comment_outlined),
                   tooltip: 'Comment',
                 ),
                 const Spacer(),
                 IconButton(
-                  onPressed: () => requireAuth(context, () => _showActionMessage('Post shared.')),
+                  onPressed: () => requireAuth(
+                    context,
+                    () => _showActionMessage('Post shared.'),
+                  ),
                   icon: const Icon(Icons.ios_share_rounded),
                   tooltip: 'Share',
                 ),
@@ -387,7 +401,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
   }
 
   void _showActionMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildPlaceholderTab(String title, IconData icon) {
@@ -415,24 +431,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
   }
 
   Widget _buildOjsTab() {
-    return Theme(
-      data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF5B942),
-          brightness: Brightness.dark,
-        ),
-      ),
-      child: const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Text(
-            'OJS',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-    );
+    return OjsFeedScreen(isActive: _selectedTab == 1);
   }
 
   Widget _buildProfileTab() {
@@ -471,13 +470,12 @@ class _OjasHomePageState extends State<OjasHomePage> {
       labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
       destinations: items
           .map(
-            (item) =>
-                NavigationDestination(
-                  icon: Icon(item.$1, size: 28),
-                  selectedIcon: Icon(item.$2, size: 28),
-                  label: item.$3,
-                  tooltip: item.$3,
-                ),
+            (item) => NavigationDestination(
+              icon: Icon(item.$1, size: 28),
+              selectedIcon: Icon(item.$2, size: 28),
+              label: item.$3,
+              tooltip: item.$3,
+            ),
           )
           .toList(),
     );
@@ -522,11 +520,21 @@ class _ProfileTab extends StatelessWidget {
                           ? user.displayName![0]
                           : user.email![0])
                       .toUpperCase(),
-                  style: const TextStyle(color: Color(0xFF111827), fontSize: 25, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 25,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
-              Text(user.displayName ?? user.email ?? 'OJAS creator', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(
+                user.displayName ?? user.email ?? 'OJAS creator',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: () async {
