@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
 
 import 'firebase_options.dart';
+import 'screens/create_screen.dart';
 import 'screens/ojs_feed_screen.dart';
 import 'screens/world_screen.dart';
 import 'screens/you_hub_screen.dart';
@@ -133,7 +134,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   children: [
                     _buildFeed(context, isDesktop),
                     _buildOjsTab(),
-                    _buildPlaceholderTab('Create', Icons.add_box_outlined),
+                    const CreateScreen(),
                     const WorldScreen(),
                     _buildProfileTab(),
                   ],
@@ -408,30 +409,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Widget _buildPlaceholderTab(String title, IconData icon) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 54, color: const Color(0xFFF5B942)),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This space is ready for your next idea.',
-              style: TextStyle(color: Color(0xFF9CA8BB)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildOjsTab() {
