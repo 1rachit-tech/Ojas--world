@@ -69,6 +69,7 @@ class OjasHomePage extends StatefulWidget {
 class _OjasHomePageState extends State<OjasHomePage> {
   int _selectedTab = 0;
   final Set<int> _likedPosts = <int>{};
+  bool _authGateLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -79,71 +80,143 @@ class _OjasHomePageState extends State<OjasHomePage> {
           setState(() => _selectedTab = 0);
         }
       },
-      child: Scaffold(
-        extendBody: _selectedTab == 1,
-        appBar: _selectedTab == 1
-            ? null
-            : AppBar(
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                titleSpacing: 24,
-                title: const Text(
-                  'OJAS',
-                  style: TextStyle(
-                    color: Color(0xFFF5B942),
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                  ),
-                ),
-                actions: [
-                  IconButton(
-                    onPressed: () {},
-                    tooltip: 'Notifications',
-                    icon: const Icon(Icons.notifications_none_rounded),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.only(right: 20),
-                    child: CircleAvatar(
-                      radius: 17,
-                      backgroundColor: Color(0xFFF5B942),
-                      child: Text(
-                        'AK',
-                        style: TextStyle(
-                          color: Color(0xFF111827),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Scaffold(
+            extendBody: _selectedTab == 1,
+            appBar: _selectedTab == 1
+                ? null
+                : AppBar(
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    titleSpacing: 24,
+                    title: const Text(
+                      'OJAS',
+                      style: TextStyle(
+                        color: Color(0xFFF5B942),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3,
                       ),
                     ),
+                    actions: [
+                      IconButton(
+                        onPressed: () {},
+                        tooltip: 'Notifications',
+                        icon: const Icon(Icons.notifications_none_rounded),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(right: 20),
+                        child: CircleAvatar(
+                          radius: 17,
+                          backgroundColor: Color(0xFFF5B942),
+                          child: Text(
+                            'AK',
+                            style: TextStyle(
+                              color: Color(0xFF111827),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            final isDesktop = constraints.maxWidth >= 900;
-            return Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: isDesktop ? 1180 : double.infinity,
+            body: LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth >= 900;
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: isDesktop ? 1180 : double.infinity,
+                    ),
+                    child: IndexedStack(
+                      index: _selectedTab,
+                      children: [
+                        _buildFeed(context, isDesktop),
+                        _buildOjsTab(),
+                        const CreateScreen(),
+                        const WorldScreen(),
+                        _buildProfileTab(),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            bottomNavigationBar: _buildNavigationBar(),
+          ),
+          if (_authGateLoading) _buildAuthLoadingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  void _requestCreate() {
+    if (_authGateLoading) return;
+    setState(() => _authGateLoading = true);
+    requireAuth(
+      context,
+      () {
+        if (mounted) setState(() => _selectedTab = 2);
+      },
+      onLoadingChanged: (loading) {
+        if (mounted) setState(() => _authGateLoading = loading);
+      },
+      onError: _showAuthError,
+    );
+  }
+
+  void _showAuthError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(label: 'Retry', onPressed: _requestCreate),
+        ),
+      );
+  }
+
+  Widget _buildAuthLoadingOverlay() {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          const ModalBarrier(
+            dismissible: false,
+            color: Color(0x2E000000),
+            semanticsLabel: 'Checking your account',
+          ),
+          Center(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 18,
                 ),
-                child: IndexedStack(
-                  index: _selectedTab,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildFeed(context, isDesktop),
-                    _buildOjsTab(),
-                    const CreateScreen(),
-                    const WorldScreen(),
-                    _buildProfileTab(),
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                    const SizedBox(width: 14),
+                    Text(
+                      'Checking your profile...',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ],
                 ),
               ),
-            );
-          },
-        ),
-        bottomNavigationBar: _buildNavigationBar(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -436,7 +509,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       onDestinationSelected: (index) {
         if (index == _selectedTab) return;
         if (index == 2) {
-          requireAuth(context, () => setState(() => _selectedTab = index));
+          _requestCreate();
           return;
         }
         setState(() => _selectedTab = index);

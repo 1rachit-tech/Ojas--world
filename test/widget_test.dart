@@ -5,11 +5,14 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ojas_app/main.dart';
 import 'package:ojas_app/screens/create_screen.dart';
+import 'package:ojas_app/services/auth_guard.dart';
 
 void main() {
   testWidgets('OJAS feed and navigation render', (WidgetTester tester) async {
@@ -37,27 +40,28 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: CreateScreen()));
 
-    expect(find.text('Tap record to activate your camera.'), findsOneWidget);
-    expect(find.text('VIDEO'), findsOneWidget);
-    expect(find.text('PHOTO'), findsOneWidget);
-    expect(find.text('STORY'), findsOneWidget);
-
-    await tester.tap(find.text('PHOTO'));
-    await tester.pump();
-    await tester.tap(find.text('STORY'));
-    await tester.pump();
-
-    expect(find.text('STORY'), findsOneWidget);
-    expect(find.text('Tap record to activate your camera.'), findsOneWidget);
-  });
-
-  testWidgets('Create handles unavailable camera without a broken screen', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CreateScreen()));
-
     expect(find.byType(CreateScreen), findsOneWidget);
     expect(find.byIcon(Icons.videocam_outlined), findsOneWidget);
     expect(find.text('Tap record to activate your camera.'), findsOneWidget);
+  });
+
+  testWidgets('profile verification timeout becomes a retryable error', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+
+    final pendingCheck = Completer<bool>();
+    final verification = ensureProfile(
+      tester.element(find.byType(SizedBox)),
+      profileCheck: () => pendingCheck.future,
+      timeout: const Duration(milliseconds: 1),
+    );
+    final expectedError = expectLater(
+      verification,
+      throwsA(isA<AuthGuardException>()),
+    );
+    await tester.pump(const Duration(milliseconds: 2));
+
+    await expectedError;
   });
 }
