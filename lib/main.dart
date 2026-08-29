@@ -85,7 +85,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
         children: [
           Scaffold(
             extendBody: _selectedTab == 1,
-            appBar: _selectedTab == 1
+            appBar: _selectedTab == 1 || _selectedTab == 2
                 ? null
                 : AppBar(
                     backgroundColor: Colors.white,

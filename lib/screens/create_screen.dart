@@ -186,10 +186,15 @@ class _CreateScreenState extends State<CreateScreen> {
   Widget _buildPreview(CameraController controller) {
     return ColoredBox(
       color: Colors.black,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
-          child: CameraPreview(controller),
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          clipBehavior: Clip.hardEdge,
+          child: SizedBox(
+            width: 9,
+            height: 16,
+            child: CameraPreview(controller),
+          ),
         ),
       ),
     );
@@ -278,7 +283,7 @@ class _CreateScreenState extends State<CreateScreen> {
   Widget _buildActionRail() {
     return Positioned(
       right: 12,
-      top: 110,
+      top: 96,
       child: Column(
         children: [
           _railButton(Icons.music_note_outlined, 'Sound'),
@@ -321,7 +326,7 @@ class _CreateScreenState extends State<CreateScreen> {
     return Positioned(
       left: 0,
       right: 0,
-      bottom: 18,
+      bottom: 12,
       child: SafeArea(
         top: false,
         child: Column(
@@ -367,7 +372,11 @@ class _CreateScreenState extends State<CreateScreen> {
                 alignment: Alignment.center,
                 children: [
                   if (_lastCapture != null)
-                    Positioned(left: 22, child: _buildThumbnail(_lastCapture!)),
+                    Positioned(
+                      left: 18,
+                      bottom: 20,
+                      child: _buildThumbnail(_lastCapture!),
+                    ),
                   GestureDetector(
                     onTap: _capture,
                     child: Container(

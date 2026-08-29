@@ -2,6 +2,7 @@ import 'dart:io' show File;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -53,6 +54,7 @@ class CameraCaptureService {
       enableAudio: true,
     );
     await controller.initialize();
+    await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
     _controller = controller;
   }
 
