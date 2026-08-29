@@ -60,18 +60,32 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
         Uri.parse(widget.video.videoUrl),
       );
       _controller = controller;
-      await controller.initialize();
+      controller.addListener(_handleControllerUpdate);
+      await controller.initialize().timeout(const Duration(seconds: 15));
       await controller.setLooping(true);
       if (!mounted || _controller != controller) return;
       setState(() => _isLoading = false);
       await _setPlayback(widget.isVisible);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('OJS video failed to initialize: $error');
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _hasError = true;
       });
     }
+  }
+
+  void _handleControllerUpdate() {
+    final controller = _controller;
+    final errorDescription = controller?.value.errorDescription;
+    if (errorDescription == null) return;
+    debugPrint('OJS video player error: $errorDescription');
+    if (!mounted || _hasError) return;
+    setState(() {
+      _isLoading = false;
+      _hasError = true;
+    });
   }
 
   Future<void> _setPlayback(bool shouldPlay) async {
@@ -130,19 +144,18 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               ),
             ),
           ),
-          Positioned(
-            left: 16,
-            right: 76,
-            bottom: 24,
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: _buildCaption(),
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 76, 24),
+                child: _buildCaption(),
+              ),
             ),
           ),
           Positioned(
             right: 10,
-            top: 82,
+            top: 68,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: widget.video.avatarColor,

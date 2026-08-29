@@ -39,22 +39,29 @@ class VideoActionRail extends StatelessWidget {
       children: [
         SizedBox(
           width: 48,
-          height: 40,
-          child: Center(
-            child: CircleAvatar(
-              radius: 21,
-              backgroundColor: Color(avatarColor),
-              child: Text(
-                creator.substring(0, 1),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
+          height: 48,
+          child: Stack(
+            alignment: Alignment.topCenter,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: Color(avatarColor),
+                child: Text(
+                  creator.substring(0, 1),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-            ),
+              Positioned(
+                bottom: 0,
+                child: _FollowButton(isFollowing: isFollowing, onTap: onFollow),
+              ),
+            ],
           ),
         ),
-        _FollowButton(isFollowing: isFollowing, onTap: onFollow),
+        const SizedBox(height: 12),
         _ActionButton(
           icon: isLiked
               ? Icons.favorite_rounded
@@ -64,24 +71,32 @@ class VideoActionRail extends StatelessWidget {
           onTap: onLike,
           tooltip: 'Like',
         ),
+        const SizedBox(height: 12),
         _ActionButton(
           icon: Icons.mode_comment_outlined,
           count: comments,
           onTap: onComment,
           tooltip: 'Comments',
         ),
+        const SizedBox(height: 12),
         _ActionButton(
           icon: Icons.reply_rounded,
           count: shares,
           onTap: onShare,
           tooltip: 'Share',
         ),
-        IconButton(
-          onPressed: onMore,
-          tooltip: 'More video options',
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.more_horiz_rounded, color: Colors.white),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: IconButton(
+            onPressed: onMore,
+            tooltip: 'More video options',
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.more_horiz_rounded, color: Colors.white),
+          ),
         ),
+        const SizedBox(height: 12),
         const _AudioDisc(),
       ],
     );
@@ -150,13 +165,13 @@ class _AudioDiscState extends State<_AudioDisc>
   Widget build(BuildContext context) {
     return SizedBox(
       width: 48,
-      height: 42,
+      height: 48,
       child: Center(
         child: RotationTransition(
           turns: _controller,
           child: Container(
-            width: 34,
-            height: 34,
+            width: 32,
+            height: 32,
             decoration: const BoxDecoration(
               color: Color(0xff15191d),
               shape: BoxShape.circle,
@@ -194,12 +209,17 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          onPressed: onTap,
-          tooltip: tooltip,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(icon, color: color, size: 27),
+        SizedBox(
+          width: 48,
+          height: 32,
+          child: IconButton(
+            onPressed: onTap,
+            tooltip: tooltip,
+            padding: EdgeInsets.zero,
+            icon: Icon(icon, color: color, size: 27),
+          ),
         ),
         Text(
           _compactCount(count),
@@ -209,7 +229,6 @@ class _ActionButton extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 5),
       ],
     );
   }
