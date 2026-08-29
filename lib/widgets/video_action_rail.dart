@@ -39,7 +39,7 @@ class VideoActionRail extends StatelessWidget {
       children: [
         SizedBox(
           width: 48,
-          height: 44,
+          height: 40,
           child: Center(
             child: CircleAvatar(
               radius: 21,
@@ -150,7 +150,7 @@ class _AudioDiscState extends State<_AudioDisc>
   Widget build(BuildContext context) {
     return SizedBox(
       width: 48,
-      height: 38,
+      height: 42,
       child: Center(
         child: RotationTransition(
           turns: _controller,

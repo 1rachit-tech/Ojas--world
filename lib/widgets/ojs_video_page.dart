@@ -98,6 +98,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       color: const Color(0xff07090b),
       child: Stack(
         fit: StackFit.expand,
+        clipBehavior: Clip.none,
         children: [
           if (controller != null && controller.value.isInitialized)
             GestureDetector(
@@ -129,10 +130,19 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               ),
             ),
           ),
-          Positioned(left: 16, right: 76, bottom: 18, child: _buildCaption()),
+          Positioned(
+            left: 16,
+            right: 76,
+            bottom: 24,
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: _buildCaption(),
+            ),
+          ),
           Positioned(
             right: 10,
-            bottom: 14,
+            top: 82,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: widget.video.avatarColor,

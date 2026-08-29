@@ -121,27 +121,20 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           child: Row(
             children: [
               const Spacer(),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: .24),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _FeedTab(
-                      label: 'For You',
-                      isActive: _selectedFeed == 0,
-                      onTap: () => _selectFeed(0),
-                    ),
-                    _FeedTab(
-                      label: 'Following',
-                      isActive: _selectedFeed == 1,
-                      onTap: () => _selectFeed(1),
-                    ),
-                  ],
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _FeedTab(
+                    label: 'For You',
+                    isActive: _selectedFeed == 0,
+                    onTap: () => _selectFeed(0),
+                  ),
+                  _FeedTab(
+                    label: 'Following',
+                    isActive: _selectedFeed == 1,
+                    onTap: () => _selectFeed(1),
+                  ),
+                ],
               ),
               const Spacer(),
               IconButton(
