@@ -38,13 +38,13 @@ class VideoActionRail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 48,
-          height: 48,
+          width: 44,
+          height: 44,
           child: Stack(
             alignment: Alignment.topCenter,
             children: [
               CircleAvatar(
-                radius: 20,
+                radius: 18,
                 backgroundColor: Color(avatarColor),
                 child: Text(
                   creator.substring(0, 1),
@@ -61,7 +61,7 @@ class VideoActionRail extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         _ActionButton(
           icon: isLiked
               ? Icons.favorite_rounded
@@ -71,32 +71,32 @@ class VideoActionRail extends StatelessWidget {
           onTap: onLike,
           tooltip: 'Like',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         _ActionButton(
           icon: Icons.mode_comment_outlined,
           count: comments,
           onTap: onComment,
           tooltip: 'Comments',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         _ActionButton(
           icon: Icons.reply_rounded,
           count: shares,
           onTap: onShare,
           tooltip: 'Share',
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         SizedBox(
-          width: 48,
-          height: 48,
+          width: 44,
+          height: 28,
           child: IconButton(
             onPressed: onMore,
             tooltip: 'More video options',
             padding: EdgeInsets.zero,
-            icon: const Icon(Icons.more_horiz_rounded, color: Colors.white),
+            icon: const Icon(Icons.more_horiz_rounded, color: Colors.white, size: 24),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         const _AudioDisc(),
       ],
     );
@@ -112,8 +112,8 @@ class _FollowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 48,
-      height: 28,
+      width: 44,
+      height: 24,
       child: Center(
         child: GestureDetector(
           onTap: onTap,
@@ -126,11 +126,11 @@ class _FollowButton extends StatelessWidget {
               border: Border.all(color: Colors.black, width: 2),
             ),
             child: SizedBox(
-              width: 22,
-              height: 22,
+              width: 20,
+              height: 20,
               child: Icon(
                 isFollowing ? Icons.remove_rounded : Icons.add_rounded,
-                size: 15,
+                size: 13,
                 color: isFollowing ? Colors.white : Colors.black,
               ),
             ),
@@ -164,14 +164,14 @@ class _AudioDiscState extends State<_AudioDisc>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 48,
-      height: 48,
+      width: 44,
+      height: 44,
       child: Center(
         child: RotationTransition(
           turns: _controller,
           child: Container(
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             decoration: const BoxDecoration(
               color: Color(0xff15191d),
               shape: BoxShape.circle,
@@ -182,7 +182,7 @@ class _AudioDiscState extends State<_AudioDisc>
             child: const Icon(
               Icons.music_note_rounded,
               color: Color(0xfff5b942),
-              size: 16,
+              size: 14,
             ),
           ),
         ),
@@ -212,13 +212,13 @@ class _ActionButton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 48,
-          height: 32,
+          width: 44,
+          height: 30,
           child: IconButton(
             onPressed: onTap,
             tooltip: tooltip,
             padding: EdgeInsets.zero,
-            icon: Icon(icon, color: color, size: 27),
+            icon: Icon(icon, color: color, size: 25),
           ),
         ),
         Text(
