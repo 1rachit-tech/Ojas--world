@@ -148,7 +148,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             child: Align(
               alignment: Alignment.bottomLeft,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 76, 24),
+                padding: const EdgeInsets.fromLTRB(16, 0, 76, 100),
                 child: _buildCaption(),
               ),
             ),
