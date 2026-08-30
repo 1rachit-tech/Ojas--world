@@ -155,7 +155,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
           ),
           Positioned(
             right: 10,
-            top: 68,
+            bottom: 90,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: widget.video.avatarColor,
