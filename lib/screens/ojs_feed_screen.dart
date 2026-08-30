@@ -118,29 +118,33 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
-          child: Row(
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              const Spacer(),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _FeedTab(
-                    label: 'For You',
-                    isActive: _selectedFeed == 0,
-                    onTap: () => _selectFeed(0),
-                  ),
-                  _FeedTab(
-                    label: 'Following',
-                    isActive: _selectedFeed == 1,
-                    onTap: () => _selectFeed(1),
-                  ),
-                ],
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedTab(
+                      label: 'For You',
+                      isActive: _selectedFeed == 0,
+                      onTap: () => _selectFeed(0),
+                    ),
+                    _FeedTab(
+                      label: 'Following',
+                      isActive: _selectedFeed == 1,
+                      onTap: () => _selectFeed(1),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: _showFilters,
-                tooltip: 'Filter categories',
-                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+              Positioned(
+                right: 0,
+                child: IconButton(
+                  onPressed: _showFilters,
+                  tooltip: 'Filter categories',
+                  icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                ),
               ),
             ],
           ),
