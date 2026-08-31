@@ -236,10 +236,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 3. Caption & Creator Details (Placed Exactly on Screen)
+          // 3. Caption & Creator Details (moved up so it stays above the bottom nav bar)
           Positioned(
             left: 16,
-            bottom: 14,
+            bottom: 100,
             right: 86,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,10 +275,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 4. Action Rail (Placed Exactly Above Navigation Bar)
+          // 4. Action Rail (top-anchored so it can never be clipped from below)
           Positioned(
-            right: 8,
-            bottom: 10,
+            right: 10,
+            top: 68,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: _getAvatarColor(),
@@ -301,4 +301,4 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       ),
     );
   }
-}
+}             onTap: _openCreatorProfile,
