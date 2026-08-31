@@ -1,114 +1,280 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'messages_screen.dart';
-import 'profile_screen.dart';
-
 class YouHubScreen extends StatefulWidget {
-  const YouHubScreen({super.key, this.onLoggedOut});
-
-  final VoidCallback? onLoggedOut;
+  final VoidCallback onLoggedOut;
+  const YouHubScreen({super.key, required this.onLoggedOut});
 
   @override
   State<YouHubScreen> createState() => _YouHubScreenState();
 }
 
 class _YouHubScreenState extends State<YouHubScreen> {
-  late final PageController _pageController;
-  int _page = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _selectPage(int page) {
-    _pageController.animateToPage(
-      page,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _Header(page: _page, onSelected: _selectPage),
-        Expanded(
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (page) => setState(() => _page = page),
-            children: [
-              const MessagesScreen(),
-              ProfileScreen(onLoggedOut: widget.onLoggedOut),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          leadingWidth: 60,
+          // 1. बाएँ तरफ असली प्रोफाइल पिक्चर (Logo की जगह)
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 16, top: 10, bottom: 10),
+            child: _buildDynamicUserAvatar(),
+          ),
+          // 2. टैब बार को बिल्कुल टॉप (OJAS वाली लाइन) में सेट किया गया
+          title: const TabBar(
+            dividerColor: Colors.transparent,
+            indicatorColor: Color(0xFFF5B942),
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: Color(0xFF111827),
+            unselectedLabelColor: Color(0xFF9CA3AF),
+            labelStyle: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              fontFamily: 'Arial',
+            ),
+            tabs: [
+              Tab(text: 'Messages'),
+              Tab(text: 'Profile'),
             ],
           ),
+          // 3. दाएँ तरफ 'AK' हटाकर Settings आइकॉन लगाया गया
+          actions: [
+            IconButton(
+              onPressed: () {},
+              tooltip: 'Settings',
+              icon: const Icon(Icons.settings_outlined, color: Color(0xFF111827)),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
-      ],
+        body: TabBarView(
+          children: [
+            _buildMessagesView(),
+            _buildProfileView(),
+          ],
+        ),
+      ),
     );
   }
-}
 
-class _Header extends StatelessWidget {
-  const _Header({required this.page, required this.onSelected});
-  final int page;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 60,
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(2, (index) {
-        final active = index == page;
-        return GestureDetector(
-          onTap: () => onSelected(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            width: 116,
-            height: 60,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: active ? const Color(0xFFF5B942) : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-              boxShadow: active
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x24F5B942),
-                        blurRadius: 12,
-                        offset: Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Center(
-              child: Text(
-                index == 0 ? 'Messages' : 'Profile',
-                style: TextStyle(
-                  color: active
-                      ? const Color(0xFF111827)
-                      : const Color(0xFF9CA3AF),
-                  fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                  fontSize: 14,
-                ),
-              ),
+  // --- Real Profile Picture Logic ---
+  Widget _buildDynamicUserAvatar() {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user == null) {
+          return const CircleAvatar(
+            backgroundColor: Color(0xFFF3F4F6),
+            child: Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF6B7280)),
+          );
+        }
+        if (user.photoURL != null && user.photoURL!.isNotEmpty) {
+          return CircleAvatar(
+            backgroundColor: const Color(0xFFF5B942),
+            backgroundImage: NetworkImage(user.photoURL!),
+          );
+        }
+        // अगर फोटो नहीं है, तो ईमेल या नाम का पहला अक्षर लोड होगा (AK नहीं)
+        String initial = 'U';
+        if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+          initial = user.displayName!.trim()[0].toUpperCase();
+        } else if (user.email != null && user.email!.isNotEmpty) {
+          initial = user.email![0].toUpperCase();
+        }
+        return CircleAvatar(
+          backgroundColor: const Color(0xFFF5B942),
+          child: Text(
+            initial,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
             ),
           ),
         );
-      }),
-    ),
-  );
+      },
+    );
+  }
+
+  Widget _buildMessagesView() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Messages',
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: Colors.black87),
+              onPressed: () {},
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          decoration: InputDecoration(
+            hintText: 'Search conversations',
+            hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+            prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280)),
+            filled: true,
+            fillColor: const Color(0xFFF3F4F6),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(24),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Active now',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 100,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _buildActiveAvatar('Maya', const Color(0xFFF4C2C2), Icons.wb_twilight_rounded),
+              _buildActiveAvatar('Rohan', const Color(0xFFC1D9D9), Icons.auto_awesome_rounded),
+              _buildActiveAvatar('Nia', const Color(0xFFF5B942), Icons.graphic_eq_rounded),
+              _buildActiveAvatar('Studio', const Color(0xFFC5C6E9), Icons.people_alt_rounded),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: const [
+            Text(
+              'Recent chats',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            Text(
+              '4',
+              style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildChatItem('Maya Chen', 'Your latest edit is beautiful.', '9:42 AM', 3, const Color(0xFFF4C2C2), Icons.wb_twilight_rounded),
+        _buildChatItem('Rohan Mehta', 'I sent over the new storyboard.', 'Yesterday', 0, const Color(0xFFC1D9D9), Icons.auto_awesome_rounded),
+        _buildChatItem('Nia Kapoor', 'Voice note · 0:18', 'Tue', 1, const Color(0xFFF5B942), Icons.graphic_eq_rounded),
+        _buildChatItem('Studio Circle', 'Arjun: Call time moved to 6 PM', 'Mon', 0, const Color(0xFFC5C6E9), Icons.people_alt_rounded),
+      ],
+    );
+  }
+
+  Widget _buildActiveAvatar(String name, Color color, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 20),
+      child: Column(
+        children: [
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: color,
+                child: Icon(icon, color: Colors.black87),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4ADE80),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            name,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatItem(String name, String msg, String time, int unread, Color color, IconData icon) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+      leading: CircleAvatar(
+        radius: 26,
+        backgroundColor: color,
+        child: Icon(icon, color: Colors.black87),
+      ),
+      title: Text(
+        name,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+      ),
+      subtitle: Text(
+        msg,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: Color(0xFF6B7280)),
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            time,
+            style: TextStyle(
+              color: unread > 0 ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+              fontSize: 12,
+              fontWeight: unread > 0 ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          if (unread > 0) ...[
+            const SizedBox(height: 6),
+            CircleAvatar(
+              radius: 10,
+              backgroundColor: const Color(0xFFF5B942),
+              child: Text(
+                unread.toString(),
+                style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ]
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildDynamicUserAvatar(),
+          const SizedBox(height: 16),
+          const Text('Profile View', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: widget.onLoggedOut,
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF5B942)),
+            child: const Text('Logout', style: TextStyle(color: Colors.black)),
+          )
+        ],
+      ),
+    );
+  }
 }
