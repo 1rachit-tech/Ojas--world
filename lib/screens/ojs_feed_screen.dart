@@ -35,21 +35,56 @@ class OjsFeedScreen extends StatefulWidget {
 }
 
 class _OjsFeedScreenState extends State<OjsFeedScreen> {
-  final PageController _feedController = PageController();
+  final PageController _horizontalFeedController = PageController();
   final PageController _forYouController = PageController();
   final PageController _followingController = PageController();
+
+  // Following & Likes State
   final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};
   final Set<String> _likedVideos = <String>{};
-  int _selectedFeed = 0;
 
-  // Real Comments State
+  // 0 = For You, 1 = Following
+  int _currentSelectedFeed = 0;
+  int _forYouCurrentIndex = 0;
+  int _followingCurrentIndex = 0;
+
+  // Comments State
   bool _isCommentsOpen = false;
   final TextEditingController _commentInputController = TextEditingController();
   final List<CommentItem> _commentsList = [
-    CommentItem(id: '1', userName: 'Rahul Sharma', text: 'This lighting and frame is magical! 🌿✨', time: '2h', likes: 142),
-    CommentItem(id: '2', userName: 'Sneha_09', text: 'Where can I get the soundtrack link? https://ojas.app/sound/90', time: '4h', likes: 38),
-    CommentItem(id: '3', userName: 'Arjun Vlogs', text: 'Keep inspiring us with pure quality content! 🚀', time: '5h', likes: 89, isSuperThanks: true, tipAmount: 100),
+    CommentItem(
+      id: '1',
+      userName: 'Rahul Sharma',
+      text: 'This lighting and frame is magical! 🌿✨',
+      time: '2h',
+      likes: 142,
+    ),
+    CommentItem(
+      id: '2',
+      userName: 'Sneha_09',
+      text: 'Where can I get the soundtrack link? https://ojas.app/sound/90',
+      time: '4h',
+      likes: 38,
+    ),
+    CommentItem(
+      id: '3',
+      userName: 'Arjun Vlogs',
+      text: 'Keep inspiring us with pure quality content! 🚀',
+      time: '5h',
+      likes: 89,
+      isSuperThanks: true,
+      tipAmount: 100,
+    ),
   ];
+
+  @override
+  void dispose() {
+    _horizontalFeedController.dispose();
+    _forYouController.dispose();
+    _followingController.dispose();
+    _commentInputController.dispose();
+    super.dispose();
+  }
 
   void _toggleComments() {
     setState(() {
@@ -81,17 +116,41 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _feedController.dispose();
-    _forYouController.dispose();
-    _followingController.dispose();
-    _commentInputController.dispose();
-    super.dispose();
+  void _toggleFollowCreator(String creator) {
+    setState(() {
+      if (_followedCreators.contains(creator)) {
+        _followedCreators.remove(creator);
+      } else {
+        _followedCreators.add(creator);
+      }
+    });
+  }
+
+  void _toggleLikeVideo(String videoId) {
+    setState(() {
+      if (_likedVideos.contains(videoId)) {
+        _likedVideos.remove(videoId);
+      } else {
+        _likedVideos.add(videoId);
+      }
+    });
+  }
+
+  void _selectFeed(int index) {
+    if (_currentSelectedFeed == index) return;
+    _horizontalFeedController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final followingVideos = temporaryOjsVideos
+        .where((video) => _followedCreators.contains(video.creator))
+        .toList();
+
     return Theme(
       data: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xff07090b),
@@ -109,7 +168,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
             return Stack(
               children: [
-                // 1. VIDEO VIEW - Scaled & Ratio Maintained (9:16 Aspect Ratio)
+                // 1. VIDEO FEED CONTAINER (Maintains 9:16 Aspect Ratio)
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 280),
                   curve: Curves.easeOutCubic,
@@ -119,16 +178,25 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   height: _isCommentsOpen ? totalHeight * 0.45 : totalHeight,
                   child: Center(
                     child: AspectRatio(
-                      aspectRatio: 9 / 16, // 9:16 अनुपात बरकरार रहता है
+                      aspectRatio: 9 / 16,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(_isCommentsOpen ? 12 : 0),
                         child: PageView(
-                          controller: _feedController,
-                          physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
-                          onPageChanged: (index) => setState(() => _selectedFeed = index),
+                          controller: _horizontalFeedController,
+                          physics: _isCommentsOpen
+                              ? const NeverScrollableScrollPhysics()
+                              : const PageScrollPhysics(),
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentSelectedFeed = index;
+                            });
+                          },
                           children: [
-                            _buildVerticalFeed(_forYouController, false),
-                            _buildVerticalFeed(_followingController, true),
+                            // FOR YOU FEED (All Videos)
+                            _buildForYouFeed(),
+
+                            // FOLLOWING FEED (Only Followed Creators)
+                            _buildFollowingFeed(followingVideos),
                           ],
                         ),
                       ),
@@ -136,10 +204,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   ),
                 ),
 
-                // 2. TOP BAR (Only visible when comments are closed)
+                // 2. TOP TABS (For You | Following)
                 if (!_isCommentsOpen) _buildTopBar(),
 
-                // 3. BOTTOM COMMENT SHEET (Opens from half height)
+                // 3. INTERACTIVE COMMENTS SHEET
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 280),
                   curve: Curves.easeOutCubic,
@@ -157,44 +225,136 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  Widget _buildVerticalFeed(PageController controller, bool followingFeed) {
-    final videos = followingFeed
-        ? temporaryOjsVideos.where((video) => _followedCreators.contains(video.creator)).toList()
-        : temporaryOjsVideos;
-    final visibleFeed = videos.isEmpty ? temporaryOjsVideos : videos;
+  // --- For You Vertical Feed ---
+  Widget _buildForYouFeed() {
+    final videos = temporaryOjsVideos;
+    if (videos.isEmpty) {
+      return const Center(
+        child: Text(
+          'No videos available',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
 
     return PageView.builder(
-      controller: controller,
+      controller: _forYouController,
       scrollDirection: Axis.vertical,
       physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
-      itemCount: 100,
-      onPageChanged: (_) => setState(() {}),
+      itemCount: videos.length,
+      onPageChanged: (index) {
+        setState(() {
+          _forYouCurrentIndex = index;
+        });
+      },
       itemBuilder: (context, index) {
-        final video = visibleFeed[index % visibleFeed.length];
-        final activeIndex = ((followingFeed ? _followingController.page : _forYouController.page) ?? 0).round();
+        final video = videos[index];
+        final bool isVideoVisible = widget.isActive &&
+            _currentSelectedFeed == 0 &&
+            _forYouCurrentIndex == index;
 
         return OjsVideoPage(
           video: video,
-          isVisible: widget.isActive && _selectedFeed == (followingFeed ? 1 : 0) && activeIndex == index,
+          isVisible: isVideoVisible,
           isFollowing: _followedCreators.contains(video.creator),
-          isFollowingFeed: followingFeed,
+          isFollowingFeed: false,
           isLiked: _likedVideos.contains(video.id),
-          onFollow: () => setState(() {
-            if (!_followedCreators.add(video.creator)) {
-              _followedCreators.remove(video.creator);
-            }
-          }),
-          onLike: () => setState(() {
-            if (!_likedVideos.add(video.id)) {
-              _likedVideos.remove(video.id);
-            }
-          }),
+          onFollow: () => _toggleFollowCreator(video.creator),
+          onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
         );
       },
     );
   }
 
+  // --- Following Vertical Feed ---
+  Widget _buildFollowingFeed(List<OjsVideo> followingVideos) {
+    // Agar koi creator follow nahi kiya hai
+    if (followingVideos.isEmpty) {
+      return Container(
+        color: const Color(0xff07090b),
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_add_alt_1_rounded,
+                  size: 48,
+                  color: Color(0xfff5b942),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Follow Creators to See Their Videos',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'When you follow creators in the For You feed, their latest clips will appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xfff5b942),
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: () => _selectFeed(0),
+                child: const Text('Explore For You Feed', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Following Feed PageView
+    return PageView.builder(
+      controller: _followingController,
+      scrollDirection: Axis.vertical,
+      physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+      itemCount: followingVideos.length,
+      onPageChanged: (index) {
+        setState(() {
+          _followingCurrentIndex = index;
+        });
+      },
+      itemBuilder: (context, index) {
+        final video = followingVideos[index];
+        final bool isVideoVisible = widget.isActive &&
+            _currentSelectedFeed == 1 &&
+            _followingCurrentIndex == index;
+
+        return OjsVideoPage(
+          video: video,
+          isVisible: isVideoVisible,
+          isFollowing: _followedCreators.contains(video.creator),
+          isFollowingFeed: true,
+          isLiked: _likedVideos.contains(video.id),
+          onFollow: () => _toggleFollowCreator(video.creator),
+          onLike: () => _toggleLikeVideo(video.id),
+          onComment: _toggleComments,
+        );
+      },
+    );
+  }
+
+  // --- Top Bar (For You | Following) ---
   Widget _buildTopBar() {
     return Positioned(
       top: 0,
@@ -211,8 +371,16 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _FeedTab(label: 'For You', isActive: _selectedFeed == 0, onTap: () => _selectFeed(0)),
-                    _FeedTab(label: 'Following', isActive: _selectedFeed == 1, onTap: () => _selectFeed(1)),
+                    _FeedTab(
+                      label: 'For You',
+                      isActive: _currentSelectedFeed == 0,
+                      onTap: () => _selectFeed(0),
+                    ),
+                    _FeedTab(
+                      label: 'Following',
+                      isActive: _currentSelectedFeed == 1,
+                      onTap: () => _selectFeed(1),
+                    ),
                   ],
                 ),
               ),
@@ -231,14 +399,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  void _selectFeed(int index) {
-    _feedController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   void _showFilters() {
     showModalBottomSheet<void>(
       context: context,
@@ -250,7 +410,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             spacing: 10,
             runSpacing: 10,
             children: ['Comedy', 'Music', 'Sports', 'Trending']
-                .map((category) => ActionChip(label: Text(category), onPressed: () => Navigator.pop(context)))
+                .map(
+                  (category) => ActionChip(
+                    label: Text(category),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -258,15 +423,15 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  // =======================================================================
-  // रियल कमेंट बॉक्स (Emoji Bar, Link Posting, Super Thanks & Real Likes)
-  // =======================================================================
+  // --- Bottom Comments Sheet ---
   Widget _buildCommentSheet() {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xff12171d),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 10, spreadRadius: 2)],
+        boxShadow: [
+          BoxShadow(color: Colors.black54, blurRadius: 10, spreadRadius: 2),
+        ],
       ),
       child: Column(
         children: [
@@ -301,7 +466,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
           ),
 
-          // Quick Emoji Selector Bar (जैसे TikTok/Instagram में होता है)
+          // Quick Emoji Bar
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -324,7 +489,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
           ),
 
-          // Bottom Input Field + Super Thanks + Send
+          // Input Bar + Super Thanks + Send
           Container(
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
             decoration: const BoxDecoration(
@@ -333,12 +498,19 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
             child: Row(
               children: [
-                const CircleAvatar(radius: 16, backgroundColor: Color(0xFFF5B942), child: Text('U', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
+                const CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Color(0xFFF5B942),
+                  child: Text('U', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(color: const Color(0xff222831), borderRadius: BorderRadius.circular(24)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff222831),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                     child: TextField(
                       controller: _commentInputController,
                       style: const TextStyle(color: Colors.white, fontSize: 14),
@@ -351,17 +523,22 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Super Thanks Button
                 GestureDetector(
                   onTap: _showSuperThanksModal,
                   child: Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(color: Color(0xFF2E2413), shape: BoxShape.circle),
-                    child: const Icon(Icons.volunteer_activism_rounded, color: Color(0xFFF5B942), size: 20),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF2E2413),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.volunteer_activism_rounded,
+                      color: Color(0xFFF5B942),
+                      size: 20,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Send Button
                 GestureDetector(
                   onTap: () => _addNewComment(),
                   child: const CircleAvatar(
@@ -389,7 +566,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             backgroundColor: comment.isSuperThanks ? const Color(0xFFF5B942) : Colors.white12,
             child: Text(
               comment.userName.isNotEmpty ? comment.userName[0] : 'U',
-              style: TextStyle(color: comment.isSuperThanks ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: comment.isSuperThanks ? Colors.black : Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -399,13 +579,22 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               children: [
                 Row(
                   children: [
-                    Text(comment.userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white70)),
+                    Text(
+                      comment.userName,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white70),
+                    ),
                     if (comment.isSuperThanks) ...[
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: const Color(0xFFF5B942), borderRadius: BorderRadius.circular(10)),
-                        child: Text('₹${comment.tipAmount?.toInt() ?? 50} Super Thanks', style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5B942),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '₹${comment.tipAmount?.toInt() ?? 50} Super Thanks',
+                          style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ]
                   ],
@@ -423,7 +612,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               ],
             ),
           ),
-          // Like comment button
           GestureDetector(
             onTap: () {
               setState(() {
@@ -439,7 +627,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   color: comment.isLiked ? const Color(0xFFEF4444) : Colors.white38,
                 ),
                 const SizedBox(height: 2),
-                Text(comment.likes.toString(), style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                Text(
+                  comment.likes.toString(),
+                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                ),
               ],
             ),
           ),
@@ -448,7 +639,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  // Super Thanks Support Modal
   void _showSuperThanksModal() {
     showModalBottomSheet(
       context: context,
@@ -462,9 +652,15 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             children: [
               const Icon(Icons.volunteer_activism_rounded, color: Color(0xFFF5B942), size: 36),
               const SizedBox(height: 8),
-              const Text('Send Super Thanks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Text(
+                'Send Super Thanks',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
               const SizedBox(height: 6),
-              const Text('Support this creator directly on OJAS.', style: TextStyle(fontSize: 13, color: Colors.white60)),
+              const Text(
+                'Support this creator directly on OJAS.',
+                style: TextStyle(fontSize: 13, color: Colors.white60),
+              ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
