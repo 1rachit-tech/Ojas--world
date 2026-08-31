@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'post_preview_screen.dart';
+import 'video_editor_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
 import '../widgets/filter_store_sheet.dart';
 
@@ -29,7 +29,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   Timer? _recordTimer;
   String _selectedSound = 'Original Sound';
 
-  // Active Filter from the 50 Filter List
+  // Active Filter from 50 Filter List
   OjasFilter _activeFilter = kAllOjasFilters[0];
 
   @override
@@ -137,19 +137,21 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     if (_selectedMode == 1) {
-      // Photo Mode
+      // Photo Mode -> Navigates to VideoEditorScreen
       try {
         final XFile photo = await _cameraController!.takePicture();
         if (!mounted) return;
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => PostPreviewScreen(mediaPath: photo.path, isVideo: false)),
+          MaterialPageRoute(
+            builder: (context) => VideoEditorScreen(mediaPath: photo.path, isVideo: false),
+          ),
         );
       } catch (e) {
         debugPrint('Photo take error: $e');
       }
     } else {
-      // Video or Story Mode
+      // Video or Story Mode -> Navigates to VideoEditorScreen
       if (_isRecording) {
         try {
           final XFile video = await _cameraController!.stopVideoRecording();
@@ -161,7 +163,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           if (!mounted) return;
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => PostPreviewScreen(mediaPath: video.path, isVideo: true)),
+            MaterialPageRoute(
+              builder: (context) => VideoEditorScreen(mediaPath: video.path, isVideo: true),
+            ),
           );
         } catch (e) {
           debugPrint('Stop video error: $e');
@@ -193,7 +197,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       final isVideo = media.path.endsWith('.mp4') || media.path.endsWith('.mov');
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => PostPreviewScreen(mediaPath: media.path, isVideo: isVideo)),
+        MaterialPageRoute(
+          builder: (context) => VideoEditorScreen(mediaPath: media.path, isVideo: isVideo),
+        ),
       );
     }
   }
@@ -251,7 +257,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. LIVE CAMERA PREVIEW WITH COLOR MATRIX
+          // 1. Live Camera Preview With Color Filter
           if (_isCameraReady && _cameraController != null)
             ColorFiltered(
               colorFilter: _activeFilter.matrixFilter ??
@@ -270,7 +276,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           else
             const Center(child: CircularProgressIndicator(color: Color(0xFFF5B942))),
 
-          // 2. RECORDING DURATION INDICATOR (TOP)
+          // 2. Recording Duration Indicator
           if (_isRecording)
             Positioned(
               top: 50,
@@ -295,7 +301,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
               ),
             ),
 
-          // 3. COUNTDOWN OVERLAY
+          // 3. Countdown Overlay
           if (_countdownValue > 0)
             Center(
               child: Text(
@@ -304,7 +310,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
               ),
             ),
 
-          // 4. TOP SOUND SELECTOR & FLASH
+          // 4. Top Sound Selector & Flash
           Positioned(
             top: 48,
             left: 16,
@@ -355,7 +361,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             ),
           ),
 
-          // 5. RIGHT ACTION RAIL
+          // 5. Right Action Rail
           Positioned(
             top: 110,
             right: 12,
@@ -402,7 +408,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             ),
           ),
 
-          // 6. BOTTOM CONTROL SECTION (Carousel + Shutter + Upload + Flip)
+          // 6. Bottom Control Section
           Positioned(
             bottom: 24,
             left: 0,
@@ -410,7 +416,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Instagram/Snapchat Carousel above shutter
+                // Filter Carousel
                 SizedBox(
                   height: 48,
                   child: ListView.builder(
