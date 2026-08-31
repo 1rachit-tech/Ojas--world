@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../screens/creator_profile_screen.dart';
 
 class VideoActionRail extends StatelessWidget {
   const VideoActionRail({
@@ -43,14 +44,27 @@ class VideoActionRail extends StatelessWidget {
           child: Stack(
             alignment: Alignment.topCenter,
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: Color(avatarColor),
-                child: Text(
-                  creator.substring(0, 1),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CreatorProfileScreen(
+                        creatorName: creator,
+                        avatarColor: Color(avatarColor),
+                      ),
+                    ),
+                  );
+                },
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(avatarColor),
+                  child: Text(
+                    creator.isNotEmpty ? creator.substring(0, 1) : 'O',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
