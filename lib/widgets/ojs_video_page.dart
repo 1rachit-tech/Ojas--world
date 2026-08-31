@@ -108,19 +108,28 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
     super.dispose();
   }
 
+  Color _getAvatarColor() {
+    final dynamic colorVal = widget.video.avatarColor;
+    if (colorVal is Color) {
+      return colorVal;
+    } else if (colorVal is int) {
+      return Color(colorVal);
+    }
+    return const Color(0xFFF5B942);
+  }
+
   void _openCreatorProfile() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CreatorProfileScreen(
           creatorName: widget.video.creator,
-          avatarColor: widget.video.avatarColor,
+          avatarColor: _getAvatarColor(),
         ),
       ),
     );
   }
 
-  // Real Audio Detail Screen Connection
   void _openAudioScreen() {
     Navigator.push(
       context,
@@ -133,7 +142,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
     );
   }
 
-  // Full Working Three-Dots Sheet
   void _showVideoOptions() {
     showModalBottomSheet(
       context: context,
@@ -151,7 +159,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                 title: const Text('Save to Favorites', style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video saved to bookmarks! 🔖')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Video saved to bookmarks! 🔖')),
+                  );
                 },
               ),
               ListTile(
@@ -159,7 +169,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                 title: const Text('Download (1080p)', style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading video to gallery... 📥')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Downloading video to gallery... 📥')),
+                  );
                 },
               ),
               ListTile(
@@ -167,7 +179,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                 title: const Text('Not Interested', style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('We will show fewer videos like this.')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('We will show fewer videos like this.')),
+                  );
                 },
               ),
               ListTile(
@@ -175,7 +189,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                 title: const Text('Report Content', style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted for moderation.')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Report submitted for moderation.')),
+                  );
                 },
               ),
             ],
@@ -278,7 +294,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             bottom: 18,
             child: VideoActionRail(
               creator: widget.video.creator,
-              avatarColor: widget.video.avatarColor,
+              avatarColor: _getAvatarColor(),
               isFollowing: widget.isFollowing,
               isFollowingFeed: widget.isFollowingFeed,
               isLiked: widget.isLiked,
