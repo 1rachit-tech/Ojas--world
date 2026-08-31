@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'video_editor_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
 import '../widgets/filter_store_sheet.dart';
+import '../widgets/camera_settings_sheet.dart';
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
@@ -28,6 +29,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   int _recordingDuration = 0;
   Timer? _recordTimer;
   String _selectedSound = 'Original Sound';
+
+  // Settings: 1080p 60FPS Max & 3x3 Grid
+  bool _isGridEnabled = false;
+  String _selectedResolution = '1080p 60fps';
+  bool _autoSaveToGallery = false;
 
   // Active Filter from 50 Filter List
   OjasFilter _activeFilter = kAllOjasFilters[0];
@@ -71,11 +77,22 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   Future<void> _initCameraIndex(int index) async {
     if (_cameras.isEmpty) return;
     setState(() => _isCameraReady = false);
+
+    // Max Resolution 1080p (ResolutionPreset.veryHigh = 1080p)
+    ResolutionPreset preset = ResolutionPreset.veryHigh;
+    if (_selectedResolution == '720p 30fps') {
+      preset = ResolutionPreset.high;
+    } else {
+      preset = ResolutionPreset.veryHigh; // 1080p Max
+    }
+
     _cameraController = CameraController(
       _cameras[index],
-      ResolutionPreset.high,
+      preset,
       enableAudio: true,
+      fps: _selectedResolution.contains('60fps') ? 60 : 30,
     );
+
     try {
       await _cameraController!.initialize();
       await _cameraController!.setFlashMode(_flashMode);
@@ -137,21 +154,17 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     if (_selectedMode == 1) {
-      // Photo Mode -> Navigates to VideoEditorScreen
       try {
         final XFile photo = await _cameraController!.takePicture();
         if (!mounted) return;
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => VideoEditorScreen(mediaPath: photo.path, isVideo: false),
-          ),
+          MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: photo.path, isVideo: false)),
         );
       } catch (e) {
         debugPrint('Photo take error: $e');
       }
     } else {
-      // Video or Story Mode -> Navigates to VideoEditorScreen
       if (_isRecording) {
         try {
           final XFile video = await _cameraController!.stopVideoRecording();
@@ -163,9 +176,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           if (!mounted) return;
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => VideoEditorScreen(mediaPath: video.path, isVideo: true),
-            ),
+            MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: video.path, isVideo: true)),
           );
         } catch (e) {
           debugPrint('Stop video error: $e');
@@ -197,9 +208,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       final isVideo = media.path.endsWith('.mp4') || media.path.endsWith('.mov');
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => VideoEditorScreen(mediaPath: media.path, isVideo: isVideo),
-        ),
+        MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: media.path, isVideo: isVideo)),
       );
     }
   }
@@ -208,9 +217,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     SoundPickerSheet.show(
       context,
       currentSound: _selectedSound,
-      onSoundSelected: (newSound) {
-        setState(() => _selectedSound = newSound);
-      },
+      onSoundSelected: (newSound) => setState(() => _selectedSound = newSound),
     );
   }
 
@@ -218,8 +225,23 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     FilterStoreSheet.show(
       context,
       selectedFilterId: _activeFilter.id,
-      onFilterApplied: (selected) {
-        setState(() => _activeFilter = selected);
+      onFilterApplied: (selected) => setState(() => _activeFilter = selected),
+    );
+  }
+
+  void _openCameraSettings() {
+    CameraSettingsSheet.show(
+      context,
+      isGridEnabled: _isGridEnabled,
+      selectedResolution: _selectedResolution,
+      autoSaveToGallery: _autoSaveToGallery,
+      onSettingsChanged: (grid, res, autoSave) {
+        setState(() {
+          _isGridEnabled = grid;
+          _selectedResolution = res;
+          _autoSaveToGallery = autoSave;
+        });
+        _initCameraIndex(_selectedCameraIndex);
       },
     );
   }
@@ -260,8 +282,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           // 1. Live Camera Preview With Color Filter
           if (_isCameraReady && _cameraController != null)
             ColorFiltered(
-              colorFilter: _activeFilter.matrixFilter ??
-                  const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
+              colorFilter: _activeFilter.matrixFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
               child: SizedBox.expand(
                 child: FittedBox(
                   fit: BoxFit.cover,
@@ -276,7 +297,51 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           else
             const Center(child: CircularProgressIndicator(color: Color(0xFFF5B942))),
 
-          // 2. Recording Duration Indicator
+          // 2. 3x3 Grid Overlay (Settings Feature)
+          if (_isGridEnabled)
+            IgnorePointer(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                      ],
+                    ),
+                  ),
+                  Container(height: 0.8, color: Colors.white24),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                      ],
+                    ),
+                  ),
+                  Container(height: 0.8, color: Colors.white24),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                        Container(width: 0.8, color: Colors.white24),
+                        const Expanded(child: SizedBox()),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // 3. Recording Duration
           if (_isRecording)
             Positioned(
               top: 50,
@@ -301,7 +366,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
               ),
             ),
 
-          // 3. Countdown Overlay
+          // 4. Countdown Overlay
           if (_countdownValue > 0)
             Center(
               child: Text(
@@ -310,7 +375,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
               ),
             ),
 
-          // 4. Top Sound Selector & Flash
+          // 5. Top Sound Selector, Flash & Camera Settings
           Positioned(
             top: 48,
             left: 16,
@@ -318,28 +383,27 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const SizedBox(width: 40),
+                GestureDetector(
+                  onTap: _openCameraSettings,
+                  child: const CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.black45,
+                    child: Icon(Icons.tune_rounded, color: Colors.white, size: 20),
+                  ),
+                ),
                 GestureDetector(
                   onTap: _showSoundSheet,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white12),
-                    ),
+                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.music_note_rounded, color: Colors.white, size: 16),
                         const SizedBox(width: 6),
                         ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 160),
-                          child: Text(
-                            _selectedSound,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
-                          ),
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          child: Text(_selectedSound, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -361,7 +425,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             ),
           ),
 
-          // 5. Right Action Rail
+          // 6. Right Action Rail
           Positioned(
             top: 110,
             right: 12,
@@ -395,20 +459,16 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   const SizedBox(height: 12),
                   _buildSideTool(
                     icon: Icons.hd_rounded,
-                    label: '4K AI',
-                    onTap: () {
-                      setState(() {
-                        _activeFilter = _activeFilter.id == 1 ? kAllOjasFilters[0] : kAllOjasFilters[1];
-                      });
-                    },
-                    color: _activeFilter.id == 1 ? const Color(0xFF4ADE80) : Colors.white,
+                    label: '1080p 60',
+                    onTap: _openCameraSettings,
+                    color: const Color(0xFF4ADE80),
                   ),
                 ],
               ),
             ),
           ),
 
-          // 6. Bottom Control Section
+          // 7. Bottom Control Section
           Positioned(
             bottom: 24,
             left: 0,
@@ -458,7 +518,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                 ),
                 const SizedBox(height: 12),
 
-                // Mode Selector (VIDEO | PHOTO | STORY)
+                // Mode Selector
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -477,18 +537,13 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Upload from Gallery
                       GestureDetector(
                         onTap: _pickFromGallery,
                         child: Column(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.black45,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white24),
-                              ),
+                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
                               child: const Icon(Icons.photo_library_outlined, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
@@ -496,8 +551,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           ],
                         ),
                       ),
-
-                      // Central Shutter Button
                       GestureDetector(
                         onTap: _onCaptureTap,
                         child: Stack(
@@ -525,19 +578,13 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           ],
                         ),
                       ),
-
-                      // Camera Flip
                       GestureDetector(
                         onTap: _flipCamera,
                         child: Column(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.black45,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white24),
-                              ),
+                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
                               child: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
