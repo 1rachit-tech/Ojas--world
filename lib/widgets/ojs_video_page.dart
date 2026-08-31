@@ -236,7 +236,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 3. Caption & Creator Details (moved up so it stays above the bottom nav bar)
+          // 3. Caption & Creator Details
           Positioned(
             left: 16,
             bottom: 100,
@@ -275,7 +275,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 4. Action Rail (top-anchored so it can never be clipped from below)
+          // 4. Action Rail
           Positioned(
             right: 10,
             top: 68,
@@ -301,4 +301,4 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       ),
     );
   }
-}             onTap: _openCreatorProfile,
+}
