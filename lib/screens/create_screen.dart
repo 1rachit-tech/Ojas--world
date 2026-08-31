@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_preview_screen.dart';
+import '../widgets/sound_picker_sheet.dart';
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
@@ -243,34 +244,15 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     }
   }
 
+  // Real Sound Picker Sheet Connection
   void _showSoundSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF161B22),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        final sounds = ['Original Sound', 'Vindhya Beats - Folk Fusion', 'Slowed Lofi Chill 🌿', 'Midnight High Bass 🔥', 'Cinematic Ambient'];
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Select Audio Track', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 12),
-                ...sounds.map((s) => ListTile(
-                      leading: const Icon(Icons.music_note_rounded, color: Color(0xFFF5B942)),
-                      title: Text(s, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                      trailing: _selectedSound == s ? const Icon(Icons.check_rounded, color: Color(0xFFF5B942)) : null,
-                      onTap: () {
-                        setState(() => _selectedSound = s);
-                        Navigator.pop(context);
-                      },
-                    )),
-              ],
-            ),
-          ),
-        );
+    SoundPickerSheet.show(
+      context,
+      currentSound: _selectedSound,
+      onSoundSelected: (newSound) {
+        setState(() {
+          _selectedSound = newSound;
+        });
       },
     );
   }
