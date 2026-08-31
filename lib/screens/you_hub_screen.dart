@@ -21,12 +21,10 @@ class _YouHubScreenState extends State<YouHubScreen> {
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           leadingWidth: 60,
-          // 1. बाएँ तरफ असली प्रोफाइल पिक्चर (Logo की जगह)
           leading: Padding(
             padding: const EdgeInsets.only(left: 16, top: 10, bottom: 10),
-            child: _buildDynamicUserAvatar(),
+            child: _buildDynamicUserAvatar(radius: 20),
           ),
-          // 2. टैब बार को बिल्कुल टॉप (OJAS वाली लाइन) में सेट किया गया
           title: const TabBar(
             dividerColor: Colors.transparent,
             indicatorColor: Color(0xFFF5B942),
@@ -43,7 +41,6 @@ class _YouHubScreenState extends State<YouHubScreen> {
               Tab(text: 'Profile'),
             ],
           ),
-          // 3. दाएँ तरफ 'AK' हटाकर Settings आइकॉन लगाया गया
           actions: [
             IconButton(
               onPressed: () {},
@@ -63,40 +60,44 @@ class _YouHubScreenState extends State<YouHubScreen> {
     );
   }
 
-  // --- Real Profile Picture Logic ---
-  Widget _buildDynamicUserAvatar() {
+  Widget _buildDynamicUserAvatar({required double radius}) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         final user = snapshot.data;
+        
         if (user == null) {
-          return const CircleAvatar(
-            backgroundColor: Color(0xFFF3F4F6),
-            child: Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF6B7280)),
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: const Color(0xFFF5B942),
+            child: Text(
+              'AK',
+              style: TextStyle(color: const Color(0xFF111827), fontSize: radius * 0.8, fontWeight: FontWeight.bold),
+            ),
           );
         }
+        
         if (user.photoURL != null && user.photoURL!.isNotEmpty) {
           return CircleAvatar(
+            radius: radius,
             backgroundColor: const Color(0xFFF5B942),
             backgroundImage: NetworkImage(user.photoURL!),
           );
         }
-        // अगर फोटो नहीं है, तो ईमेल या नाम का पहला अक्षर लोड होगा (AK नहीं)
+        
         String initial = 'U';
         if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
           initial = user.displayName!.trim()[0].toUpperCase();
-        } else if (user.email != null && user.email!.isNotEmpty) {
-          initial = user.email![0].toUpperCase();
+        } else if (user.email != null && user.email!.trim().isNotEmpty) {
+          initial = user.email!.trim()[0].toUpperCase();
         }
+        
         return CircleAvatar(
+          radius: radius,
           backgroundColor: const Color(0xFFF5B942),
           child: Text(
             initial,
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: const Color(0xFF111827), fontSize: radius * 0.8, fontWeight: FontWeight.bold),
           ),
         );
       },
@@ -264,7 +265,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildDynamicUserAvatar(),
+          _buildDynamicUserAvatar(radius: 40),
           const SizedBox(height: 16),
           const Text('Profile View', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
