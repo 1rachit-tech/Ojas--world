@@ -277,7 +277,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: const Text(
-                'HOME',
+                'FEED',
                 style: TextStyle(
                   color: Color(0xFFF5B942),
                   fontSize: 9,
