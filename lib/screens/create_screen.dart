@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'post_preview_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
+import '../widgets/filter_store_sheet.dart';
 
 class CreateScreen extends StatefulWidget {
   const CreateScreen({super.key});
@@ -18,62 +19,18 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   int _selectedCameraIndex = 0;
   bool _isCameraReady = false;
 
-  // Camera & Mode Controls
   int _selectedMode = 0; // 0 = VIDEO, 1 = PHOTO, 2 = STORY
   FlashMode _flashMode = FlashMode.off;
   double _currentSpeed = 1.0;
-  int _timerSeconds = 0; // 0, 3, 10
+  int _timerSeconds = 0;
   int _countdownValue = 0;
   bool _isRecording = false;
   int _recordingDuration = 0;
   Timer? _recordTimer;
   String _selectedSound = 'Original Sound';
 
-  // Filters State
-  int _selectedFilterIndex = 0;
-  final List<Map<String, dynamic>> _filters = [
-    {'name': 'Normal', 'icon': Icons.auto_awesome, 'colorFilter': null},
-    {
-      'name': 'Glow Beauty',
-      'icon': Icons.face_retouching_natural_rounded,
-      'colorFilter': const ColorFilter.matrix([
-        1.08, 0, 0, 0, 10,
-        0, 1.05, 0, 0, 8,
-        0, 0, 1.02, 0, 6,
-        0, 0, 0, 1, 0,
-      ]),
-    },
-    {
-      'name': 'Golden Warm',
-      'icon': Icons.wb_sunny_rounded,
-      'colorFilter': const ColorFilter.matrix([
-        1.15, 0, 0, 0, 15,
-        0, 1.05, 0, 0, 5,
-        0, 0, 0.90, 0, -10,
-        0, 0, 0, 1, 0,
-      ]),
-    },
-    {
-      'name': 'Night AI',
-      'icon': Icons.bedtime_rounded,
-      'colorFilter': const ColorFilter.matrix([
-        1.25, 0, 0, 0, 25,
-        0, 1.25, 0, 0, 25,
-        0, 0, 1.30, 0, 30,
-        0, 0, 0, 1, 0,
-      ]),
-    },
-    {
-      'name': 'B & W',
-      'icon': Icons.filter_b_and_w_rounded,
-      'colorFilter': const ColorFilter.matrix([
-        0.33, 0.59, 0.11, 0, 0,
-        0.33, 0.59, 0.11, 0, 0,
-        0.33, 0.59, 0.11, 0, 0,
-        0, 0, 0, 1, 0,
-      ]),
-    },
-  ];
+  // Active Filter from the 50 Filter List
+  OjasFilter _activeFilter = kAllOjasFilters[0];
 
   @override
   void initState() {
@@ -129,7 +86,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
         });
       }
     } catch (e) {
-      debugPrint('Error initializing camera controller: $e');
+      debugPrint('Error initializing camera: $e');
     }
   }
 
@@ -155,7 +112,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     } catch (_) {}
   }
 
-  // Record or Capture Logic
   void _onCaptureTap() {
     if (_timerSeconds > 0 && !_isRecording) {
       _startTimerCountdown();
@@ -195,7 +151,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     } else {
       // Video or Story Mode
       if (_isRecording) {
-        // Stop recording
         try {
           final XFile video = await _cameraController!.stopVideoRecording();
           _recordTimer?.cancel();
@@ -212,7 +167,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           debugPrint('Stop video error: $e');
         }
       } else {
-        // Start recording
         try {
           await _cameraController!.startVideoRecording();
           setState(() {
@@ -222,7 +176,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
             setState(() => _recordingDuration++);
             if (_recordingDuration >= 60) {
-              _executeCaptureAction(); // Auto stop at 60s
+              _executeCaptureAction();
             }
           });
         } catch (e) {
@@ -244,15 +198,22 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     }
   }
 
-  // Real Sound Picker Sheet Connection
   void _showSoundSheet() {
     SoundPickerSheet.show(
       context,
       currentSound: _selectedSound,
       onSoundSelected: (newSound) {
-        setState(() {
-          _selectedSound = newSound;
-        });
+        setState(() => _selectedSound = newSound);
+      },
+    );
+  }
+
+  void _openFilterStore() {
+    FilterStoreSheet.show(
+      context,
+      selectedFilterId: _activeFilter.id,
+      onFilterApplied: (selected) {
+        setState(() => _activeFilter = selected);
       },
     );
   }
@@ -283,52 +244,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     });
   }
 
-  void _openFiltersSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF161B22),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Container(
-          height: 140,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _filters.length,
-            itemBuilder: (context, index) {
-              final f = _filters[index];
-              final isSelected = _selectedFilterIndex == index;
-              return GestureDetector(
-                onTap: () {
-                  setState(() => _selectedFilterIndex = index);
-                  Navigator.pop(context);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFF5B942) : const Color(0xFF21262D),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(f['icon'] as IconData, color: isSelected ? Colors.black : Colors.white, size: 24),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(f['name'] as String, style: TextStyle(color: isSelected ? const Color(0xFFF5B942) : Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -336,10 +251,10 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. LIVE CAMERA PREVIEW WITH COLOR FILTER
+          // 1. LIVE CAMERA PREVIEW WITH COLOR MATRIX
           if (_isCameraReady && _cameraController != null)
             ColorFiltered(
-              colorFilter: _filters[_selectedFilterIndex]['colorFilter'] ??
+              colorFilter: _activeFilter.matrixFilter ??
                   const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
               child: SizedBox.expand(
                 child: FittedBox(
@@ -402,7 +317,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   onTap: _showSoundSheet,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white12),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -410,7 +329,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                         const SizedBox(width: 6),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 160),
-                          child: Text(_selectedSound, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            _selectedSound,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ],
                     ),
@@ -432,7 +355,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             ),
           ),
 
-          // 5. RIGHT ACTION RAIL (Sound, Filters, Timer, Speed, Night AI)
+          // 5. RIGHT ACTION RAIL
           Positioned(
             top: 110,
             right: 12,
@@ -444,10 +367,10 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   _buildSideTool(icon: Icons.music_note_rounded, label: 'Sound', onTap: _showSoundSheet),
                   const SizedBox(height: 12),
                   _buildSideTool(
-                    icon: _filters[_selectedFilterIndex]['icon'] as IconData,
-                    label: _filters[_selectedFilterIndex]['name'] as String,
-                    onTap: _openFiltersSheet,
-                    color: _selectedFilterIndex > 0 ? const Color(0xFFF5B942) : Colors.white,
+                    icon: _activeFilter.icon,
+                    label: 'Filters',
+                    onTap: _openFilterStore,
+                    color: _activeFilter.id > 0 ? const Color(0xFFF5B942) : Colors.white,
                   ),
                   const SizedBox(height: 12),
                   _buildSideTool(
@@ -465,21 +388,21 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   ),
                   const SizedBox(height: 12),
                   _buildSideTool(
-                    icon: Icons.bedtime_rounded,
-                    label: 'Night AI',
+                    icon: Icons.hd_rounded,
+                    label: '4K AI',
                     onTap: () {
                       setState(() {
-                        _selectedFilterIndex = _selectedFilterIndex == 3 ? 0 : 3;
+                        _activeFilter = _activeFilter.id == 1 ? kAllOjasFilters[0] : kAllOjasFilters[1];
                       });
                     },
-                    color: _selectedFilterIndex == 3 ? const Color(0xFF4ADE80) : Colors.white,
+                    color: _activeFilter.id == 1 ? const Color(0xFF4ADE80) : Colors.white,
                   ),
                 ],
               ),
             ),
           ),
 
-          // 6. BOTTOM CONTROL SECTION (Mode Selector + Shutter Button + Upload + Flip)
+          // 6. BOTTOM CONTROL SECTION (Carousel + Shutter + Upload + Flip)
           Positioned(
             bottom: 24,
             left: 0,
@@ -487,6 +410,48 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Instagram/Snapchat Carousel above shutter
+                SizedBox(
+                  height: 48,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    itemCount: 15,
+                    itemBuilder: (context, index) {
+                      final filter = kAllOjasFilters[index];
+                      final isSelected = _activeFilter.id == filter.id;
+                      return GestureDetector(
+                        onTap: () => setState(() => _activeFilter = filter),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFF5B942) : Colors.black45,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: isSelected ? const Color(0xFFF5B942) : Colors.white24),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(filter.icon, size: 14, color: isSelected ? Colors.black : Colors.white70),
+                              const SizedBox(width: 4),
+                              Text(
+                                filter.name,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.black : Colors.white70,
+                                  fontSize: 11.5,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+
                 // Mode Selector (VIDEO | PHOTO | STORY)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -513,7 +478,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
                               child: const Icon(Icons.photo_library_outlined, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
@@ -540,7 +509,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                               width: _isRecording ? 32 : 62,
                               height: _isRecording ? 32 : 62,
                               decoration: BoxDecoration(
-                                color: _selectedMode == 1 ? Colors.white : (_isRecording ? Colors.redAccent : const Color(0xFFF5B942)),
+                                color: _selectedMode == 1
+                                    ? Colors.white
+                                    : (_isRecording ? Colors.redAccent : const Color(0xFFF5B942)),
                                 shape: _isRecording ? BoxShape.rectangle : BoxShape.circle,
                                 borderRadius: _isRecording ? BorderRadius.circular(6) : null,
                               ),
@@ -556,7 +527,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
                               child: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
