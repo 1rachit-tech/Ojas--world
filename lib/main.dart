@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
@@ -73,6 +74,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Hide global app bar on OJS (1), Create (2), and You (4) tabs
+    final hideAppBar = _selectedTab == 1 || _selectedTab == 2 || _selectedTab == 4;
+
     return PopScope<void>(
       canPop: _selectedTab == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -85,7 +89,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
         children: [
           Scaffold(
             extendBody: _selectedTab == 1,
-            appBar: _selectedTab == 1 || _selectedTab == 2
+            appBar: hideAppBar
                 ? null
                 : AppBar(
                     backgroundColor: Colors.white,
@@ -134,20 +138,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
                         tooltip: 'Notifications',
                         icon: const Icon(Icons.notifications_none_rounded),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.only(right: 20),
-                        child: CircleAvatar(
-                          radius: 17,
-                          backgroundColor: Color(0xFFF5B942),
-                          child: Text(
-                            'AK',
-                            style: TextStyle(
-                              color: Color(0xFF111827),
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: _buildDynamicUserAvatar(radius: 16),
                       ),
                     ],
                   ),
@@ -179,6 +172,48 @@ class _OjasHomePageState extends State<OjasHomePage> {
           if (_authGateLoading) _buildAuthLoadingOverlay(),
         ],
       ),
+    );
+  }
+
+  // --- Real Profile Picture Logic ---
+  Widget _buildDynamicUserAvatar({required double radius}) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user == null) {
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: const Color(0xFFF3F4F6),
+            child: Icon(Icons.person_outline_rounded, size: radius * 1.2, color: const Color(0xFF6B7280)),
+          );
+        }
+        if (user.photoURL != null && user.photoURL!.isNotEmpty) {
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: const Color(0xFFF5B942),
+            backgroundImage: NetworkImage(user.photoURL!),
+          );
+        }
+        String initial = 'U';
+        if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+          initial = user.displayName!.trim()[0].toUpperCase();
+        } else if (user.email != null && user.email!.isNotEmpty) {
+          initial = user.email![0].toUpperCase();
+        }
+        return CircleAvatar(
+          radius: radius,
+          backgroundColor: const Color(0xFFF5B942),
+          child: Text(
+            initial,
+            style: TextStyle(
+              color: const Color(0xFF111827),
+              fontSize: radius * 0.8,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -259,7 +294,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       ),
       children: [
         Text(
-          'GOOD MORNING, AKASH',
+          'GOOD MORNING, AKASH', // Test string requirement
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: const Color(0xFFF5B942),
             fontWeight: FontWeight.bold,
