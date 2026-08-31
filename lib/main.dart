@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
@@ -73,6 +74,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final hideAppBar = _selectedTab == 1 || _selectedTab == 2 || _selectedTab == 4;
+
     return PopScope<void>(
       canPop: _selectedTab == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -85,42 +88,23 @@ class _OjasHomePageState extends State<OjasHomePage> {
         children: [
           Scaffold(
             extendBody: _selectedTab == 1,
-            appBar: _selectedTab == 1 || _selectedTab == 2
+            appBar: hideAppBar
                 ? null
                 : AppBar(
                     backgroundColor: Colors.white,
                     surfaceTintColor: Colors.transparent,
                     elevation: 0,
-                    titleSpacing: 24,
-                    title: const Text(
-                      'OJAS',
-                      style: TextStyle(
-                        color: Color(0xFFF5B942),
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 3,
-                      ),
-                    ),
+                    titleSpacing: 18,
+                    title: _buildAppBrandLogo(),
                     actions: [
                       IconButton(
                         onPressed: () {},
                         tooltip: 'Notifications',
                         icon: const Icon(Icons.notifications_none_rounded),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.only(right: 20),
-                        child: CircleAvatar(
-                          radius: 17,
-                          backgroundColor: Color(0xFFF5B942),
-                          child: Text(
-                            'AK',
-                            style: TextStyle(
-                              color: Color(0xFF111827),
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: _buildDynamicUserAvatar(),
                       ),
                     ],
                   ),
@@ -152,6 +136,94 @@ class _OjasHomePageState extends State<OjasHomePage> {
           if (_authGateLoading) _buildAuthLoadingOverlay(),
         ],
       ),
+    );
+  }
+
+  Widget _buildAppBrandLogo() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(9),
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE02E6E), Color(0xFFFF8235), Color(0xFFFFC043)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFE02E6E).withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Text(
+          'OJAS',
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 19,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDynamicUserAvatar() {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user == null) {
+          return const CircleAvatar(
+            radius: 16,
+            backgroundColor: Color(0xFFF3F4F6),
+            child: Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF6B7280)),
+          );
+        }
+
+        if (user.photoURL != null && user.photoURL!.isNotEmpty) {
+          return CircleAvatar(
+            radius: 16,
+            backgroundColor: const Color(0xFFF5B942),
+            backgroundImage: NetworkImage(user.photoURL!),
+          );
+        }
+
+        String initial = 'U';
+        if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+          initial = user.displayName!.trim()[0].toUpperCase();
+        } else if (user.email != null && user.email!.isNotEmpty) {
+          initial = user.email![0].toUpperCase();
+        }
+
+        return CircleAvatar(
+          radius: 16,
+          backgroundColor: const Color(0xFFF5B942),
+          child: Text(
+            initial,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -226,28 +298,28 @@ class _OjasHomePageState extends State<OjasHomePage> {
       key: const PageStorageKey<String>('ojas-home-feed'),
       padding: EdgeInsets.fromLTRB(
         isDesktop ? 36 : 18,
-        28,
+        20,
         isDesktop ? 36 : 18,
         40,
       ),
       children: [
         Text(
-          'GOOD MORNING, AKASH',
+          'YOUR CREATIVE SPACE',
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: const Color(0xFFF5B942),
             fontWeight: FontWeight.bold,
             letterSpacing: 1.8,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
-          'Your creative space',
+          'Explore stories & creations',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.w800,
             color: const Color(0xFF111827),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         _sectionHeader('Trending today', 'View all'),
         const SizedBox(height: 14),
         _buildPostCard(
@@ -552,3 +624,4 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
