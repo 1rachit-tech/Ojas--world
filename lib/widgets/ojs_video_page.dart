@@ -196,7 +196,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Full Screen Video Player
           if (controller != null && controller.value.isInitialized)
             GestureDetector(
               onTap: () => _setPlayback(!controller.value.isPlaying),
@@ -218,7 +217,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                   : const Icon(Icons.play_circle_outline_rounded, color: Colors.white54, size: 52),
             ),
 
-          // 2. Gradient Overlay
           IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -236,7 +234,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 3. Caption & Creator Details
           Positioned(
             left: 16,
             bottom: 100,
@@ -275,10 +272,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 4. Action Rail
           Positioned(
             right: 10,
-            top: 68,
+            bottom: 110,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: _getAvatarColor(),
