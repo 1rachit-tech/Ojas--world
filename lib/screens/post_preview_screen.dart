@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/thumbnail_picker_sheet.dart';
+import '../widgets/tag_location_picker_sheet.dart';
 
 class PostPreviewScreen extends StatefulWidget {
   final String mediaPath;
@@ -20,6 +22,9 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
   bool _allowComments = true;
   bool _allowDuet = true;
   String _visibility = 'Public';
+  String _taggedLocation = '';
+  String _taggedCreator = '';
+  double _coverFramePosition = 0.5;
 
   @override
   void dispose() {
@@ -28,10 +33,10 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
   }
 
   void _publishPost() {
-    Navigator.pop(context); // क्रिएटर स्क्रीन बंद करें
+    Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Your video is uploading to OJAS! 🚀'),
+        content: Text('Your creation is published to OJAS! 🚀'),
         backgroundColor: Color(0xFFF5B942),
         behavior: SnackBarBehavior.floating,
       ),
@@ -50,36 +55,47 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('New Post', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Draft saved locally! 💾')));
-              Navigator.pop(context);
-            },
-            child: const Text('Drafts', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w600)),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Preview Thumbnail & Caption Row
+            // Thumbnail / Cover Frame + Caption
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 90,
-                    height: 120,
-                    color: const Color(0xFF21262D),
-                    child: widget.mediaPath.isNotEmpty
-                        ? Image.file(File(widget.mediaPath), fit: BoxFit.cover, errorBuilder: (c, e, s) {
-                            return const Center(child: Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 36));
-                          })
-                        : const Center(child: Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 36)),
+                GestureDetector(
+                  onTap: () {
+                    ThumbnailPickerSheet.show(
+                      context,
+                      currentPosition: _coverFramePosition,
+                      onThumbnailSelected: (pos) => setState(() => _coverFramePosition = pos),
+                    );
+                  },
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 95,
+                          height: 130,
+                          color: const Color(0xFF21262D),
+                          child: widget.mediaPath.isNotEmpty
+                              ? Image.file(File(widget.mediaPath), fit: BoxFit.cover, errorBuilder: (c, e, s) {
+                                  return const Center(child: Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 36));
+                                })
+                              : const Center(child: Icon(Icons.movie_creation_outlined, color: Colors.white54, size: 36)),
+                        ),
+                      ),
+                      Container(
+                        width: 95,
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        decoration: const BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.vertical(bottom: Radius.circular(12))),
+                        child: const Text('Select Cover', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFFF5B942), fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -89,7 +105,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                     maxLines: 4,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: const InputDecoration(
-                      hintText: 'Describe your creation, add #hashtags and @mentions...',
+                      hintText: 'Describe your creation, add #hashtags...',
                       hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
                       border: InputBorder.none,
                     ),
@@ -97,7 +113,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             const Divider(color: Colors.white10),
 
             // Quick Hashtags
@@ -111,24 +127,44 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                   side: BorderSide.none,
                   onPressed: () {
                     _captionController.text += ' $tag ';
-                    _captionController.selection = TextSelection.fromPosition(
-                      TextPosition(offset: _captionController.text.length),
-                    );
+                    _captionController.selection = TextSelection.fromPosition(TextPosition(offset: _captionController.text.length));
                   },
                 );
               }).toList(),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
 
-            // Options List
+            // Tag People & Add Location
+            _buildSettingTile(
+              icon: Icons.person_add_alt_1_rounded,
+              title: 'Tag Creators / Collaborators',
+              trailingText: _taggedCreator.isEmpty ? 'Add' : _taggedCreator,
+              onTap: () {
+                TagLocationPickerSheet.show(
+                  context,
+                  isLocationMode: false,
+                  onSelected: (res) => setState(() => _taggedCreator = res),
+                );
+              },
+            ),
+            _buildSettingTile(
+              icon: Icons.location_on_rounded,
+              title: 'Add Location',
+              trailingText: _taggedLocation.isEmpty ? 'Add' : _taggedLocation,
+              onTap: () {
+                TagLocationPickerSheet.show(
+                  context,
+                  isLocationMode: true,
+                  onSelected: (res) => setState(() => _taggedLocation = res),
+                );
+              },
+            ),
             _buildSettingTile(
               icon: Icons.public_rounded,
-              title: 'Who can view this video',
+              title: 'Who can view this',
               trailingText: _visibility,
               onTap: () {
-                setState(() {
-                  _visibility = _visibility == 'Public' ? 'Followers' : 'Public';
-                });
+                setState(() => _visibility = _visibility == 'Public' ? 'Followers' : 'Public');
               },
             ),
             _buildSwitchTile(
@@ -143,7 +179,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
               value: _allowDuet,
               onChanged: (val) => setState(() => _allowDuet = val),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 30),
 
             // Post Button
             SizedBox(
@@ -154,7 +190,6 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
                   backgroundColor: const Color(0xFFF5B942),
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
                 ),
                 onPressed: _publishPost,
                 icon: const Icon(Icons.send_rounded, size: 20),
@@ -175,7 +210,10 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(trailingText, style: const TextStyle(color: Color(0xFFF5B942), fontWeight: FontWeight.w600, fontSize: 13)),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 130),
+            child: Text(trailingText, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFF5B942), fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
           const SizedBox(width: 4),
           const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
         ],
@@ -189,11 +227,7 @@ class _PostPreviewScreenState extends State<PostPreviewScreen> {
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: Colors.white70),
       title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
-      trailing: Switch.adaptive(
-        value: value,
-        activeColor: const Color(0xFFF5B942),
-        onChanged: onChanged,
-      ),
+      trailing: Switch.adaptive(value: value, activeColor: const Color(0xFFF5B942), onChanged: onChanged),
     );
   }
 }
