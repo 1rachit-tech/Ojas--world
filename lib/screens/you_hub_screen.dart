@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'chat_room_screen.dart'; // नया चैट रूम पेज इम्पोर्ट किया गया है
 
 class YouHubScreen extends StatefulWidget {
   final VoidCallback onLoggedOut;
@@ -214,48 +215,64 @@ class _YouHubScreenState extends State<YouHubScreen> {
     );
   }
 
+  // इस फंक्शन में बदलाव किया गया है (InkWell और Navigator जोड़ा गया है)
   Widget _buildChatItem(String name, String msg, String time, int unread, Color color, IconData icon) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-      leading: CircleAvatar(
-        radius: 26,
-        backgroundColor: color,
-        child: Icon(icon, color: Colors.black87),
-      ),
-      title: Text(
-        name,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-      ),
-      subtitle: Text(
-        msg,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Color(0xFF6B7280)),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            time,
-            style: TextStyle(
-              color: unread > 0 ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
-              fontSize: 12,
-              fontWeight: unread > 0 ? FontWeight.bold : FontWeight.normal,
+    return InkWell(
+      onTap: () {
+        // चैट रूम पेज खोलें
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatRoomScreen(
+              userName: name,
+              userColor: color,
+              userIcon: icon,
             ),
           ),
-          if (unread > 0) ...[
-            const SizedBox(height: 6),
-            CircleAvatar(
-              radius: 10,
-              backgroundColor: const Color(0xFFF5B942),
-              child: Text(
-                unread.toString(),
-                style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
+        );
+      },
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+        leading: CircleAvatar(
+          radius: 26,
+          backgroundColor: color,
+          child: Icon(icon, color: Colors.black87),
+        ),
+        title: Text(
+          name,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        subtitle: Text(
+          msg,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: Color(0xFF6B7280)),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              time,
+              style: TextStyle(
+                color: unread > 0 ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                fontSize: 12,
+                fontWeight: unread > 0 ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-          ]
-        ],
+            if (unread > 0) ...[
+              const SizedBox(height: 6),
+              CircleAvatar(
+                radius: 10,
+                backgroundColor: const Color(0xFFF5B942),
+                child: Text(
+                  unread.toString(),
+                  style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ]
+          ],
+        ),
       ),
     );
   }
