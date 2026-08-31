@@ -65,7 +65,6 @@ class _VideoActionRailState extends State<VideoActionRail>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. Avatar + Follow/Unfollow Badge (always visible, shows + or -)
         GestureDetector(
           onTap: widget.onProfileTap,
           child: Stack(
@@ -108,10 +107,7 @@ class _VideoActionRailState extends State<VideoActionRail>
             ],
           ),
         ),
-
         const SizedBox(height: 14),
-
-        // 2. Like
         _buildAction(
           icon: widget.isLiked
               ? Icons.favorite_rounded
@@ -122,30 +118,21 @@ class _VideoActionRailState extends State<VideoActionRail>
           color: widget.isLiked ? const Color(0xFFFF5252) : Colors.white,
           onTap: widget.onLike,
         ),
-
         const SizedBox(height: 12),
-
-        // 3. Comment
         _buildAction(
           icon: Icons.mode_comment_outlined,
           count: '${widget.comments}',
           color: Colors.white,
           onTap: widget.onComment,
         ),
-
         const SizedBox(height: 12),
-
-        // 4. Share
         _buildAction(
           icon: Icons.reply_rounded,
           count: '${widget.shares}',
           color: Colors.white,
           onTap: widget.onShare,
         ),
-
         const SizedBox(height: 10),
-
-        // 5. More Options (Three dots)
         GestureDetector(
           onTap: widget.onMore,
           child: const Padding(
@@ -153,10 +140,7 @@ class _VideoActionRailState extends State<VideoActionRail>
             child: Icon(Icons.more_horiz_rounded, color: Colors.white, size: 24),
           ),
         ),
-
         const SizedBox(height: 10),
-
-        // 6. Spinning Audio Disc (always visible, top-anchored rail keeps it in bounds)
         GestureDetector(
           onTap: widget.onAudioTap,
           child: RotationTransition(
