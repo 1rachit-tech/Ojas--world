@@ -13,7 +13,8 @@ class OjsVideoPage extends StatefulWidget {
     required this.isLiked,
     required this.onFollow,
     required this.onLike,
-    required this.onComment, // यह नया पैरामीटर जोड़ा गया है
+    required this.onComment,
+    required this.onShare,
     super.key,
   });
 
@@ -24,7 +25,8 @@ class OjsVideoPage extends StatefulWidget {
   final bool isLiked;
   final VoidCallback onFollow;
   final VoidCallback onLike;
-  final VoidCallback onComment; // यह नया फंक्शन डिक्लेयर किया गया है
+  final VoidCallback onComment;
+  final VoidCallback onShare;
 
   @override
   State<OjsVideoPage> createState() => _OjsVideoPageState();
@@ -114,22 +116,26 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       color: const Color(0xff07090b),
       child: Stack(
         fit: StackFit.expand,
-        clipBehavior: Clip.none,
         children: [
+          // 1. FULL-SCREEN VIDEO PLAYER
           if (controller != null && controller.value.isInitialized)
             GestureDetector(
               onTap: () => _setPlayback(!controller.value.isPlaying),
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: controller.value.size.width,
-                  height: controller.value.size.height,
-                  child: VideoPlayer(controller),
+              child: SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: controller.value.size.width,
+                    height: controller.value.size.height,
+                    child: VideoPlayer(controller),
+                  ),
                 ),
               ),
             )
           else
             _buildVideoState(),
+
+          // 2. GRADIENT OVERLAY
           IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -137,27 +143,28 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: .35),
+                    Colors.black.withValues(alpha: .30),
                     Colors.transparent,
-                    Colors.black.withValues(alpha: .72),
+                    Colors.black.withValues(alpha: .60),
                   ],
-                  stops: const [0, .42, 1],
+                  stops: const [0, .45, 1],
                 ),
               ),
             ),
           ),
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.bottomLeft,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 76, 100),
-                child: _buildCaption(),
-              ),
-            ),
-          ),
+
+          // 3. TITLE & CAPTION (BOTTOM LEFT - EXACT POSITION)
           Positioned(
-            right: 10,
-            bottom: 90,
+            left: 16,
+            bottom: 16,
+            right: 80,
+            child: _buildCaption(),
+          ),
+
+          // 4. ACTION RAIL (BOTTOM RIGHT - EXACT POSITION)
+          Positioned(
+            right: 8,
+            bottom: 12,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: widget.video.avatarColor,
@@ -169,9 +176,8 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               shares: widget.video.shares,
               onFollow: widget.onFollow,
               onLike: widget.onLike,
-              // यहाँ मैसेज को हटाकर असली कमेंट फंक्शन को जोड़ दिया गया है
               onComment: widget.onComment,
-              onShare: () => _showMessage('Share link copied.'),
+              onShare: widget.onShare,
               onMore: _showVideoMenu,
             ),
           ),
@@ -220,13 +226,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       children: [
         Text(
           widget.video.creator,
-          style: TextStyle(
-            color: widget.isFollowing ? const Color(0xffffd36b) : Colors.white,
-            fontSize: 16,
-            fontWeight: widget.isFollowing ? FontWeight.w800 : FontWeight.w600,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         GestureDetector(
           onTap: () => setState(() => _captionExpanded = !_captionExpanded),
           child: Text(
@@ -265,10 +271,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               onTap: () => Navigator.pop(context),
             ),
             ListTile(
-              leading: const Icon(
-                Icons.visibility_off_outlined,
-                color: Colors.white,
-              ),
+              leading: const Icon(Icons.visibility_off_outlined, color: Colors.white),
               title: const Text('Not interested'),
               onTap: () => Navigator.pop(context),
             ),
@@ -281,11 +284,5 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
         ),
       ),
     );
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
