@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'creator_profile_screen.dart';
+import '../widgets/world_search_delegate.dart';
+import '../widgets/world_radar_hub_sheet.dart';
+import '../widgets/trending_sound_rank_card.dart';
+import '../widgets/world_media_detail_sheet.dart';
 
 class WorldScreen extends StatefulWidget {
   const WorldScreen({super.key});
@@ -8,609 +13,367 @@ class WorldScreen extends StatefulWidget {
 }
 
 class _WorldScreenState extends State<WorldScreen> {
-  final _searchController = TextEditingController();
-  final _searchFocusNode = FocusNode();
-  int _selectedFilter = 0;
-  int _banner = 0;
-  bool _searching = false;
+  String _currentRegion = 'Global (All World)';
+  int _selectedCategoryIndex = 0;
 
-  static const _filters = [
+  final List<String> _categories = [
+    '✨ All World',
     '🔥 Trending',
-    '🎬 Viral Clips',
-    '🎵 Sounds',
-    '✨ Top Creators',
-    '⚡ Challenges',
-  ];
-  static const _banners = [
-    _TrendBanner(
-      '#OjasVibes',
-      'A softer way to see the city',
-      Color(0xFF263238),
-      Color(0xFFB46A42),
-      Icons.wb_twilight_rounded,
-    ),
-    _TrendBanner(
-      '#MusicTrend',
-      'The sound behind this week',
-      Color(0xFF27364A),
-      Color(0xFFB08B46),
-      Icons.graphic_eq_rounded,
-    ),
-    _TrendBanner(
-      '#MakeItYours',
-      'Creators are rewriting the rules',
-      Color(0xFF31433F),
-      Color(0xFF6E9B88),
-      Icons.auto_awesome_rounded,
-    ),
-  ];
-  static const _cards = [
-    _DiscoveryCard(
-      'Maya Chen',
-      '@mayamakes',
-      '2.4M',
-      Color(0xFFB46A42),
-      Icons.wb_twilight_rounded,
-      true,
-    ),
-    _DiscoveryCard(
-      'Rohan Mehta',
-      '@rohanbuilds',
-      '892K',
-      Color(0xFF4A6C72),
-      Icons.architecture_rounded,
-      false,
-    ),
-    _DiscoveryCard(
-      'Nia Kapoor',
-      '@niakcreates',
-      '1.1M',
-      Color(0xFF9A6472),
-      Icons.music_note_rounded,
-      false,
-    ),
-    _DiscoveryCard(
-      'Arjun Rao',
-      '@arjunframes',
-      '640K',
-      Color(0xFF5C8068),
-      Icons.landscape_rounded,
-      false,
-    ),
-    _DiscoveryCard(
-      'Zoya Malik',
-      '@zoyamakes',
-      '3.8M',
-      Color(0xFF7D7188),
-      Icons.brush_rounded,
-      true,
-    ),
-  ];
-  static const _sounds = [
-    _Sound('Afterglow / Luma', '1.8M plays', Color(0xFFF5B942)),
-    _Sound('Slow Motion / Kairo', '924K plays', Color(0xFFB8D8D8)),
-    _Sound('Golden Hour / Nox', '702K plays', Color(0xFFE8B4B8)),
+    '🎬 Cinematic',
+    '🎵 Music Stems',
+    '🎨 Digital Art',
+    '🌿 Vindhya Roots',
+    '💡 Creator Hub',
+    '🎭 Comedy'
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _searchFocusNode.addListener(
-      () => setState(() => _searching = _searchFocusNode.hasFocus),
-    );
-  }
+  // Live Creators Spotlight
+  final List<Map<String, dynamic>> _spotlightCreators = [
+    {'name': 'Maya Chen', 'handle': '@mayamakes', 'followers': '1.2M', 'color': const Color(0xFFE5A87B), 'isLive': true},
+    {'name': 'Rohan Mehta', 'handle': '@rohanbuilds', 'followers': '850K', 'color': const Color(0xFF93C5FD), 'isLive': false},
+    {'name': 'Sneha Rao', 'handle': '@sneha_09', 'followers': '420K', 'color': const Color(0xFFC5C6E9), 'isLive': true},
+    {'name': 'Nikhil Art', 'handle': '@nikhil_art', 'followers': '610K', 'color': const Color(0xFFFFD36B), 'isLive': false},
+    {'name': 'Vaibhav', 'handle': '@vaibhav_v', 'followers': '310K', 'color': const Color(0xFFA7F3D0), 'isLive': false},
+  ];
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _searchFocusNode.dispose();
-    super.dispose();
-  }
+  // Trending Sound Charts
+  final List<Map<String, dynamic>> _topSounds = [
+    {'rank': 1, 'title': 'Vindhya Beats - Folk Fusion', 'artist': 'OJAS Originals', 'uses': '245K reels', 'color': const Color(0xFFF5B942)},
+    {'rank': 2, 'title': 'Midnight Synthwave Drive', 'artist': 'Kavya Audio', 'uses': '180K reels', 'color': const Color(0xFF8B5CF6)},
+    {'rank': 3, 'title': 'Slowed Lofi Aesthetic 🌿', 'artist': 'Aarav Beats', 'uses': '140K reels', 'color': const Color(0xFF10B981)},
+    {'rank': 4, 'title': 'High Bass Drop Cinematic', 'artist': 'Rohan Mehta', 'uses': '95K reels', 'color': const Color(0xFFEF4444)},
+  ];
+
+  // Dynamic Media Grid (Mixed 1:1, 16:9, 9:16)
+  final List<Map<String, dynamic>> _worldMediaItems = [
+    {'id': 'w1', 'title': 'City in Soft Light', 'creator': 'Maya Chen', 'views': '2.4M', 'category': 'Cinematic', 'color': const Color(0xFFB45309), 'isTall': true},
+    {'id': 'w2', 'title': 'Modular Synth Stems', 'creator': 'Rohan Mehta', 'views': '890K', 'category': 'Music', 'color': const Color(0xFF1E3A8A), 'isTall': false},
+    {'id': 'w3', 'title': 'Bagheli Folk Roots 🌿', 'creator': 'OJAS Studio', 'views': '1.5M', 'category': 'Vindhya', 'color': const Color(0xFF047857), 'isTall': false},
+    {'id': 'w4', 'title': '3D Neon Matrix', 'creator': 'Nikhil Art', 'views': '3.1M', 'category': 'Art', 'color': const Color(0xFF6D28D9), 'isTall': true},
+    {'id': 'w5', 'title': 'Quiet Moments 35mm', 'creator': 'Sneha Rao', 'views': '740K', 'category': 'Cinematic', 'color': const Color(0xFFBE123C), 'isTall': false},
+    {'id': 'w6', 'title': 'Street Beats Drop', 'creator': 'Vaibhav', 'views': '1.1M', 'category': 'Music', 'color': const Color(0xFF0369A1), 'isTall': true},
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: _buildSearchHeader()),
-        SliverToBoxAdapter(child: _buildFilters()),
-        SliverToBoxAdapter(child: _buildBanner()),
-        SliverToBoxAdapter(
-          child: _sectionTitle(
-            'Discover the moment',
-            'Fresh from the community',
-          ),
-        ),
-        SliverToBoxAdapter(child: _buildDiscoveryGrid()),
-        SliverToBoxAdapter(
-          child: _sectionTitle('Trending sounds', 'Listen now'),
-        ),
-        SliverToBoxAdapter(child: _buildSounds()),
-        const SliverToBoxAdapter(child: SizedBox(height: 28)),
-      ],
-    );
-  }
-
-  Widget _buildSearchHeader() => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 22, 20, 12),
-    child: Row(
-      children: [
-        Expanded(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _searching
-                    ? const Color(0xFFF5B942)
-                    : Colors.transparent,
-              ),
-            ),
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded),
-                hint: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: Text(
-                    _searching
-                        ? 'Search creators, sounds, hashtags...'
-                        : 'Search the world',
-                    key: ValueKey<bool>(_searching),
-                    style: const TextStyle(color: Color(0xFF9CA3AF)),
-                  ),
-                ),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton(
-          onPressed: () {},
-          tooltip: 'Open filters',
-          icon: const Icon(Icons.tune_rounded),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildFilters() => SizedBox(
-    height: 48,
-    child: ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      scrollDirection: Axis.horizontal,
-      itemCount: _filters.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 8),
-      itemBuilder: (context, index) => ChoiceChip(
-        label: Text(_filters[index]),
-        selected: _selectedFilter == index,
-        onSelected: (_) => setState(() => _selectedFilter = index),
-        selectedColor: const Color(0xFFFFF5D9),
-        backgroundColor: Colors.white,
-        side: BorderSide(
-          color: _selectedFilter == index
-              ? const Color(0xFFF5B942)
-              : const Color(0xFFE5E7EB),
-        ),
-        labelStyle: TextStyle(
-          color: _selectedFilter == index
-              ? const Color(0xFF8A641A)
-              : const Color(0xFF6B7280),
-          fontWeight: _selectedFilter == index
-              ? FontWeight.w700
-              : FontWeight.w500,
-        ),
-      ),
-    ),
-  );
-
-  Widget _buildBanner() => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-    child: SizedBox(
-      height: 156,
-      child: PageView.builder(
-        itemCount: _banners.length,
-        onPageChanged: (index) => setState(() => _banner = index),
-        itemBuilder: (context, index) {
-          final banner = _banners[index];
-          return Container(
-            margin: const EdgeInsets.only(right: 4),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: LinearGradient(
-                colors: [banner.start, banner.end],
+    return Scaffold(
+      backgroundColor: const Color(0xFF07090B),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF07090B),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFFFFDF79), Color(0xFFF5B942), Color(0xFFE59819)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
+              ).createShader(bounds),
+              child: const Text(
+                'WORLD',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2.2, color: Colors.white),
               ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -16,
-                  top: -28,
-                  child: Icon(
-                    banner.icon,
-                    size: 150,
-                    color: Colors.white.withValues(alpha: .08),
+            const SizedBox(width: 8),
+            // World Radar Filter Button
+            GestureDetector(
+              onTap: () {
+                WorldRadarHubSheet.show(
+                  context,
+                  activeRegion: _currentRegion,
+                  onRegionChanged: (reg) => setState(() => _currentRegion = reg),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161B22),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFF5B942).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.radar_rounded, color: Color(0xFFF5B942), size: 14),
+                    const SizedBox(width: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      child: Text(
+                        _currentRegion,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down_rounded, color: Colors.white54, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Live Search & Tags',
+            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 26),
+            onPressed: () => WorldSearchSheet.show(context),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: CustomScrollView(
+        slivers: [
+          // 1. Search Bar Trigger
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: GestureDetector(
+                onTap: () => WorldSearchSheet.show(context),
+                child: Container(
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF13171D),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.search_rounded, color: Color(0xFFF5B942), size: 20),
+                      SizedBox(width: 10),
+                      Text('Discover creators, viral audio, #tags...', style: TextStyle(color: Colors.white38, fontSize: 13.5)),
+                      Spacer(),
+                      Icon(Icons.mic_none_rounded, color: Colors.white38, size: 20),
+                    ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'TRENDING NOW',
+              ),
+            ),
+          ),
+
+          // 2. Category Channel Chips
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 38,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final isSelected = _selectedCategoryIndex == index;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedCategoryIndex = index),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFF5B942) : const Color(0xFF13171D),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isSelected ? const Color(0xFFF5B942) : Colors.white10),
+                      ),
+                      child: Text(
+                        _categories[index],
                         style: TextStyle(
-                          color: Color(0xFFF5B942),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
+                          color: isSelected ? Colors.black : Colors.white70,
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        banner.tag,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        banner.subtitle,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // 3. Creator Spotlight Section
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Creator Spotlight', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      Text('See All', style: TextStyle(color: Color(0xFFF5B942), fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 110,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _spotlightCreators.length,
+                    itemBuilder: (context, index) {
+                      final c = _spotlightCreators[index];
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CreatorProfileScreen(
+                                creatorName: c['name'] as String,
+                                avatarColor: c['color'] as Color,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 86,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Column(
+                            children: [
+                              Stack(
+                                alignment: Alignment.bottomRight,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 28,
+                                    backgroundColor: c['color'] as Color,
+                                    child: Text((c['name'] as String)[0], style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+                                  ),
+                                  if (c['isLive'] as bool)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(4)),
+                                      child: const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(c['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                              Text(c['followers'] as String, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
             ),
-          );
-        },
+          ),
+
+          const SliverToBoxAdapter(child: Divider(color: Colors.white10, height: 20)),
+
+          // 4. Trending Audio Rank Chart
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.trending_up_rounded, color: Color(0xFFF5B942), size: 18),
+                      SizedBox(width: 6),
+                      Text('Trending World Sound Chart', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 74,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _topSounds.length,
+                    itemBuilder: (context, index) {
+                      final snd = _topSounds[index];
+                      return TrendingSoundRankCard(
+                        rank: snd['rank'] as int,
+                        title: snd['title'] as String,
+                        artist: snd['artist'] as String,
+                        usesCount: snd['uses'] as String,
+                        coverColor: snd['color'] as Color,
+                        onPlay: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing ${snd['title']} 🎵'))),
+                        onUseSound: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sound loaded into Studio! 🎬'))),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // 5. Staggered Media Discovery Grid
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.78,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final item = _worldMediaItems[index % _worldMediaItems.length];
+                  return GestureDetector(
+                    onTap: () => WorldMediaDetailSheet.show(context, item),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: item['color'] as Color,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Gradient
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
+                                stops: const [0.4, 1.0],
+                              ),
+                            ),
+                          ),
+                          // Center Play Icon
+                          const Center(child: Icon(Icons.play_circle_outline_rounded, size: 40, color: Colors.white70)),
+                          // Bottom Info
+                          Positioned(
+                            left: 10,
+                            right: 10,
+                            bottom: 10,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(item['title'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                const SizedBox(height: 2),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(item['creator'] as String, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                                    Text(item['views'] as String, style: const TextStyle(color: Color(0xFFF5B942), fontSize: 10.5, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                childCount: 12,
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 50)),
+        ],
       ),
-    ),
-  );
-
-  Widget _sectionTitle(String title, String subtitle) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 26, 20, 14),
-    child: Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          '${_banner + 1}/3',
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFFB08220),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildSounds() => SizedBox(
-    height: 94,
-    child: ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      scrollDirection: Axis.horizontal,
-      itemCount: _sounds.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 10),
-      itemBuilder: (context, index) {
-        final sound = _sounds[index];
-        return Container(
-          width: 190,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF8F9FA),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: sound.color.withValues(alpha: .3),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.album_rounded,
-                  color: const Color(0xFF111827),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      sound.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: CustomPaint(
-                            size: const Size(50, 10),
-                            painter: _WavePainter(color: sound.color),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          sound.plays,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF9CA3AF),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
-
-  Widget _buildDiscoveryGrid() => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < 620;
-      final feature = Expanded(child: _DiscoveryTile(card: _cards[0]));
-      final stacked = Expanded(
-        child: Column(
-          children: [
-            Expanded(child: _DiscoveryTile(card: _cards[1])),
-            const SizedBox(height: 10),
-            Expanded(child: _DiscoveryTile(card: _cards[2])),
-          ],
-        ),
-      );
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-        child: Column(
-          children: [
-            SizedBox(
-              height: compact ? 330 : 390,
-              child: Row(
-                children: [feature, const SizedBox(width: 10), stacked],
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: compact ? 170 : 210,
-              child: Row(
-                children: [
-                  Expanded(child: _DiscoveryTile(card: _cards[3])),
-                  const SizedBox(width: 10),
-                  Expanded(child: _DiscoveryTile(card: _cards[4])),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-class _DiscoveryTile extends StatelessWidget {
-  const _DiscoveryTile({required this.card});
-  final _DiscoveryCard card;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: card.color,
-      borderRadius: BorderRadius.circular(14),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Stack(
-      children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _DiscoveryPainter(
-              color: Colors.white.withValues(alpha: .12),
-            ),
-          ),
-        ),
-        Center(
-          child: Icon(
-            card.icon,
-            size: card.featured ? 54 : 38,
-            color: Colors.white.withValues(alpha: .78),
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.black.withValues(alpha: .72),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 12,
-          right: 10,
-          bottom: 12,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.visibility_outlined,
-                    size: 13,
-                    color: Colors.white70,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${card.views} views',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                  const Spacer(),
-                  const Icon(
-                    Icons.play_circle_outline_rounded,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 13,
-                    backgroundColor: Colors.white.withValues(alpha: .8),
-                    child: Text(
-                      card.creator[0],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      card.handle,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _DiscoveryPainter extends CustomPainter {
-  const _DiscoveryPainter({required this.color});
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-    for (var x = -size.height; x < size.width; x += 30) {
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + size.height, 0),
-        paint,
-      );
-    }
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _DiscoveryPainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _WavePainter extends CustomPainter {
-  const _WavePainter({required this.color});
-  final Color color;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    for (var x = 2.0; x < size.width; x += 5) {
-      final height = (x * 1.7).remainder(8) + 2;
-      canvas.drawLine(
-        Offset(x, size.height / 2 - height / 2),
-        Offset(x, size.height / 2 + height / 2),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WavePainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-class _TrendBanner {
-  const _TrendBanner(this.tag, this.subtitle, this.start, this.end, this.icon);
-  final String tag;
-  final String subtitle;
-  final Color start;
-  final Color end;
-  final IconData icon;
-}
-
-class _DiscoveryCard {
-  const _DiscoveryCard(
-    this.creator,
-    this.handle,
-    this.views,
-    this.color,
-    this.icon,
-    this.featured,
-  );
-  final String creator;
-  final String handle;
-  final String views;
-  final Color color;
-  final IconData icon;
-  final bool featured;
-}
-
-class _Sound {
-  const _Sound(this.title, this.plays, this.color);
-  final String title;
-  final String plays;
-  final Color color;
 }
