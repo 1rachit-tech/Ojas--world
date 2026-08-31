@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/ojs_video.dart';
 import '../widgets/ojs_video_page.dart';
+import '../widgets/share_bottom_sheet.dart';
 
 class CommentItem {
   final String id;
@@ -39,16 +40,13 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   final PageController _forYouController = PageController();
   final PageController _followingController = PageController();
 
-  // Following & Likes State
   final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};
   final Set<String> _likedVideos = <String>{};
 
-  // 0 = For You, 1 = Following
   int _currentSelectedFeed = 0;
   int _forYouCurrentIndex = 0;
   int _followingCurrentIndex = 0;
 
-  // Comments State
   bool _isCommentsOpen = false;
   final TextEditingController _commentInputController = TextEditingController();
   final List<CommentItem> _commentsList = [
@@ -161,79 +159,50 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xff07090b),
-        resizeToAvoidBottomInset: true,
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            final double totalHeight = constraints.maxHeight;
-
-            return Stack(
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. FULL-SCREEN EDGE-TO-EDGE VIDEO
+            PageView(
+              controller: _horizontalFeedController,
+              physics: _isCommentsOpen
+                  ? const NeverScrollableScrollPhysics()
+                  : const PageScrollPhysics(),
+              onPageChanged: (index) {
+                setState(() {
+                  _currentSelectedFeed = index;
+                });
+              },
               children: [
-                // 1. VIDEO FEED CONTAINER (Maintains 9:16 Aspect Ratio)
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: _isCommentsOpen ? totalHeight * 0.45 : totalHeight,
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(_isCommentsOpen ? 12 : 0),
-                        child: PageView(
-                          controller: _horizontalFeedController,
-                          physics: _isCommentsOpen
-                              ? const NeverScrollableScrollPhysics()
-                              : const PageScrollPhysics(),
-                          onPageChanged: (index) {
-                            setState(() {
-                              _currentSelectedFeed = index;
-                            });
-                          },
-                          children: [
-                            // FOR YOU FEED (All Videos)
-                            _buildForYouFeed(),
-
-                            // FOLLOWING FEED (Only Followed Creators)
-                            _buildFollowingFeed(followingVideos),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 2. TOP TABS (For You | Following)
-                if (!_isCommentsOpen) _buildTopBar(),
-
-                // 3. INTERACTIVE COMMENTS SHEET
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: _isCommentsOpen ? totalHeight * 0.55 : 0,
-                  child: _isCommentsOpen ? _buildCommentSheet() : const SizedBox.shrink(),
-                ),
+                _buildForYouFeed(),
+                _buildFollowingFeed(followingVideos),
               ],
-            );
-          },
+            ),
+
+            // 2. TOP TABS (Full Screen Overlay)
+            _buildTopBar(),
+
+            // 3. BOTTOM COMMENT SHEET (OVERLAY)
+            if (_isCommentsOpen)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: MediaQuery.of(context).size.height * 0.60,
+                child: _buildCommentSheet(),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  // --- For You Vertical Feed ---
   Widget _buildForYouFeed() {
     final videos = temporaryOjsVideos;
     if (videos.isEmpty) {
       return const Center(
-        child: Text(
-          'No videos available',
-          style: TextStyle(color: Colors.white70),
-        ),
+        child: Text('No videos available', style: TextStyle(color: Colors.white70)),
       );
     }
 
@@ -262,14 +231,19 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           onFollow: () => _toggleFollowCreator(video.creator),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
+          onShare: () {
+            ShareBottomSheet.show(
+              context,
+              videoUrl: video.videoUrl,
+              creatorName: video.creator,
+            );
+          },
         );
       },
     );
   }
 
-  // --- Following Vertical Feed ---
   Widget _buildFollowingFeed(List<OjsVideo> followingVideos) {
-    // Agar koi creator follow nahi kiya hai
     if (followingVideos.isEmpty) {
       return Container(
         color: const Color(0xff07090b),
@@ -323,7 +297,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       );
     }
 
-    // Following Feed PageView
     return PageView.builder(
       controller: _followingController,
       scrollDirection: Axis.vertical,
@@ -349,12 +322,18 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           onFollow: () => _toggleFollowCreator(video.creator),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
+          onShare: () {
+            ShareBottomSheet.show(
+              context,
+              videoUrl: video.videoUrl,
+              creatorName: video.creator,
+            );
+          },
         );
       },
     );
   }
 
-  // --- Top Bar (For You | Following) ---
   Widget _buildTopBar() {
     return Positioned(
       top: 0,
@@ -423,19 +402,17 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  // --- Bottom Comments Sheet ---
   Widget _buildCommentSheet() {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xff12171d),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
-          BoxShadow(color: Colors.black54, blurRadius: 10, spreadRadius: 2),
+          BoxShadow(color: Colors.black87, blurRadius: 20, spreadRadius: 5),
         ],
       ),
       child: Column(
         children: [
-          // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
@@ -453,20 +430,13 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
           ),
           const Divider(height: 1, color: Colors.white12),
-
-          // Comments List
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: _commentsList.length,
-              itemBuilder: (context, index) {
-                final comment = _commentsList[index];
-                return _buildCommentTile(comment);
-              },
+              itemBuilder: (context, index) => _buildCommentTile(_commentsList[index]),
             ),
           ),
-
-          // Quick Emoji Bar
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -488,10 +458,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               }).toList(),
             ),
           ),
-
-          // Input Bar + Super Thanks + Send
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+            padding: EdgeInsets.fromLTRB(12, 6, 12, MediaQuery.of(context).viewInsets.bottom + 12),
             decoration: const BoxDecoration(
               color: Color(0xff171c21),
               border: Border(top: BorderSide(color: Colors.white10)),
@@ -519,22 +487,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                         hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
                         border: InputBorder.none,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _showSuperThanksModal,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2E2413),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.volunteer_activism_rounded,
-                      color: Color(0xFFF5B942),
-                      size: 20,
                     ),
                   ),
                 ),
@@ -577,27 +529,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      comment.userName,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white70),
-                    ),
-                    if (comment.isSuperThanks) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5B942),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '₹${comment.tipAmount?.toInt() ?? 50} Super Thanks',
-                          style: const TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ]
-                  ],
+                Text(
+                  comment.userName,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white70),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -636,55 +570,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showSuperThanksModal() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF171C21),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.volunteer_activism_rounded, color: Color(0xFFF5B942), size: 36),
-              const SizedBox(height: 8),
-              const Text(
-                'Send Super Thanks',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Support this creator directly on OJAS.',
-                style: TextStyle(fontSize: 13, color: Colors.white60),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [50, 100, 200, 500].map((amt) {
-                  return ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF222831),
-                      foregroundColor: const Color(0xFFF5B942),
-                      side: const BorderSide(color: Color(0xFFF5B942), width: 1),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _addNewComment(isSuperThanks: true, amount: amt.toDouble());
-                    },
-                    child: Text('₹$amt', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
     );
   }
 }
