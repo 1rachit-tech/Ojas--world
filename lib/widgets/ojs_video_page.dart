@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-
 import '../models/ojs_video.dart';
+import '../screens/creator_profile_screen.dart';
 import 'video_action_rail.dart';
 
 class OjsVideoPage extends StatefulWidget {
@@ -71,7 +71,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       setState(() => _isLoading = false);
       await _setPlayback(widget.isVisible);
     } catch (error) {
-      debugPrint('OJS video failed to initialize: $error');
+      debugPrint('Video failed to initialize: $error');
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -82,14 +82,12 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
 
   void _handleControllerUpdate() {
     final controller = _controller;
-    final errorDescription = controller?.value.errorDescription;
-    if (errorDescription == null) return;
-    debugPrint('OJS video player error: $errorDescription');
-    if (!mounted || _hasError) return;
-    setState(() {
-      _isLoading = false;
-      _hasError = true;
-    });
+    if (controller?.value.errorDescription != null && mounted && !_hasError) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+      });
+    }
   }
 
   Future<void> _setPlayback(bool shouldPlay) async {
@@ -109,6 +107,127 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
     super.dispose();
   }
 
+  void _openCreatorProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreatorProfileScreen(
+          creatorName: widget.video.creator,
+          avatarColor: widget.video.avatarColor,
+        ),
+      ),
+    );
+  }
+
+  void _showAudioHub() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF13171D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: const Color(0xFFF5B942),
+                    child: const Icon(Icons.music_note_rounded, color: Colors.black, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${widget.video.creator} · Original Sound',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text('142K reels made with this track', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF5B942),
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Audio loaded into Studio! 🎬')),
+                    );
+                  },
+                  icon: const Icon(Icons.movie_creation_outlined, size: 18),
+                  label: const Text('Use this sound', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showVideoOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF13171D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bookmark_border_rounded, color: Color(0xFFF5B942)),
+              title: const Text('Save to Favorites', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Saved to Favorites! 🔖')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_rounded, color: Colors.white70),
+              title: const Text('Download Video (1080p)', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Downloading in 1080p... 📥')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
+              title: const Text('Report Content', style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Report submitted for moderation.')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -117,7 +236,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. FULL-SCREEN VIDEO PLAYER
+          // 1. Edge-to-Edge Video Player
           if (controller != null && controller.value.isInitialized)
             GestureDetector(
               onTap: () => _setPlayback(!controller.value.isPlaying),
@@ -133,9 +252,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               ),
             )
           else
-            _buildVideoState(),
+            Center(
+              child: _isLoading
+                  ? const CircularProgressIndicator(color: Color(0xFFF5B942), strokeWidth: 2)
+                  : const Icon(Icons.play_circle_outline_rounded, color: Colors.white54, size: 52),
+            ),
 
-          // 2. GRADIENT OVERLAY
+          // 2. Linear Gradient Overlay
           IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -143,28 +266,59 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withValues(alpha: .30),
+                    Colors.black.withValues(alpha: 0.35),
                     Colors.transparent,
-                    Colors.black.withValues(alpha: .60),
+                    Colors.black.withValues(alpha: 0.65),
                   ],
-                  stops: const [0, .45, 1],
+                  stops: const [0, 0.45, 1.0],
                 ),
               ),
             ),
           ),
 
-          // 3. TITLE & CAPTION (BOTTOM LEFT - EXACT POSITION)
+          // 3. Caption & Creator Name (Exact Position from Image 2)
           Positioned(
             left: 16,
-            bottom: 16,
-            right: 80,
-            child: _buildCaption(),
+            bottom: 24,
+            right: 86,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: _openCreatorProfile,
+                  child: Text(
+                    widget.video.creator,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                GestureDetector(
+                  onTap: () => setState(() => _captionExpanded = !_captionExpanded),
+                  child: Text(
+                    widget.video.caption,
+                    maxLines: _captionExpanded ? 5 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
+                  ),
+                ),
+                if (!_captionExpanded && widget.video.caption.length > 60)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text('...more', style: TextStyle(color: Color(0xFFF5B942), fontSize: 11.5)),
+                  ),
+              ],
+            ),
           ),
 
-          // 4. ACTION RAIL (BOTTOM RIGHT - EXACT POSITION)
+          // 4. Action Rail (Exact Position from Image 2)
           Positioned(
             right: 8,
-            bottom: 12,
+            bottom: 18,
             child: VideoActionRail(
               creator: widget.video.creator,
               avatarColor: widget.video.avatarColor,
@@ -178,110 +332,12 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               onLike: widget.onLike,
               onComment: widget.onComment,
               onShare: widget.onShare,
-              onMore: _showVideoMenu,
+              onMore: _showVideoOptions,
+              onAudioTap: _showAudioHub,
+              onProfileTap: _openCreatorProfile,
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildVideoState() {
-    if (_hasError) {
-      return Center(
-        child: TextButton.icon(
-          onPressed: () {
-            setState(() {
-              _isLoading = true;
-              _hasError = false;
-            });
-            _initializeVideo();
-          },
-          icon: const Icon(Icons.refresh_rounded, color: Color(0xfff5b942)),
-          label: const Text(
-            'Video unavailable. Retry',
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      );
-    }
-    return Center(
-      child: _isLoading
-          ? const CircularProgressIndicator(
-              color: Color(0xfff5b942),
-              strokeWidth: 2,
-            )
-          : const Icon(
-              Icons.play_circle_outline_rounded,
-              color: Colors.white54,
-              size: 52,
-            ),
-    );
-  }
-
-  Widget _buildCaption() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          widget.video.creator,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        GestureDetector(
-          onTap: () => setState(() => _captionExpanded = !_captionExpanded),
-          child: Text(
-            widget.video.caption,
-            maxLines: _captionExpanded ? 5 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              height: 1.3,
-            ),
-          ),
-        ),
-        if (!_captionExpanded && widget.video.caption.length > 70)
-          const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: Text(
-              '...more',
-              style: TextStyle(color: Color(0xfff5b942), fontSize: 12),
-            ),
-          ),
-      ],
-    );
-  }
-
-  void _showVideoMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xff171c21),
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.bookmark_border, color: Colors.white),
-              title: const Text('Save video'),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.visibility_off_outlined, color: Colors.white),
-              title: const Text('Not interested'),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined, color: Colors.white),
-              title: const Text('Report'),
-              onTap: () => Navigator.pop(context),
-            ),
-          ],
-        ),
       ),
     );
   }
