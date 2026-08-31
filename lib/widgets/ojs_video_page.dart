@@ -13,6 +13,7 @@ class OjsVideoPage extends StatefulWidget {
     required this.isLiked,
     required this.onFollow,
     required this.onLike,
+    required this.onComment, // यह नया पैरामीटर जोड़ा गया है
     super.key,
   });
 
@@ -23,6 +24,7 @@ class OjsVideoPage extends StatefulWidget {
   final bool isLiked;
   final VoidCallback onFollow;
   final VoidCallback onLike;
+  final VoidCallback onComment; // यह नया फंक्शन डिक्लेयर किया गया है
 
   @override
   State<OjsVideoPage> createState() => _OjsVideoPageState();
@@ -167,7 +169,8 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               shares: widget.video.shares,
               onFollow: widget.onFollow,
               onLike: widget.onLike,
-              onComment: () => _showMessage('Comments are coming soon.'),
+              // यहाँ मैसेज को हटाकर असली कमेंट फंक्शन को जोड़ दिया गया है
+              onComment: widget.onComment,
               onShare: () => _showMessage('Share link copied.'),
               onMore: _showVideoMenu,
             ),
