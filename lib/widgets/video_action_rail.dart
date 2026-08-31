@@ -65,7 +65,7 @@ class _VideoActionRailState extends State<VideoActionRail>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. Avatar + Plus Badge
+        // 1. Avatar + Follow/Unfollow Badge (always visible, shows + or -)
         GestureDetector(
           onTap: widget.onProfileTap,
           child: Stack(
@@ -84,21 +84,27 @@ class _VideoActionRailState extends State<VideoActionRail>
                   ),
                 ),
               ),
-              if (!widget.isFollowing)
-                Positioned(
-                  bottom: -6,
-                  child: GestureDetector(
-                    onTap: widget.onFollow,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF5B942),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.add, size: 13, color: Colors.black),
+              Positioned(
+                bottom: -6,
+                child: GestureDetector(
+                  onTap: widget.onFollow,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: widget.isFollowing
+                          ? const Color(0xFF27323A)
+                          : const Color(0xFFF5B942),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 1.5),
+                    ),
+                    child: Icon(
+                      widget.isFollowing ? Icons.remove : Icons.add,
+                      size: 13,
+                      color: widget.isFollowing ? Colors.white : Colors.black,
                     ),
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -150,7 +156,7 @@ class _VideoActionRailState extends State<VideoActionRail>
 
         const SizedBox(height: 10),
 
-        // 6. Spinning Audio Disc (100% visible)
+        // 6. Spinning Audio Disc (always visible, top-anchored rail keeps it in bounds)
         GestureDetector(
           onTap: widget.onAudioTap,
           child: RotationTransition(
