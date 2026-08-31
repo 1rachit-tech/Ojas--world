@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../models/ojs_video.dart';
 import '../screens/creator_profile_screen.dart';
+import '../screens/audio_detail_screen.dart';
 import 'video_action_rail.dart';
 
 class OjsVideoPage extends StatefulWidget {
@@ -119,69 +120,20 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
     );
   }
 
-  void _showAudioHub() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF13171D),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: const Color(0xFFF5B942),
-                    child: const Icon(Icons.music_note_rounded, color: Colors.black, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${widget.video.creator} · Original Sound',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text('142K reels made with this track', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF5B942),
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Audio loaded into Studio! 🎬')),
-                    );
-                  },
-                  icon: const Icon(Icons.movie_creation_outlined, size: 18),
-                  label: const Text('Use this sound', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
+  // Real Audio Detail Screen Connection
+  void _openAudioScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AudioDetailScreen(
+          audioTitle: 'Original Sound - ${widget.video.creator}',
+          creatorName: widget.video.creator,
         ),
       ),
     );
   }
 
+  // Full Working Three-Dots Sheet
   void _showVideoOptions() {
     showModalBottomSheet(
       context: context,
@@ -190,39 +142,44 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.bookmark_border_rounded, color: Color(0xFFF5B942)),
-              title: const Text('Save to Favorites', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Saved to Favorites! 🔖')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.download_rounded, color: Colors.white70),
-              title: const Text('Download Video (1080p)', style: TextStyle(color: Colors.white)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Downloading in 1080p... 📥')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
-              title: const Text('Report Content', style: TextStyle(color: Colors.redAccent)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Report submitted for moderation.')),
-                );
-              },
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.bookmark_rounded, color: Color(0xFFF5B942)),
+                title: const Text('Save to Favorites', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video saved to bookmarks! 🔖')));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_rounded, color: Colors.white70),
+                title: const Text('Download (1080p)', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading video to gallery... 📥')));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70),
+                title: const Text('Not Interested', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('We will show fewer videos like this.')));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
+                title: const Text('Report Content', style: TextStyle(color: Colors.redAccent)),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted for moderation.')));
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -236,7 +193,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Edge-to-Edge Video Player
+          // 1. Edge-to-Edge Full Screen Video Player
           if (controller != null && controller.value.isInitialized)
             GestureDetector(
               onTap: () => _setPlayback(!controller.value.isPlaying),
@@ -276,7 +233,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 3. Caption & Creator Name (Exact Position from Image 2)
+          // 3. Caption & Creator Name
           Positioned(
             left: 16,
             bottom: 24,
@@ -315,7 +272,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
             ),
           ),
 
-          // 4. Action Rail (Exact Position from Image 2)
+          // 4. Action Rail (Avatar, Like, Comment, Share, More, Music Disc)
           Positioned(
             right: 8,
             bottom: 18,
@@ -333,7 +290,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               onComment: widget.onComment,
               onShare: widget.onShare,
               onMore: _showVideoOptions,
-              onAudioTap: _showAudioHub,
+              onAudioTap: _openAudioScreen,
               onProfileTap: _openCreatorProfile,
             ),
           ),
