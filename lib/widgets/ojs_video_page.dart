@@ -1,313 +1,198 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import '../models/ojs_video.dart';
-import '../screens/creator_profile_screen.dart';
-import '../screens/audio_detail_screen.dart';
-import 'video_action_rail.dart';
 
-class OjsVideoPage extends StatefulWidget {
-  const OjsVideoPage({
-    required this.video,
-    required this.isVisible,
-    required this.isFollowing,
-    required this.isFollowingFeed,
-    required this.isLiked,
-    required this.onFollow,
-    required this.onLike,
-    required this.onComment,
-    required this.onShare,
-    super.key,
-  });
-
-  final OjsVideo video;
-  final bool isVisible;
+class VideoActionRail extends StatefulWidget {
+  final String creator;
+  final Color avatarColor;
   final bool isFollowing;
   final bool isFollowingFeed;
   final bool isLiked;
+  final int likes;
+  final int comments;
+  final int shares;
   final VoidCallback onFollow;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
+  final VoidCallback onMore;
+  final VoidCallback onAudioTap;
+  final VoidCallback onProfileTap;
+
+  const VideoActionRail({
+    super.key,
+    required this.creator,
+    required this.avatarColor,
+    required this.isFollowing,
+    required this.isFollowingFeed,
+    required this.isLiked,
+    required this.likes,
+    required this.comments,
+    required this.shares,
+    required this.onFollow,
+    required this.onLike,
+    required this.onComment,
+    required this.onShare,
+    required this.onMore,
+    required this.onAudioTap,
+    required this.onProfileTap,
+  });
 
   @override
-  State<OjsVideoPage> createState() => _OjsVideoPageState();
+  State<VideoActionRail> createState() => _VideoActionRailState();
 }
 
-class _OjsVideoPageState extends State<OjsVideoPage> {
-  VideoPlayerController? _controller;
-  bool _isLoading = true;
-  bool _hasError = false;
-  bool _captionExpanded = false;
+class _VideoActionRailState extends State<VideoActionRail>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _discAnim;
 
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
-  }
-
-  @override
-  void didUpdateWidget(covariant OjsVideoPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.video.videoUrl != widget.video.videoUrl) {
-      _controller?.dispose();
-      _controller = null;
-      _isLoading = true;
-      _hasError = false;
-      _initializeVideo();
-    } else if (oldWidget.isVisible != widget.isVisible) {
-      _setPlayback(widget.isVisible);
-    }
-  }
-
-  Future<void> _initializeVideo() async {
-    try {
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(widget.video.videoUrl),
-      );
-      _controller = controller;
-      controller.addListener(_handleControllerUpdate);
-      await controller.initialize().timeout(const Duration(seconds: 15));
-      await controller.setLooping(true);
-      if (!mounted || _controller != controller) return;
-      setState(() => _isLoading = false);
-      await _setPlayback(widget.isVisible);
-    } catch (error) {
-      debugPrint('Video failed to initialize: $error');
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-      });
-    }
-  }
-
-  void _handleControllerUpdate() {
-    final controller = _controller;
-    if (controller?.value.errorDescription != null && mounted && !_hasError) {
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-      });
-    }
-  }
-
-  Future<void> _setPlayback(bool shouldPlay) async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (shouldPlay) {
-      await controller.play();
-    } else {
-      await controller.pause();
-    }
-    if (mounted) setState(() {});
+    _discAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _discAnim.dispose();
     super.dispose();
-  }
-
-  Color _getAvatarColor() {
-    final dynamic colorVal = widget.video.avatarColor;
-    if (colorVal is Color) {
-      return colorVal;
-    } else if (colorVal is int) {
-      return Color(colorVal);
-    }
-    return const Color(0xFFF5B942);
-  }
-
-  void _openCreatorProfile() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CreatorProfileScreen(
-          creatorName: widget.video.creator,
-          avatarColor: _getAvatarColor(),
-        ),
-      ),
-    );
-  }
-
-  void _openAudioScreen() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AudioDetailScreen(
-          audioTitle: 'Original Sound - ${widget.video.creator}',
-          creatorName: widget.video.creator,
-        ),
-      ),
-    );
-  }
-
-  void _showVideoOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF13171D),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.bookmark_rounded, color: Color(0xFFF5B942)),
-                title: const Text('Save to Favorites', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Video saved to bookmarks! 🔖')),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.download_rounded, color: Colors.white70),
-                title: const Text('Download (1080p)', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Downloading video to gallery... 📥')),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70),
-                title: const Text('Not Interested', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('We will show fewer videos like this.')),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.flag_outlined, color: Colors.redAccent),
-                title: const Text('Report Content', style: TextStyle(color: Colors.redAccent)),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Report submitted for moderation.')),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    return ColoredBox(
-      color: const Color(0xff07090b),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Edge-to-Edge Full Screen Video Player
-          if (controller != null && controller.value.isInitialized)
-            GestureDetector(
-              onTap: () => _setPlayback(!controller.value.isPlaying),
-              child: SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller.value.size.width,
-                    height: controller.value.size.height,
-                    child: VideoPlayer(controller),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // 1. Avatar + Plus Badge
+        GestureDetector(
+          onTap: widget.onProfileTap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.bottomCenter,
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: widget.avatarColor,
+                child: Text(
+                  widget.creator.isNotEmpty ? widget.creator[0] : 'U',
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
                   ),
                 ),
               ),
-            )
-          else
-            Center(
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Color(0xFFF5B942), strokeWidth: 2)
-                  : const Icon(Icons.play_circle_outline_rounded, color: Colors.white54, size: 52),
-            ),
-
-          // 2. Linear Gradient Overlay
-          IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.35),
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.65),
-                  ],
-                  stops: const [0, 0.45, 1.0],
-                ),
-              ),
-            ),
-          ),
-
-          // 3. Caption & Creator Name
-          Positioned(
-            left: 16,
-            bottom: 24,
-            right: 86,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: _openCreatorProfile,
-                  child: Text(
-                    widget.video.creator,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.bold,
+              if (!widget.isFollowing)
+                Positioned(
+                  bottom: -6,
+                  child: GestureDetector(
+                    onTap: widget.onFollow,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF5B942),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add, size: 13, color: Colors.black),
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                GestureDetector(
-                  onTap: () => setState(() => _captionExpanded = !_captionExpanded),
-                  child: Text(
-                    widget.video.caption,
-                    maxLines: _captionExpanded ? 5 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
-                  ),
-                ),
-                if (!_captionExpanded && widget.video.caption.length > 60)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Text('...more', style: TextStyle(color: Color(0xFFF5B942), fontSize: 11.5)),
-                  ),
-              ],
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // 2. Like
+        _buildAction(
+          icon: widget.isLiked
+              ? Icons.favorite_rounded
+              : Icons.favorite_border_rounded,
+          count: widget.likes > 999
+              ? '${(widget.likes / 1000).toStringAsFixed(1)}k'
+              : '${widget.likes}',
+          color: widget.isLiked ? const Color(0xFFFF5252) : Colors.white,
+          onTap: widget.onLike,
+        ),
+
+        const SizedBox(height: 12),
+
+        // 3. Comment
+        _buildAction(
+          icon: Icons.mode_comment_outlined,
+          count: '${widget.comments}',
+          color: Colors.white,
+          onTap: widget.onComment,
+        ),
+
+        const SizedBox(height: 12),
+
+        // 4. Share
+        _buildAction(
+          icon: Icons.reply_rounded,
+          count: '${widget.shares}',
+          color: Colors.white,
+          onTap: widget.onShare,
+        ),
+
+        const SizedBox(height: 10),
+
+        // 5. More Options (Three dots)
+        GestureDetector(
+          onTap: widget.onMore,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 4),
+            child: Icon(Icons.more_horiz_rounded, color: Colors.white, size: 24),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // 6. Spinning Audio Disc (100% visible)
+        GestureDetector(
+          onTap: widget.onAudioTap,
+          child: RotationTransition(
+            turns: _discAnim,
+            child: Container(
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF222831),
+                border: Border.all(color: Colors.white24, width: 1.5),
+              ),
+              child: const CircleAvatar(
+                backgroundColor: Color(0xFFF5B942),
+                child: Icon(Icons.music_note_rounded, size: 14, color: Colors.black),
+              ),
             ),
           ),
+        ),
+      ],
+    );
+  }
 
-          // 4. Action Rail (Avatar, Like, Comment, Share, More, Music Disc)
-          Positioned(
-            right: 8,
-            bottom: 18,
-            child: VideoActionRail(
-              creator: widget.video.creator,
-              avatarColor: _getAvatarColor(),
-              isFollowing: widget.isFollowing,
-              isFollowingFeed: widget.isFollowingFeed,
-              isLiked: widget.isLiked,
-              likes: widget.video.likes + (widget.isLiked ? 1 : 0),
-              comments: widget.video.comments,
-              shares: widget.video.shares,
-              onFollow: widget.onFollow,
-              onLike: widget.onLike,
-              onComment: widget.onComment,
-              onShare: widget.onShare,
-              onMore: _showVideoOptions,
-              onAudioTap: _openAudioScreen,
-              onProfileTap: _openCreatorProfile,
+  Widget _buildAction({
+    required IconData icon,
+    required String count,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 2),
+          Text(
+            count,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
