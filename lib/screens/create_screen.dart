@@ -30,7 +30,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   Timer? _recordTimer;
   String _selectedSound = 'Original Sound';
 
-  // Settings: 1080p 60FPS Max & 3x3 Grid
+  // Camera Settings: Max 1080p 60FPS + 3x3 Grid
   bool _isGridEnabled = false;
   String _selectedResolution = '1080p 60fps';
   bool _autoSaveToGallery = false;
@@ -78,7 +78,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     if (_cameras.isEmpty) return;
     setState(() => _isCameraReady = false);
 
-    // Max Resolution 1080p (ResolutionPreset.veryHigh = 1080p)
+    // Resolution: 1080p Max High Fidelity
     ResolutionPreset preset = ResolutionPreset.veryHigh;
     if (_selectedResolution == '720p 30fps') {
       preset = ResolutionPreset.high;
@@ -91,11 +91,25 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       preset,
       enableAudio: true,
       fps: _selectedResolution.contains('60fps') ? 60 : 30,
+      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
     try {
       await _cameraController!.initialize();
-      await _cameraController!.setFlashMode(_flashMode);
+
+      // Sharp Focus & Exposure Settings for instant clarity
+      if (_cameraController!.value.isInitialized) {
+        try {
+          await _cameraController!.setFocusMode(FocusMode.auto);
+        } catch (_) {}
+        try {
+          await _cameraController!.setExposureMode(ExposureMode.auto);
+        } catch (_) {}
+        try {
+          await _cameraController!.setFlashMode(_flashMode);
+        } catch (_) {}
+      }
+
       if (mounted) {
         setState(() {
           _selectedCameraIndex = index;
@@ -154,17 +168,21 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
     if (_selectedMode == 1) {
+      // Photo Mode
       try {
         final XFile photo = await _cameraController!.takePicture();
         if (!mounted) return;
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: photo.path, isVideo: false)),
+          MaterialPageRoute(
+            builder: (context) => VideoEditorScreen(mediaPath: photo.path, isVideo: false),
+          ),
         );
       } catch (e) {
         debugPrint('Photo take error: $e');
       }
     } else {
+      // Video or Story Mode
       if (_isRecording) {
         try {
           final XFile video = await _cameraController!.stopVideoRecording();
@@ -176,7 +194,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           if (!mounted) return;
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: video.path, isVideo: true)),
+            MaterialPageRoute(
+              builder: (context) => VideoEditorScreen(mediaPath: video.path, isVideo: true),
+            ),
           );
         } catch (e) {
           debugPrint('Stop video error: $e');
@@ -208,7 +228,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       final isVideo = media.path.endsWith('.mp4') || media.path.endsWith('.mov');
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => VideoEditorScreen(mediaPath: media.path, isVideo: isVideo)),
+        MaterialPageRoute(
+          builder: (context) => VideoEditorScreen(mediaPath: media.path, isVideo: isVideo),
+        ),
       );
     }
   }
@@ -272,6 +294,28 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     });
   }
 
+  // Helper Widget for Clean HD Preview
+  Widget _buildCleanCameraPreview() {
+    final size = MediaQuery.of(context).size;
+    var scale = size.aspectRatio * _cameraController!.value.aspectRatio;
+    if (scale < 1) scale = 1 / scale;
+
+    Widget previewWidget = Transform.scale(
+      scale: scale,
+      child: Center(
+        child: CameraPreview(_cameraController!),
+      ),
+    );
+
+    if (_activeFilter.matrixFilter != null) {
+      return ColorFiltered(
+        colorFilter: _activeFilter.matrixFilter!,
+        child: previewWidget,
+      );
+    }
+    return previewWidget;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -279,21 +323,9 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Live Camera Preview With Color Filter
-          if (_isCameraReady && _cameraController != null)
-            ColorFiltered(
-              colorFilter: _activeFilter.matrixFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
-              child: SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _cameraController!.value.previewSize?.height ?? 1,
-                    height: _cameraController!.value.previewSize?.width ?? 1,
-                    child: CameraPreview(_cameraController!),
-                  ),
-                ),
-              ),
-            )
+          // 1. Crystal-Clear HD Camera Preview
+          if (_isCameraReady && _cameraController != null && _cameraController!.value.isInitialized)
+            _buildCleanCameraPreview()
           else
             const Center(child: CircularProgressIndicator(color: Color(0xFFF5B942))),
 
@@ -395,7 +427,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   onTap: _showSoundSheet,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white12),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -518,7 +554,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                 ),
                 const SizedBox(height: 12),
 
-                // Mode Selector
+                // Mode Selector (VIDEO | PHOTO | STORY)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -537,6 +573,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Upload from Gallery
                       GestureDetector(
                         onTap: _pickFromGallery,
                         child: Column(
@@ -551,6 +588,8 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           ],
                         ),
                       ),
+
+                      // Central Shutter Button
                       GestureDetector(
                         onTap: _onCaptureTap,
                         child: Stack(
@@ -578,6 +617,8 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           ],
                         ),
                       ),
+
+                      // Camera Flip
                       GestureDetector(
                         onTap: _flipCamera,
                         child: Column(
