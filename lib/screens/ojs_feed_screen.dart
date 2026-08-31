@@ -46,7 +46,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   String _activeCategoryFilter = 'All';
 
   bool _isCommentsOpen = false;
-  final TextEditingController _commentInputController = TextEditingController();
   final List<CommentItem> _commentsList = [
     CommentItem(
       id: '1',
@@ -69,7 +68,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     _horizontalFeedController.dispose();
     _forYouController.dispose();
     _followingController.dispose();
-    _commentInputController.dispose();
     super.dispose();
   }
 
@@ -106,7 +104,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  // Top Right Three-Dots: Video Feed Filters & Channel Categories
   void _showTopFeedFilters() {
     final categories = ['All Feed', '🔥 Trending', '🎬 Cinematic', '🌿 Vindhya Roots', '🎵 High Bass Beats', '🎭 Comedy'];
     showModalBottomSheet(
@@ -174,7 +171,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Edge-to-Edge Full Screen PageView
+            // Edge-to-Edge PageView
             PageView(
               controller: _horizontalFeedController,
               physics: _isCommentsOpen
@@ -187,7 +184,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               ],
             ),
 
-            // 2. Top Bar (Tabs + Filter Dots)
+            // Top Bar
             Positioned(
               top: 0,
               left: 0,
@@ -229,7 +226,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               ),
             ),
 
-            // 3. Comments Sheet (Overlay)
+            // Comments Bottom Sheet
             if (_isCommentsOpen)
               Positioned(
                 bottom: 0,
