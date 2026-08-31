@@ -4,6 +4,8 @@ import 'package:video_player/video_player.dart';
 import 'post_preview_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
 import '../widgets/filter_store_sheet.dart';
+import '../widgets/voiceover_mixer_sheet.dart';
+import '../widgets/stickers_tray_sheet.dart';
 
 class VideoEditorScreen extends StatefulWidget {
   final String mediaPath;
@@ -25,8 +27,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   String _selectedMusic = 'Original Sound';
   OjasFilter _appliedFilter = kAllOjasFilters[0];
   final List<String> _textOverlays = [];
+  final List<String> _stickerOverlays = [];
 
-  // Advanced Editor Modal State
+  double _origVol = 1.0;
+  double _musVol = 0.8;
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
   double _videoSpeed = 1.0;
@@ -50,7 +54,6 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     super.dispose();
   }
 
-  // 1. Text Overlay Tool
   void _addTextOverlay() {
     final TextEditingController textCtrl = TextEditingController();
     showDialog(
@@ -63,17 +66,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             controller: textCtrl,
             autofocus: true,
             style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            decoration: const InputDecoration(
-              hintText: 'Type something...',
-              hintStyle: TextStyle(color: Colors.white38),
-              border: InputBorder.none,
-            ),
+            decoration: const InputDecoration(hintText: 'Type something...', hintStyle: TextStyle(color: Colors.white38), border: InputBorder.none),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF5B942)),
               onPressed: () {
@@ -90,29 +86,44 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     );
   }
 
-  // 2. Audio & Music Selector
   void _openMusicSelector() {
     SoundPickerSheet.show(
       context,
       currentSound: _selectedMusic,
-      onSoundSelected: (music) {
-        setState(() => _selectedMusic = music);
-      },
+      onSoundSelected: (music) => setState(() => _selectedMusic = music),
     );
   }
 
-  // 3. Filters Sheet
   void _openFilters() {
     FilterStoreSheet.show(
       context,
       selectedFilterId: _appliedFilter.id,
-      onFilterApplied: (filter) {
-        setState(() => _appliedFilter = filter);
+      onFilterApplied: (filter) => setState(() => _appliedFilter = filter),
+    );
+  }
+
+  void _openVoiceoverMixer() {
+    VoiceoverMixerSheet.show(
+      context,
+      originalVolume: _origVol,
+      musicVolume: _musVol,
+      onMixerChanged: (orig, mus, effect) {
+        setState(() {
+          _origVol = orig;
+          _musVol = mus;
+          _videoController?.setVolume(_origVol);
+        });
       },
     );
   }
 
-  // 4. Advanced Timeline Editor (CapCut/TikTok Studio Style)
+  void _openStickersTray() {
+    StickersTraySheet.show(
+      context,
+      onStickerSelected: (stk) => setState(() => _stickerOverlays.add(stk)),
+    );
+  }
+
   void _openAdvancedEditorModal() {
     showModalBottomSheet(
       context: context,
@@ -128,24 +139,17 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-                  ),
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Advanced Video Studio', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                      IconButton(
-                        icon: const Icon(Icons.check_circle_rounded, color: Color(0xFFF5B942), size: 28),
-                        onPressed: () => Navigator.pop(context),
-                      ),
+                      IconButton(icon: const Icon(Icons.check_circle_rounded, color: Color(0xFFF5B942), size: 28), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
                   const Divider(color: Colors.white10),
                   const SizedBox(height: 10),
-
-                  // Trim Timeline
                   const Text('Trim & Cut Timeline', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Container(
@@ -169,12 +173,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                     },
                   ),
                   const SizedBox(height: 10),
-
-                  // Speed Control Curve
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Playback Speed Curve', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Text('Playback Speed', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
                       Text('${_videoSpeed}x', style: const TextStyle(color: Color(0xFFF5B942), fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -208,17 +210,11 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
     );
   }
 
-  // 5. Next to Post Preview
   void _goToPostPreview() {
     _videoController?.pause();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => PostPreviewScreen(
-          mediaPath: widget.mediaPath,
-          isVideo: widget.isVideo,
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => PostPreviewScreen(mediaPath: widget.mediaPath, isVideo: widget.isVideo)),
     );
   }
 
@@ -229,16 +225,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Media Preview Area (With Filter Applied)
+          // Media Preview
           Center(
             child: ColorFiltered(
               colorFilter: _appliedFilter.matrixFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
               child: widget.isVideo
                   ? (_videoController != null && _videoController!.value.isInitialized
-                      ? AspectRatio(
-                          aspectRatio: _videoController!.value.aspectRatio,
-                          child: VideoPlayer(_videoController!),
-                        )
+                      ? AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!))
                       : const CircularProgressIndicator(color: Color(0xFFF5B942)))
                   : (widget.mediaPath.isNotEmpty
                       ? Image.file(File(widget.mediaPath), fit: BoxFit.contain)
@@ -246,21 +239,31 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
 
-          // 2. Text Overlays on Screen
+          // Text Overlays
           ..._textOverlays.map((text) {
             return Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-                child: Text(
-                  text,
-                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
-                ),
+                child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
               ),
             );
           }),
 
-          // 3. Top Action Bar (Back, Sound Selector, Mute)
+          // Sticker Overlays
+          ..._stickerOverlays.map((stk) {
+            return Positioned(
+              top: 200,
+              left: 50,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF5B942))),
+                child: Text(stk, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            );
+          }),
+
+          // Top Action Bar
           Positioned(
             top: 48,
             left: 16,
@@ -270,16 +273,13 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor: Colors.black45,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    onPressed: () => Navigator.pop(context),
-                  ),
+                  child: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18), onPressed: () => Navigator.pop(context)),
                 ),
                 GestureDetector(
                   onTap: _openMusicSelector,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
+                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -301,7 +301,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                       onPressed: () {
                         setState(() {
                           _isMuted = !_isMuted;
-                          _videoController?.setVolume(_isMuted ? 0.0 : 1.0);
+                          _videoController?.setVolume(_isMuted ? 0.0 : _origVol);
                         });
                       },
                     ),
@@ -312,7 +312,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
 
-          // 4. Right Quick Editing Rail (Text, Filters, Voiceover, Stickers)
+          // Right Quick Editing Rail
           Positioned(
             top: 115,
             right: 14,
@@ -325,26 +325,21 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                   const SizedBox(height: 14),
                   _buildEditorTool(icon: Icons.auto_awesome_rounded, label: 'Filters', onTap: _openFilters),
                   const SizedBox(height: 14),
-                  _buildEditorTool(icon: Icons.mic_rounded, label: 'Voiceover', onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voiceover recorder ready! 🎙️')));
-                  }),
+                  _buildEditorTool(icon: Icons.mic_rounded, label: 'Audio Mix', onTap: _openVoiceoverMixer),
                   const SizedBox(height: 14),
-                  _buildEditorTool(icon: Icons.sticky_note_2_outlined, label: 'Stickers', onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stickers tray opened! 🎨')));
-                  }),
+                  _buildEditorTool(icon: Icons.sticky_note_2_outlined, label: 'Stickers', onTap: _openStickersTray),
                 ],
               ),
             ),
           ),
 
-          // 5. Bottom Controls (Advanced Edit Video + Next Button)
+          // Bottom Controls
           Positioned(
             bottom: 24,
             left: 16,
             right: 16,
             child: Row(
               children: [
-                // Advanced Edit Video Button
                 if (widget.isVideo)
                   Expanded(
                     flex: 4,
@@ -363,8 +358,6 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                 else
                   const Spacer(),
                 const SizedBox(width: 12),
-
-                // Next Button (Redirection to Post Screen)
                 Expanded(
                   flex: 3,
                   child: ElevatedButton.icon(
