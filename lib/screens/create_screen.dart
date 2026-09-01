@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'video_editor_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
+import '../widgets/audio_trimmer_sheet.dart';
 import '../widgets/filter_store_sheet.dart';
 import '../widgets/camera_settings_sheet.dart';
 
@@ -29,6 +30,8 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   int _recordingDuration = 0;
   Timer? _recordTimer;
   String _selectedSound = 'Original Sound';
+  double _soundStartSec = 0.0;
+  double _soundDurationSec = 15.0;
 
   // Camera Settings: Max 1080p 60FPS + 3x3 Grid
   bool _isGridEnabled = false;
@@ -78,7 +81,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     if (_cameras.isEmpty) return;
     setState(() => _isCameraReady = false);
 
-    // Resolution: 1080p Max High Fidelity
     ResolutionPreset preset = ResolutionPreset.veryHigh;
     if (_selectedResolution == '720p 30fps') {
       preset = ResolutionPreset.high;
@@ -97,7 +99,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     try {
       await _cameraController!.initialize();
 
-      // Sharp Focus & Exposure Settings for instant clarity
       if (_cameraController!.value.isInitialized) {
         try {
           await _cameraController!.setFocusMode(FocusMode.auto);
@@ -236,10 +237,17 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _showSoundSheet() {
-    SoundPickerSheet.show(
+    AudioTrimmerSheet.show(
       context,
-      currentSound: _selectedSound,
-      onSoundSelected: (newSound) => setState(() => _selectedSound = newSound),
+      soundTitle: _selectedSound == 'Original Sound' ? 'OJAS Audio Track' : _selectedSound,
+      artist: 'OJAS Sound Lab',
+      onSoundSelected: (start, dur) {
+        setState(() {
+          _soundStartSec = start;
+          _soundDurationSec = dur;
+          _selectedSound = 'Sound (${dur.toInt()}s)';
+        });
+      },
     );
   }
 
@@ -294,7 +302,6 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     });
   }
 
-  // Helper Widget for Clean HD Preview
   Widget _buildCleanCameraPreview() {
     final size = MediaQuery.of(context).size;
     var scale = size.aspectRatio * _cameraController!.value.aspectRatio;
@@ -329,7 +336,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
           else
             const Center(child: CircularProgressIndicator(color: Color(0xFFF5B942))),
 
-          // 2. 3x3 Grid Overlay (Settings Feature)
+          // 2. 3x3 Grid Overlay
           if (_isGridEnabled)
             IgnorePointer(
               child: Column(
@@ -439,7 +446,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                         const SizedBox(width: 6),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 140),
-                          child: Text(_selectedSound, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            _selectedSound,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ],
                     ),
@@ -518,7 +529,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: 15,
+                    itemCount: kAllOjasFilters.length > 15 ? 15 : kAllOjasFilters.length,
                     itemBuilder: (context, index) {
                       final filter = kAllOjasFilters[index];
                       final isSelected = _activeFilter.id == filter.id;
@@ -554,7 +565,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                 ),
                 const SizedBox(height: 12),
 
-                // Mode Selector (VIDEO | PHOTO | STORY)
+                // Mode Selector
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -580,7 +591,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
                               child: const Icon(Icons.photo_library_outlined, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
@@ -625,7 +640,11 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                           children: [
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
+                              decoration: BoxDecoration(
+                                color: Colors.black45,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white24),
+                              ),
                               child: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 24),
                             ),
                             const SizedBox(height: 4),
