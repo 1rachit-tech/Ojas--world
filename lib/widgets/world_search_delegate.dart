@@ -20,14 +20,14 @@ class WorldSearchSheet extends StatefulWidget {
 
 class _WorldSearchSheetState extends State<WorldSearchSheet> {
   late TextEditingController _searchController;
-  int _selectedFilterTab = 0; // 0: Top, 1: Accounts, 2: Audio, 3: Tags, 4: Places
+  int _selectedFilterTab = 0;
 
   final List<String> _tabs = ['Top', 'Creators', 'Audio', 'Tags', 'Places'];
 
   final List<Map<String, dynamic>> _mockResults = [
     {'type': 'creator', 'name': 'Maya Chen', 'handle': '@mayamakes', 'followers': '1.2M', 'color': const Color(0xFFE5A87B)},
     {'type': 'creator', 'name': 'Rohan Mehta', 'handle': '@rohanbuilds', 'followers': '850K', 'color': const Color(0xFF93C5FD)},
-    {'type': 'audio', 'name': 'Vindhya Beats - Folk Fusion', 'author': 'OJAS Originals', 'uses': '240K videos', 'color': const Color(0xFFF5B942)},
+    {'type': 'audio', 'name': 'Vindhya Beats - Folk Fusion', 'author': 'OJAS Originals', 'uses': '240K videos', 'color': const Color(0xFF111827)},
     {'type': 'tag', 'name': '#OJASCreator', 'count': '4.5M posts', 'color': const Color(0xFF10B981)},
     {'type': 'place', 'name': 'Satna, Madhya Pradesh', 'count': '128K posts', 'color': const Color(0xFFEC4899)},
   ];
@@ -56,16 +56,16 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.90,
       decoration: const BoxDecoration(
-        color: Color(0xFF0D1117),
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
           const SizedBox(height: 10),
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xFFE5E7EB), borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 12),
 
-          // Search Header with Voice Button
+          // Search Bar & Cancel
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -73,21 +73,21 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
                 Expanded(
                   child: Container(
                     height: 44,
-                    decoration: BoxDecoration(color: const Color(0xFF161B22), borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(14)),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Row(
                       children: [
-                        const Icon(Icons.search_rounded, color: Color(0xFFF5B942), size: 20),
+                        const Icon(Icons.search_rounded, color: Color(0xFF6B7280), size: 20),
                         const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _searchController,
                             autofocus: true,
-                            style: const TextStyle(color: Colors.white, fontSize: 14),
+                            style: const TextStyle(color: Color(0xFF111827), fontSize: 14),
                             onChanged: (_) => setState(() {}),
                             decoration: const InputDecoration(
                               hintText: 'Search creators, audio, tags...',
-                              hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                              hintStyle: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
                               border: InputBorder.none,
                             ),
                           ),
@@ -95,28 +95,16 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
                         if (_searchController.text.isNotEmpty)
                           GestureDetector(
                             onTap: () => setState(() => _searchController.clear()),
-                            child: const Icon(Icons.close_rounded, color: Colors.white54, size: 18),
+                            child: const Icon(Icons.close_rounded, color: Color(0xFF6B7280), size: 18),
                           ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listening... Speak now 🎙️')));
-                  },
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: const Color(0xFF161B22), borderRadius: BorderRadius.circular(14)),
-                    child: const Icon(Icons.mic_rounded, color: Color(0xFFF5B942), size: 22),
-                  ),
-                ),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -124,9 +112,9 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
 
           const SizedBox(height: 10),
 
-          // Filter Sub-Tabs
+          // Sub Filter Chips
           SizedBox(
-            height: 36,
+            height: 34,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -138,10 +126,10 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
                   child: ChoiceChip(
                     label: Text(_tabs[index]),
                     selected: isSelected,
-                    selectedColor: const Color(0xFFF5B942),
-                    backgroundColor: const Color(0xFF161B22),
+                    selectedColor: const Color(0xFF111827),
+                    backgroundColor: const Color(0xFFF3F4F6),
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white70,
+                      color: isSelected ? Colors.white : const Color(0xFF4B5563),
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                       fontSize: 12,
                     ),
@@ -154,12 +142,12 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
           ),
 
           const SizedBox(height: 8),
-          const Divider(color: Colors.white10, height: 1),
+          const Divider(color: Color(0xFFF3F4F6), height: 1),
 
-          // Search Results
+          // Search Results List
           Expanded(
             child: filtered.isEmpty
-                ? const Center(child: Text('No matching results found in World', style: TextStyle(color: Colors.white38)))
+                ? const Center(child: Text('No results found', style: TextStyle(color: Color(0xFF9CA3AF))))
                 : ListView.builder(
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
@@ -171,11 +159,10 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
                           leading: CircleAvatar(
                             radius: 20,
                             backgroundColor: item['color'] as Color,
-                            child: Text((item['name'] as String)[0], style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                            child: Text((item['name'] as String)[0], style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
                           ),
-                          title: Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text('${item['handle']} · ${item['followers']} followers', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                          trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 14),
+                          title: Text(item['name'] as String, style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: Text('${item['handle']} · ${item['followers']} followers', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
                           onTap: () {
                             Navigator.pop(context);
                             Navigator.push(
@@ -189,34 +176,16 @@ class _WorldSearchSheetState extends State<WorldSearchSheet> {
                             );
                           },
                         );
-                      } else if (type == 'audio') {
-                        return ListTile(
-                          leading: Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(color: item['color'] as Color, borderRadius: BorderRadius.circular(10)),
-                            child: const Icon(Icons.music_note_rounded, color: Colors.black87),
-                          ),
-                          title: Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text('${item['author']} · ${item['uses']}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                          trailing: const Icon(Icons.play_circle_fill_rounded, color: Color(0xFFF5B942), size: 28),
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Playing ${item['name']}...')));
-                          },
-                        );
                       } else {
                         return ListTile(
                           leading: CircleAvatar(
                             radius: 18,
-                            backgroundColor: const Color(0xFF161B22),
-                            child: Icon(type == 'tag' ? Icons.tag_rounded : Icons.place_rounded, color: const Color(0xFFF5B942), size: 18),
+                            backgroundColor: const Color(0xFFF3F4F6),
+                            child: Icon(type == 'tag' ? Icons.tag_rounded : (type == 'audio' ? Icons.music_note_rounded : Icons.place_rounded), color: const Color(0xFF111827), size: 18),
                           ),
-                          title: Text(item['name'] as String, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text(item['count'] as String, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Filtering posts for ${item['name']}')));
-                          },
+                          title: Text(item['name'] as String, style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w600, fontSize: 14)),
+                          subtitle: Text(item['uses'] as String? ?? item['count'] as String? ?? '', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+                          onTap: () => Navigator.pop(context),
                         );
                       }
                     },
