@@ -83,13 +83,11 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade300,
+              color: const Color(0xFFE5E7EB),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 12),
-
-          // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -104,21 +102,19 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                  icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
           const Divider(color: Color(0xFFF3F4F6), height: 1),
-
-          // Comments List
           Expanded(
             child: _comments.isEmpty
                 ? const Center(
                     child: Text(
                       'No comments yet. Be the first to share!',
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
                     ),
                   )
                 : ListView.builder(
@@ -132,11 +128,11 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                           children: [
                             const CircleAvatar(
                               radius: 16,
-                              backgroundColor: Color(0xFFF5B942),
+                              backgroundColor: Color(0xFFF3F4F6),
                               child: Text(
                                 'U',
                                 style: TextStyle(
-                                  color: Colors.black,
+                                  color: Color(0xFF111827),
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
@@ -172,31 +168,6 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                     },
                   ),
           ),
-
-          // Emoji Selector Row
-          Container(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: ['❤️', '🔥', '👏', '😍', '🙌', '💯', '✨', '⚡'].map((emoji) {
-                return GestureDetector(
-                  onTap: () {
-                    _commentCtrl.text += emoji;
-                    _commentCtrl.selection = TextSelection.fromPosition(
-                      TextPosition(offset: _commentCtrl.text.length),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(emoji, style: const TextStyle(fontSize: 20)),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-
-          // Input Bar
           Container(
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
             decoration: const BoxDecoration(
@@ -216,8 +187,8 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                       controller: _commentCtrl,
                       style: const TextStyle(color: Color(0xFF111827), fontSize: 13.5),
                       decoration: const InputDecoration(
-                        hintText: 'Add a community comment...',
-                        hintStyle: TextStyle(color: Colors.grey, fontSize: 13),
+                        hintText: 'Add a comment...',
+                        hintStyle: TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
                         border: InputBorder.none,
                       ),
                     ),
