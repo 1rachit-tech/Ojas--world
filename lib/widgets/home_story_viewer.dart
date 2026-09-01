@@ -64,7 +64,6 @@ class _HomeStoryViewerState extends State<HomeStoryViewer>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Background Canvas
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -117,8 +116,6 @@ class _HomeStoryViewerState extends State<HomeStoryViewer>
                 ),
               ),
             ),
-
-            // Top Progress Bar
             Positioned(
               top: 12,
               left: 12,
@@ -131,17 +128,13 @@ class _HomeStoryViewerState extends State<HomeStoryViewer>
                     child: LinearProgressIndicator(
                       value: _progressController.value,
                       backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Color(0xFFF5B942),
-                      ),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                       minHeight: 3,
                     ),
                   );
                 },
               ),
             ),
-
-            // Top Header
             Positioned(
               top: 24,
               left: 16,
