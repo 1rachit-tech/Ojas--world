@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/ojs_video.dart';
 import '../widgets/ojs_video_page.dart';
 import '../widgets/share_bottom_sheet.dart';
+
+// 🚀 जोड़े गए 2 आवश्यक इंजन (बैटरी और डेटा बचाने के लिए)
+import '../services/video_engine_service.dart';
+import '../widgets/ojas_scroll_physics.dart';
 
 class CommentItem {
   final String id;
@@ -65,6 +70,15 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // पहली बार ऐप खुलते ही अगले वीडियो लोड होने लगें
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prefetchUpcoming(_forYouCurrentIndex, temporaryOjsVideos);
+    });
+  }
+
+  @override
   void dispose() {
     _horizontalFeedController.dispose();
     _forYouController.dispose();
@@ -72,11 +86,26 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     super.dispose();
   }
 
+  // 🚀 नया सुपर-फास्ट प्री-फेच लॉजिक (0-Second Buffering)
+  void _prefetchUpcoming(int currentIndex, List<OjsVideo> feedList) {
+    final nextUrls = <String>[];
+    for (int i = currentIndex + 1; i <= currentIndex + 2; i++) {
+      if (i < feedList.length) {
+        nextUrls.add(feedList[i].videoUrl);
+      }
+    }
+    if (nextUrls.isNotEmpty) {
+      VideoEngineService.instance.prefetchNextVideos(nextUrls);
+    }
+  }
+
   void _toggleComments() {
+    HapticFeedback.lightImpact();
     setState(() => _isCommentsOpen = !_isCommentsOpen);
   }
 
   void _toggleFollowCreator(String creator) {
+    HapticFeedback.selectionClick();
     setState(() {
       if (_followedCreators.contains(creator)) {
         _followedCreators.remove(creator);
@@ -87,6 +116,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   void _toggleLikeVideo(String videoId) {
+    HapticFeedback.mediumImpact();
     setState(() {
       if (_likedVideos.contains(videoId)) {
         _likedVideos.remove(videoId);
@@ -97,16 +127,17 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   void _toggleSaveVideo(String videoId) {
+    HapticFeedback.selectionClick();
     setState(() {
       if (_savedVideos.contains(videoId)) {
         _savedVideos.remove(videoId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed from Saved')),
+          const SnackBar(content: Text('Removed from Saved'), duration: Duration(seconds: 1)),
         );
       } else {
         _savedVideos.add(videoId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved 🔖')),
+          const SnackBar(content: Text('Saved 🔖'), duration: Duration(seconds: 1)),
         );
       }
     });
@@ -114,9 +145,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   void _selectFeed(int index) {
     if (_currentSelectedFeed == index) return;
+    HapticFeedback.selectionClick();
     _horizontalFeedController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
   }
@@ -155,7 +187,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                       setState(() => _activeCategoryFilter = cat);
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Filtered by $cat 🎬')),
+                        SnackBar(content: Text('Filtered by $cat 🎬'), duration: const Duration(seconds: 1)),
                       );
                     },
                   );
@@ -176,14 +208,14 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
     return Theme(
       data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xff07090b),
+        scaffoldBackgroundColor: Colors.black, // 🚀 Pure Black for AMOLED
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xfff5b942),
           brightness: Brightness.dark,
         ),
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xff07090b),
+        backgroundColor: Colors.black, // 🚀 Saves Battery & Prevents Heating
         resizeToAvoidBottomInset: false,
         body: Stack(
           fit: StackFit.expand,
@@ -192,7 +224,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               controller: _horizontalFeedController,
               physics: _isCommentsOpen
                   ? const NeverScrollableScrollPhysics()
-                  : const PageScrollPhysics(),
+                  : const OjasZeroJankScrollPhysics(), // 🚀 120 FPS Horizontal Swipe
               onPageChanged: (index) => setState(() => _currentSelectedFeed = index),
               children: [
                 _buildForYouFeed(),
@@ -260,9 +292,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     return PageView.builder(
       controller: _forYouController,
       scrollDirection: Axis.vertical,
-      physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+      physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const OjasZeroJankScrollPhysics(), // 🚀 120 FPS Vertical Swipe
       itemCount: videos.length,
-      onPageChanged: (index) => setState(() => _forYouCurrentIndex = index),
+      onPageChanged: (index) {
+        setState(() => _forYouCurrentIndex = index);
+        _prefetchUpcoming(index, videos); // 🚀 Next Video 0-Buffer Preload
+      },
       itemBuilder: (context, index) {
         final video = videos[index];
         final bool isVideoVisible = widget.isActive &&
@@ -315,9 +350,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     return PageView.builder(
       controller: _followingController,
       scrollDirection: Axis.vertical,
-      physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+      physics: _isCommentsOpen ? const NeverScrollableScrollPhysics() : const OjasZeroJankScrollPhysics(), // 🚀 120 FPS
       itemCount: followingVideos.length,
-      onPageChanged: (index) => setState(() => _followingCurrentIndex = index),
+      onPageChanged: (index) {
+        setState(() => _followingCurrentIndex = index);
+        _prefetchUpcoming(index, followingVideos); // 🚀 0-Buffer Data Saver
+      },
       itemBuilder: (context, index) {
         final video = followingVideos[index];
         final bool isVideoVisible = widget.isActive &&
@@ -345,9 +383,16 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   Widget _buildCommentSheet() {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF13171D),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: const Color(0xFF13171D),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ) // 🚀 Smooth Depth Shadow
+        ],
       ),
       child: Column(
         children: [
@@ -364,6 +409,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           const Divider(height: 1, color: Colors.white10),
           Expanded(
             child: ListView.builder(
+              physics: const BouncingScrollPhysics(), // 🚀 Premium iOS style bounce
               itemCount: _commentsList.length,
               itemBuilder: (context, index) {
                 final c = _commentsList[index];
@@ -391,6 +437,7 @@ class _FeedTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque, // 🚀 Better Touch Response
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Column(
@@ -401,6 +448,7 @@ class _FeedTab extends StatelessWidget {
                 color: isActive ? Colors.white : Colors.white54,
                 fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
                 fontSize: 14.5,
+                shadows: const [Shadow(color: Colors.black54, blurRadius: 4)], // 🚀 Text readability on bright videos
               ),
             ),
             const SizedBox(height: 6),
