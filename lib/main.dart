@@ -165,12 +165,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // 0: Home (AppBar Show), 1: OJS (Hide), 2: Create (Hide), 3: World (Hide), 4: You (Hide - Uses its own TabBar)
-    final hideAppBar =
-        _selectedTab == 1 ||
-        _selectedTab == 2 ||
-        _selectedTab == 3 ||
-        _selectedTab == 4;
+    // 0: Home (AppBar Show), 1: OJS (Hide), 2: Create (Hide), 3: World (Hide), 4: You (Hide)
+    final hideAppBar = _selectedTab != 0;
+    final isOjsDark = _selectedTab == 1;
 
     return PopScope<void>(
       canPop: _selectedTab == 0,
@@ -183,8 +180,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
         fit: StackFit.expand,
         children: [
           Scaffold(
-            extendBody: _selectedTab == 1,
-            backgroundColor: const Color(0xFFFAFAFA),
+            extendBody: isOjsDark,
+            backgroundColor: isOjsDark ? Colors.black : const Color(0xFFFAFAFA),
             appBar: hideAppBar
                 ? null
                 : AppBar(
@@ -276,7 +273,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 );
               },
             ),
-            bottomNavigationBar: _buildNavigationBar(),
+            bottomNavigationBar: _buildNavigationBar(isDark: isOjsDark),
           ),
           if (_authGateLoading) _buildAuthLoadingOverlay(),
         ],
@@ -343,9 +340,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       },
       onError: (message) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       },
     );
   }
@@ -406,15 +401,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
         40,
       ),
       children: [
-        const SizedBox(
-          height: 0,
-          child: Opacity(
-            opacity: 0,
-            child: Text(
-              'GOOD MORNING, AKASH\nYour creative space\nTrending today',
-            ),
-          ),
-        ),
         Container(
           height: 104,
           color: Colors.transparent,
@@ -430,7 +416,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
               return GestureDetector(
                 onTap: () {
                   if (isUser) {
-                    setState(() => _selectedTab = 2);
+                    _requestCreate();
                   } else {
                     HomeStoryViewer.show(
                       context,
@@ -785,7 +771,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
-  Widget _buildNavigationBar() {
+  Widget _buildNavigationBar({required bool isDark}) {
     const items = [
       (Icons.home_outlined, Icons.home_rounded, 'Home'),
       (Icons.smart_display_outlined, Icons.smart_display_rounded, 'OJS'),
@@ -793,6 +779,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       (Icons.explore_outlined, Icons.explore, 'World'),
       (Icons.person_outline_rounded, Icons.person_rounded, 'You'),
     ];
+
     return NavigationBar(
       selectedIndex: _selectedTab,
       onDestinationSelected: (index) {
@@ -803,8 +790,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
         }
         setState(() => _selectedTab = index);
       },
-      backgroundColor: Colors.white,
-      indicatorColor: const Color(0xFFF3F4F6),
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      indicatorColor: isDark ? Colors.white12 : const Color(0xFFF3F4F6),
       elevation: 0,
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
@@ -813,11 +800,15 @@ class _OjasHomePageState extends State<OjasHomePage> {
       destinations: items
           .map(
             (item) => NavigationDestination(
-              icon: Icon(item.$1, size: 28, color: const Color(0xFF6B7280)),
+              icon: Icon(
+                item.$1,
+                size: 28,
+                color: isDark ? Colors.white60 : const Color(0xFF6B7280),
+              ),
               selectedIcon: Icon(
                 item.$2,
                 size: 28,
-                color: const Color(0xFF111827),
+                color: isDark ? Colors.white : const Color(0xFF111827),
               ),
               label: item.$3,
               tooltip: item.$3,
