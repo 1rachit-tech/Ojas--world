@@ -29,19 +29,8 @@ Future<void> main() async {
   } catch (error, stackTrace) {
     debugPrint('FIREBASE FAILED: $error');
     debugPrint(stackTrace.toString());
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stackTrace,
-        library: 'Firebase initialization',
-        context: ErrorSummary(
-          'Firebase could not initialize in this environment. Continuing without Firebase for web preview.',
-        ),
-      ),
-    );
   }
 
-  debugPrint('ABOUT TO CALL runApp');
   runApp(const OjasApp());
 }
 
@@ -60,7 +49,7 @@ class OjasApp extends StatelessWidget {
           seedColor: const Color(0xFF111827),
           brightness: Brightness.light,
         ),
-        fontFamily: 'Arial',
+        fontFamily: 'sans-serif',
         useMaterial3: true,
       ),
       home: const OjasHomePage(),
@@ -78,6 +67,7 @@ class OjasHomePage extends StatefulWidget {
 class _OjasHomePageState extends State<OjasHomePage> {
   int _selectedTab = 0;
   bool _authGateLoading = false;
+  final Set<int> _likedPosts = <int>{};
 
   final List<Map<String, dynamic>> _stories = [
     {
@@ -129,7 +119,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
       'imageColor': const Color(0xFFB46A42),
       'likes': 248,
       'comments': 124,
-      'isLiked': false,
       'isSaved': false,
       'commentsList': <String>[
         'Pure magic in this frame! ✨',
@@ -148,7 +137,6 @@ class _OjasHomePageState extends State<OjasHomePage> {
       'imageColor': const Color(0xFF4A6C72),
       'likes': 186,
       'comments': 94,
-      'isLiked': true,
       'isSaved': true,
       'commentsList': <String>[
         'Those low frequencies hit hard! 🔥',
@@ -159,7 +147,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final hideAppBar = _selectedTab == 1 || _selectedTab == 2 || _selectedTab == 4;
+    // Hide AppBar for Fullscreen Video Feed (Tab 1), Studio (Tab 2), and Explore (Tab 3)
+    final hideAppBar = _selectedTab == 1 || _selectedTab == 2 || _selectedTab == 3;
 
     return PopScope<void>(
       canPop: _selectedTab == 0,
@@ -263,7 +252,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
-  // --- Real Profile Picture Logic ---
+  // --- Dynamic User Avatar ---
   Widget _buildDynamicUserAvatar({required double radius}) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
@@ -273,11 +262,11 @@ class _OjasHomePageState extends State<OjasHomePage> {
         if (user == null) {
           return CircleAvatar(
             radius: radius,
-            backgroundColor: const Color(0xFFF5B942),
+            backgroundColor: const Color(0xFF111827),
             child: Text(
               'AK',
               style: TextStyle(
-                color: const Color(0xFF111827),
+                color: Colors.white,
                 fontSize: radius * 0.8,
                 fontWeight: FontWeight.bold,
               ),
@@ -288,7 +277,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
         if (user.photoURL != null && user.photoURL!.isNotEmpty) {
           return CircleAvatar(
             radius: radius,
-            backgroundColor: const Color(0xFFF5B942),
+            backgroundColor: const Color(0xFF111827),
             backgroundImage: NetworkImage(user.photoURL!),
           );
         }
@@ -302,11 +291,11 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
         return CircleAvatar(
           radius: radius,
-          backgroundColor: const Color(0xFFF5B942),
+          backgroundColor: const Color(0xFF111827),
           child: Text(
             initial,
             style: TextStyle(
-              color: const Color(0xFF111827),
+              color: Colors.white,
               fontSize: radius * 0.8,
               fontWeight: FontWeight.bold,
             ),
@@ -327,20 +316,11 @@ class _OjasHomePageState extends State<OjasHomePage> {
       onLoadingChanged: (loading) {
         if (mounted) setState(() => _authGateLoading = loading);
       },
-      onError: _showAuthError,
+      onError: (message) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      },
     );
-  }
-
-  void _showAuthError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          action: SnackBarAction(label: 'Retry', onPressed: _requestCreate),
-        ),
-      );
   }
 
   Widget _buildAuthLoadingOverlay() {
@@ -354,23 +334,23 @@ class _OjasHomePageState extends State<OjasHomePage> {
           ),
           Center(
             child: Card(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
+              color: Colors.white,
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 22, vertical: 18),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF111827)),
                     ),
-                    const SizedBox(width: 14),
+                    SizedBox(width: 14),
                     Text(
                       'Checking your profile...',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF111827)),
                     ),
                   ],
                 ),
@@ -504,9 +484,10 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
-  // --- Clean Minimal White Feed ---
+  // --- Clean Minimal 120Hz White Feed ---
   Widget _buildFeed(BuildContext context, bool isDesktop) {
     return ListView(
+      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       key: const PageStorageKey<String>('ojas-home-feed'),
       padding: EdgeInsets.fromLTRB(
         isDesktop ? 36 : 0,
@@ -530,6 +511,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
           color: Colors.transparent,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 14),
             itemCount: _stories.length,
             itemBuilder: (context, index) {
@@ -561,16 +543,13 @@ class _OjasHomePageState extends State<OjasHomePage> {
                             padding: const EdgeInsets.all(2.5),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              gradient: isUser
-                                  ? null
-                                  : const LinearGradient(
-                                      colors: [Color(0xFFF59E0B), Color(0xFFEF4444)],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
+                              border: Border.all(
+                                color: isUser ? const Color(0xFFE5E7EB) : const Color(0xFF111827),
+                                width: 2,
+                              ),
                             ),
                             child: CircleAvatar(
-                              radius: 28,
+                              radius: 27,
                               backgroundColor: story['color'] as Color,
                               child: isUser
                                   ? const Icon(Icons.person, color: Color(0xFF6B7280))
@@ -579,7 +558,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                                       style: const TextStyle(
                                         color: Colors.black87,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 18,
+                                        fontSize: 17,
                                       ),
                                     ),
                             ),
@@ -624,9 +603,10 @@ class _OjasHomePageState extends State<OjasHomePage> {
     required Map<String, dynamic> post,
     required bool isDesktop,
   }) {
-    final bool isLiked = post['isLiked'] as bool;
+    final int id = post['id'] as int;
+    final bool isLiked = _likedPosts.contains(id);
     final bool isSaved = post['isSaved'] as bool;
-    final int likes = post['likes'] as int;
+    final int likes = (post['likes'] as int) + (isLiked ? 1 : 0);
     final int comments = post['comments'] as int;
 
     return Container(
@@ -646,7 +626,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Creator Profile & Options
+          // Header
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             leading: GestureDetector(
@@ -732,9 +712,9 @@ class _OjasHomePageState extends State<OjasHomePage> {
                     return Text(
                       tag,
                       style: const TextStyle(
-                        color: Color(0xFFD97706),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF111827),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                       ),
                     );
                   }).toList(),
@@ -745,7 +725,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
           const SizedBox(height: 12),
 
-          // Media Showcase Container
+          // Media Box
           GestureDetector(
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -763,36 +743,13 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 color: post['imageColor'] as Color,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(Icons.play_circle_fill_rounded, size: 54, color: Colors.white),
-                  Positioned(
-                    bottom: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'OJAS / EXCLUSIVE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              child: const Center(
+                child: Icon(Icons.play_circle_fill_rounded, size: 54, color: Colors.white),
               ),
             ),
           ),
 
-          // Action Rail (Like, Comment, Super Thanks, Share, Save)
+          // Action Rail
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
@@ -805,13 +762,16 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   ),
                   onPressed: () {
                     setState(() {
-                      post['isLiked'] = !isLiked;
-                      post['likes'] = likes + (!isLiked ? 1 : -1);
+                      if (isLiked) {
+                        _likedPosts.remove(id);
+                      } else {
+                        _likedPosts.add(id);
+                      }
                     });
                   },
                 ),
                 Text(
-                  '${post['likes']}',
+                  '$likes',
                   style: const TextStyle(
                     color: Color(0xFF111827),
                     fontSize: 12.5,
@@ -824,7 +784,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   onPressed: () {
                     HomeCommentsSheet.show(
                       context,
-                      postId: '${post['id']}',
+                      postId: '$id',
                       creatorName: post['name'] as String,
                       initialComments: List<String>.from(post['commentsList'] as List),
                       onCommentsUpdated: (newCount) {
@@ -836,7 +796,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   },
                 ),
                 Text(
-                  '${post['comments']}',
+                  '$comments',
                   style: const TextStyle(
                     color: Color(0xFF111827),
                     fontSize: 12.5,
@@ -857,7 +817,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   onPressed: () {
                     ShareBottomSheet.show(
                       context,
-                      videoUrl: 'https://ojas.app/post/${post['id']}',
+                      videoUrl: 'https://ojas.app/post/$id',
                       creatorName: post['name'] as String,
                     );
                   },
@@ -920,7 +880,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
         setState(() => _selectedTab = index);
       },
       backgroundColor: Colors.white,
-      indicatorColor: const Color(0xFFF5B942).withValues(alpha: .16),
+      indicatorColor: const Color(0xFFF3F4F6),
       elevation: 0,
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
@@ -929,7 +889,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
       destinations: items
           .map(
             (item) => NavigationDestination(
-              icon: Icon(item.$1, size: 28, color: const Color(0xFF4B5563)),
+              icon: Icon(item.$1, size: 28, color: const Color(0xFF6B7280)),
               selectedIcon: Icon(item.$2, size: 28, color: const Color(0xFF111827)),
               label: item.$3,
               tooltip: item.$3,
