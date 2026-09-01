@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import '../models/ojs_video.dart';
 import '../services/video_engine_service.dart';
@@ -54,6 +55,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   bool _isScrubbing = false;
   double _scrubPosition = 0.0;
 
+  // 2X Speed on Long Press
+  bool _isSpeedBoosted = false;
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +93,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
       } else {
         _controller?.pause();
         _isPlaying = false;
+        _resetSpeed();
       }
     }
   }
@@ -102,6 +107,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
       _isPlaying = true;
     });
     if (_isInit && widget.isVisible) {
+      await ctrl.setPlaybackSpeed(1.0);
       await ctrl.play();
     }
   }
@@ -131,6 +137,20 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
     });
   }
 
+  void _start2xSpeed() {
+    if (_controller == null || !_isInit) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _isSpeedBoosted = true);
+    _controller?.setPlaybackSpeed(2.0);
+  }
+
+  void _resetSpeed() {
+    if (_isSpeedBoosted && _controller != null && _isInit) {
+      setState(() => _isSpeedBoosted = false);
+      _controller?.setPlaybackSpeed(1.0);
+    }
+  }
+
   void _openSoundHub() {
     SoundDetailScreen.open(
       context,
@@ -148,6 +168,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
       child: GestureDetector(
         onTap: _togglePlayPause,
         onDoubleTap: _handleDoubleTap,
+        onLongPressStart: (_) => _start2xSpeed(),
+        onLongPressEnd: (_) => _resetSpeed(),
+        onLongPressCancel: () => _resetSpeed(),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -204,7 +227,41 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 4. TikTok 16:9 Landscape Fullscreen Button
+            // 4. 2X Playback Speed Top Minimal Banner
+            if (_isSpeedBoosted)
+              Positioned(
+                top: 48,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white24, width: 0.8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.fast_forward_rounded, color: Colors.white, size: 16),
+                        SizedBox(width: 6),
+                        Text(
+                          '2X Speed',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // 5. TikTok 16:9 Landscape Fullscreen Button
             if (isLandscape)
               Positioned(
                 bottom: 180,
@@ -248,14 +305,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 5. Right Action Rail (Raised cleanly above nav bar)
+            // 6. Right Action Rail
             Positioned(
               right: 10,
               bottom: 84,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Profile Avatar + Follow Badge
                   Stack(
                     alignment: Alignment.bottomCenter,
                     clipBehavior: Clip.none,
@@ -294,7 +350,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 14),
 
-                  // Like
                   _buildActionButton(
                     icon: widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     label: '${widget.video.likes}',
@@ -303,7 +358,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Comment
                   _buildActionButton(
                     icon: Icons.mode_comment_rounded,
                     label: '${widget.video.comments}',
@@ -312,7 +366,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Super Thanks Support
                   _buildActionButton(
                     icon: Icons.stars_rounded,
                     label: 'Thanks',
@@ -323,7 +376,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Bookmark / Save
                   _buildActionButton(
                     icon: _isSavedLocal ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
                     label: 'Save',
@@ -344,7 +396,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Share
                   _buildActionButton(
                     icon: Icons.reply_rounded,
                     label: 'Share',
@@ -353,7 +404,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Rotating Vinyl Music Disc -> Tap opens Sound Hub
                   GestureDetector(
                     onTap: _openSoundHub,
                     child: Container(
@@ -371,7 +421,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
               ),
             ),
 
-            // 6. Bottom Metadata
+            // 7. Bottom Metadata
             Positioned(
               left: 14,
               bottom: 84,
@@ -433,12 +483,12 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
               ),
             ),
 
-            // 7. Interactive Timeline Video Scrubber (Bottom Line)
+            // 8. Interactive Timeline Video Scrubber (Bottom Line)
             if (_isInit && _controller != null)
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 60, // Sits right above navigation bar edge
+                bottom: 60,
                 child: ValueListenableBuilder(
                   valueListenable: _controller!,
                   builder: (context, VideoPlayerValue val, child) {
