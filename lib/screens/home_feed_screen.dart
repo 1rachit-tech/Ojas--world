@@ -397,7 +397,8 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
         border: Border.all(color: const Color(0xFFF3F4F6)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            // यहाँ withValues() की जगह withOpacity() कर दिया गया है
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -488,7 +489,8 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
-                  children: (post['tags'] as List<String>).map((tag) {
+                  // टाइप एरर से बचने के लिए इसे List<String>.from किया गया है
+                  children: List<String>.from(post['tags'] as List).map((tag) {
                     return Text(
                       tag,
                       style: const TextStyle(
