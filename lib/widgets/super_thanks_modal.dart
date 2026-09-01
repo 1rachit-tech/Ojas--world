@@ -20,7 +20,7 @@ class SuperThanksModal extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        color: Color(0xFF161B22),
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
@@ -31,18 +31,18 @@ class SuperThanksModal extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          const Icon(Icons.stars_rounded, color: Color(0xFFF5B942), size: 40),
+          const Icon(Icons.stars_rounded, color: Color(0xFFF59E0B), size: 44),
           const SizedBox(height: 8),
           Text(
             'Support $creatorName',
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF111827),
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
@@ -51,7 +51,7 @@ class SuperThanksModal extends StatelessWidget {
           const Text(
             'Send Super Thanks to appreciate their creative work!',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white60, fontSize: 12.5),
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
           ),
           const SizedBox(height: 20),
           Row(
@@ -59,26 +59,28 @@ class SuperThanksModal extends StatelessWidget {
             children: amounts.map((amt) {
               return ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF222934),
-                  foregroundColor: const Color(0xFFF5B942),
-                  side: const BorderSide(color: Color(0xFFF5B942), width: 1),
+                  backgroundColor: const Color(0xFFF9FAFB),
+                  foregroundColor: const Color(0xFF111827),
+                  elevation: 0,
+                  side: const BorderSide(color: Color(0xFFE5E7EB), width: 1.5),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
                 onPressed: () {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Sent $amt Super Thanks to $creatorName! ⭐'),
-                      backgroundColor: const Color(0xFFF5B942),
+                      backgroundColor: const Color(0xFF111827),
                       behavior: SnackBarBehavior.floating,
                     ),
                   );
                 },
                 child: Text(
                   amt,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
               );
             }).toList(),
