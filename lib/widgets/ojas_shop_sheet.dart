@@ -34,7 +34,7 @@ class _ShopSheetContent extends StatelessWidget {
     return Container(
       height: MediaQuery.of(context).size.height * 0.55,
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: Color(0xFF13171D),
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
@@ -46,7 +46,7 @@ class _ShopSheetContent extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
+                color: Colors.white24,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -57,20 +57,20 @@ class _ShopSheetContent extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(
               children: [
-                Icon(Icons.shopping_bag_rounded, color: Color(0xFF111827), size: 24),
+                Icon(Icons.shopping_bag_rounded, color: Color(0xFFF5B942), size: 22),
                 SizedBox(width: 10),
                 Text(
                   'Products in this video',
                   style: TextStyle(
-                    color: Color(0xFF111827),
-                    fontSize: 18,
+                    color: Colors.white,
+                    fontSize: 17,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(color: Color(0xFFF3F4F6), height: 1),
+          const Divider(color: Colors.white10, height: 1),
           
           // Products List
           Expanded(
@@ -78,7 +78,7 @@ class _ShopSheetContent extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               physics: const BouncingScrollPhysics(),
               itemCount: products.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
                 final product = products[index];
                 return _buildProductCard(product);
@@ -93,34 +93,27 @@ class _ShopSheetContent extends StatelessWidget {
   Widget _buildProductCard(Map<String, dynamic> product) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFF1C222B),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF3F4F6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: Colors.white10),
       ),
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           // Product Image Placeholder
           Container(
-            width: 70,
-            height: 70,
+            width: 65,
+            height: 65,
             decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
+              color: const Color(0xFF111827),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+              border: Border.all(color: Colors.white12),
             ),
             child: const Center(
-              child: Icon(Icons.image_outlined, color: Color(0xFF9CA3AF), size: 28),
+              child: Icon(Icons.image_outlined, color: Colors.white38, size: 26),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           
           // Product Details
           Expanded(
@@ -130,9 +123,9 @@ class _ShopSheetContent extends StatelessWidget {
                 Text(
                   product['name'] as String,
                   style: const TextStyle(
-                    color: Color(0xFF111827),
+                    color: Colors.white,
                     fontWeight: FontWeight.w700,
-                    fontSize: 14.5,
+                    fontSize: 14,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -141,23 +134,23 @@ class _ShopSheetContent extends StatelessWidget {
                 Text(
                   '₹${product['price']}',
                   style: const TextStyle(
-                    color: Color(0xFF059669), // Success Green
+                    color: Color(0xFF10B981),
                     fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                    fontSize: 15.5,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           
           // Buy Button
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF111827),
-              foregroundColor: Colors.white,
+              backgroundColor: const Color(0xFFF5B942),
+              foregroundColor: Colors.black,
               elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
