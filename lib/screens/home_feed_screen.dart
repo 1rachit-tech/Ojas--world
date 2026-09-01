@@ -7,14 +7,14 @@ import '../widgets/home_comments_sheet.dart';
 import '../widgets/super_thanks_modal.dart';
 import '../widgets/world_search_delegate.dart';
 
-class HomeFeedScreen extends StatefulWidget {
-  const HomeFeedScreen({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<HomeFeedScreen> createState() => _HomeFeedScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeFeedScreenState extends State<HomeFeedScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   final List<Map<String, dynamic>> _stories = [
     {
       'name': 'Your Story',
@@ -397,8 +397,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
         border: Border.all(color: const Color(0xFFF3F4F6)),
         boxShadow: [
           BoxShadow(
-            // यहाँ withValues() की जगह withOpacity() कर दिया गया है
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -489,8 +488,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
-                  // टाइप एरर से बचने के लिए इसे List<String>.from किया गया है
-                  children: List<String>.from(post['tags'] as List).map((tag) {
+                  children: (post['tags'] as List<String>).map((tag) {
                     return Text(
                       tag,
                       style: const TextStyle(
@@ -554,7 +552,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
             ),
           ),
 
-          // Action Rail (Like, Comment, Super Thanks, Share, Save)
+          // Action Rail
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
@@ -658,5 +656,15 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
         ],
       ),
     );
+  }
+}
+
+// Same widget alias so that both names work seamlessly
+class HomeFeedScreen extends StatelessWidget {
+  const HomeFeedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const HomeScreen();
   }
 }
