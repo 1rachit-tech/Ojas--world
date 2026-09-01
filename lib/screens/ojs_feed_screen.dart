@@ -39,6 +39,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};
   final Set<String> _likedVideos = <String>{};
+  final Set<String> _savedVideos = <String>{};
 
   int _currentSelectedFeed = 0;
   int _forYouCurrentIndex = 0;
@@ -91,6 +92,22 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         _likedVideos.remove(videoId);
       } else {
         _likedVideos.add(videoId);
+      }
+    });
+  }
+
+  void _toggleSaveVideo(String videoId) {
+    setState(() {
+      if (_savedVideos.contains(videoId)) {
+        _savedVideos.remove(videoId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from Saved')),
+        );
+      } else {
+        _savedVideos.add(videoId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved 🔖')),
+        );
       }
     });
   }
@@ -171,7 +188,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // Edge-to-Edge PageView
             PageView(
               controller: _horizontalFeedController,
               physics: _isCommentsOpen
@@ -184,7 +200,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               ],
             ),
 
-            // Top Bar
             Positioned(
               top: 0,
               left: 0,
@@ -226,7 +241,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               ),
             ),
 
-            // Comments Bottom Sheet
             if (_isCommentsOpen)
               Positioned(
                 bottom: 0,
@@ -261,9 +275,11 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowing: _followedCreators.contains(video.creator),
           isFollowingFeed: false,
           isLiked: _likedVideos.contains(video.id),
+          isSaved: _savedVideos.contains(video.id),
           onFollow: () => _toggleFollowCreator(video.creator),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
+          onSave: () => _toggleSaveVideo(video.id),
           onShare: () {
             ShareBottomSheet.show(
               context,
@@ -314,9 +330,11 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowing: true,
           isFollowingFeed: true,
           isLiked: _likedVideos.contains(video.id),
+          isSaved: _savedVideos.contains(video.id),
           onFollow: () => _toggleFollowCreator(video.creator),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
+          onSave: () => _toggleSaveVideo(video.id),
           onShare: () {
             ShareBottomSheet.show(context, videoUrl: video.videoUrl, creatorName: video.creator);
           },
