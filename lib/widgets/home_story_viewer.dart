@@ -72,7 +72,7 @@ class _HomeStoryViewerState extends State<HomeStoryViewer>
                   end: Alignment.bottomRight,
                   colors: [
                     widget.avatarColor.withValues(alpha: 0.5),
-                    const Color(0xFF07090B),
+                    const Color(0xFF111827),
                   ],
                 ),
               ),
@@ -141,7 +141,7 @@ class _HomeStoryViewerState extends State<HomeStoryViewer>
               ),
             ),
 
-            // User Info & Close
+            // Top Header
             Positioned(
               top: 24,
               left: 16,
