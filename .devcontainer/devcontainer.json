@@ -1,8 +1,10 @@
 {
   "name": "OJAS Flutter",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "remoteEnv": {
-    "PATH": "/home/codespace/flutter/bin:${containerEnv:PATH}"
+  "containerEnv": {
+    "ANDROID_HOME": "/home/codespace/android-sdk",
+    "ANDROID_SDK_ROOT": "/home/codespace/android-sdk",
+    "PATH": "/home/codespace/flutter/bin:/home/codespace/android-sdk/platform-tools:/home/codespace/android-sdk/cmdline-tools/latest/bin:${containerEnv:PATH}"
   },
-  "postCreateCommand": "bash .devcontainer/setup-flutter.sh"
+  "postCreateCommand": "bash .devcontainer/setup-flutter.sh && bash .devcontainer/setup-android.sh"
 }
