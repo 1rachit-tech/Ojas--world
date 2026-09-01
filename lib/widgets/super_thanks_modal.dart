@@ -31,13 +31,13 @@ class SuperThanksModal extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: const Color(0xFFE5E7EB),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           const SizedBox(height: 16),
-          const Icon(Icons.stars_rounded, color: Color(0xFFF59E0B), size: 44),
+          const Icon(Icons.stars_rounded, color: Color(0xFF111827), size: 44),
           const SizedBox(height: 8),
           Text(
             'Support $creatorName',
