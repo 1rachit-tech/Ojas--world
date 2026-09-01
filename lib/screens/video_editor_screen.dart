@@ -26,8 +26,10 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   bool _isMuted = false;
   String _selectedMusic = 'Original Sound';
   OjasFilter _appliedFilter = kAllOjasFilters[0];
-  final List<String> _textOverlays = [];
-  final List<String> _stickerOverlays = [];
+
+  // Drag-and-Drop Overlay Models
+  final List<Map<String, dynamic>> _textOverlays = [];
+  final List<Map<String, dynamic>> _stickerOverlays = [];
 
   double _origVol = 1.0;
   double _musVol = 0.8;
@@ -56,33 +58,101 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
 
   void _addTextOverlay() {
     final TextEditingController textCtrl = TextEditingController();
-    showDialog(
+    Color selectedColor = Colors.white;
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF161B22),
-          title: const Text('Add Text Overlay', style: TextStyle(color: Colors.white, fontSize: 16)),
-          content: TextField(
-            controller: textCtrl,
-            autofocus: true,
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            decoration: const InputDecoration(hintText: 'Type something...', hintStyle: TextStyle(color: Colors.white38), border: InputBorder.none),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF5B942)),
-              onPressed: () {
-                if (textCtrl.text.trim().isNotEmpty) {
-                  setState(() => _textOverlays.add(textCtrl.text.trim()));
-                }
-                Navigator.pop(context);
-              },
-              child: const Text('Add', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
+          decoration: const BoxDecoration(
+            color: Color(0xFF161B22),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: textCtrl,
+                autofocus: true,
+                style: TextStyle(color: selectedColor, fontSize: 20, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  hintText: 'Type something...',
+                  hintStyle: TextStyle(color: Colors.white38),
+                  border: InputBorder.none,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildColorDot(Colors.white, selectedColor, (c) => setSheetState(() => selectedColor = c)),
+                  _buildColorDot(const Color(0xFFF5B942), selectedColor, (c) => setSheetState(() => selectedColor = c)),
+                  _buildColorDot(const Color(0xFFEF4444), selectedColor, (c) => setSheetState(() => selectedColor = c)),
+                  _buildColorDot(const Color(0xFF10B981), selectedColor, (c) => setSheetState(() => selectedColor = c)),
+                  _buildColorDot(const Color(0xFF38BDF8), selectedColor, (c) => setSheetState(() => selectedColor = c)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF5B942),
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    if (textCtrl.text.trim().isNotEmpty) {
+                      setState(() {
+                        _textOverlays.add({
+                          'text': textCtrl.text.trim(),
+                          'color': selectedColor,
+                          'position': const Offset(80, 260),
+                        });
+                      });
+                    }
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Add to Video', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorDot(Color color, Color selected, Function(Color) onSelect) {
+    final isSelected = color == selected;
+    return GestureDetector(
+      onTap: () => onSelect(color),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6),
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: isSelected ? Border.all(color: Colors.white, width: 3) : null,
+        ),
+      ),
     );
   }
 
@@ -120,7 +190,14 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
   void _openStickersTray() {
     StickersTraySheet.show(
       context,
-      onStickerSelected: (stk) => setState(() => _stickerOverlays.add(stk)),
+      onStickerSelected: (stk) {
+        setState(() {
+          _stickerOverlays.add({
+            'sticker': stk,
+            'position': const Offset(80, 200),
+          });
+        });
+      },
     );
   }
 
@@ -225,7 +302,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Media Preview
+          // 1. Media Preview with Matrix Filter
           Center(
             child: ColorFiltered(
               colorFilter: _appliedFilter.matrixFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.multiply),
@@ -239,31 +316,113 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
 
-          // Text Overlays
-          ..._textOverlays.map((text) {
-            return Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-                child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-              ),
-            );
-          }),
+          // 2. Drag & Drop Interactive Text Overlays
+          ..._textOverlays.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final data = entry.value;
+            final pos = data['position'] as Offset;
 
-          // Sticker Overlays
-          ..._stickerOverlays.map((stk) {
             return Positioned(
-              top: 200,
-              left: 50,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF5B942))),
-                child: Text(stk, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              left: pos.dx,
+              top: pos.dy,
+              child: Draggable(
+                feedback: Material(
+                  color: Colors.transparent,
+                  child: Text(
+                    data['text'] as String,
+                    style: TextStyle(
+                      color: data['color'] as Color,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      shadows: const [Shadow(color: Colors.black, blurRadius: 10)],
+                    ),
+                  ),
+                ),
+                childWhenDragging: const SizedBox.shrink(),
+                onDragEnd: (details) {
+                  setState(() {
+                    _textOverlays[idx]['position'] = Offset(
+                      details.offset.dx.clamp(20.0, MediaQuery.of(context).size.width - 150),
+                      details.offset.dy.clamp(90.0, MediaQuery.of(context).size.height - 150),
+                    );
+                  });
+                },
+                child: GestureDetector(
+                  onLongPress: () {
+                    setState(() => _textOverlays.removeAt(idx));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Text removed'), duration: Duration(milliseconds: 600)),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                      data['text'] as String,
+                      style: TextStyle(
+                        color: data['color'] as Color,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        shadows: const [Shadow(color: Colors.black87, blurRadius: 8)],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             );
           }),
 
-          // Top Action Bar
+          // 3. Drag & Drop Interactive Sticker Overlays
+          ..._stickerOverlays.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final data = entry.value;
+            final pos = data['position'] as Offset;
+
+            return Positioned(
+              left: pos.dx,
+              top: pos.dy,
+              child: Draggable(
+                feedback: Material(
+                  color: Colors.transparent,
+                  child: Text(
+                    data['sticker'] as String,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+                childWhenDragging: const SizedBox.shrink(),
+                onDragEnd: (details) {
+                  setState(() {
+                    _stickerOverlays[idx]['position'] = Offset(
+                      details.offset.dx.clamp(20.0, MediaQuery.of(context).size.width - 120),
+                      details.offset.dy.clamp(90.0, MediaQuery.of(context).size.height - 150),
+                    );
+                  });
+                },
+                child: GestureDetector(
+                  onLongPress: () {
+                    setState(() => _stickerOverlays.removeAt(idx));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Sticker removed'), duration: Duration(milliseconds: 600)),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF5B942)),
+                    ),
+                    child: Text(
+                      data['sticker'] as String,
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // 4. Top Action Bar
           Positioned(
             top: 48,
             left: 16,
@@ -273,13 +432,20 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor: Colors.black45,
-                  child: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18), onPressed: () => Navigator.pop(context)),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
                 GestureDetector(
                   onTap: _openMusicSelector,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white12),
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -287,7 +453,11 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
                         const SizedBox(width: 6),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 140),
-                          child: Text(_selectedMusic, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            _selectedMusic,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ],
                     ),
@@ -312,7 +482,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
 
-          // Right Quick Editing Rail
+          // 5. Right Quick Editing Rail
           Positioned(
             top: 115,
             right: 14,
@@ -333,7 +503,7 @@ class _VideoEditorScreenState extends State<VideoEditorScreen> {
             ),
           ),
 
-          // Bottom Controls
+          // 6. Bottom Navigation Controls
           Positioned(
             bottom: 24,
             left: 16,
