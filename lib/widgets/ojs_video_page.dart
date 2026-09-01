@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 import '../models/ojs_video.dart';
 import '../services/video_engine_service.dart';
 import '../screens/fullscreen_landscape_player.dart';
+import '../screens/sound_detail_screen.dart';
 import '../widgets/super_thanks_modal.dart';
 
 class OjsVideoPage extends StatefulWidget {
@@ -44,9 +45,14 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   bool _isPlaying = true;
   late bool _isSavedLocal;
 
+  // Double Tap Heart Animation
   bool _showHeartAnim = false;
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
+
+  // Scrubbing & Timeline Tracking
+  bool _isScrubbing = false;
+  double _scrubPosition = 0.0;
 
   @override
   void initState() {
@@ -54,9 +60,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
     _isSavedLocal = widget.isSaved;
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 350),
     );
-    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.2).animate(
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.25).animate(
       CurvedAnimation(parent: _animController, curve: Curves.elasticOut),
     );
 
@@ -119,10 +125,18 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
     }
     setState(() => _showHeartAnim = true);
     _animController.forward(from: 0.0).then((_) {
-      Future.delayed(const Duration(milliseconds: 300), () {
+      Future.delayed(const Duration(milliseconds: 250), () {
         if (mounted) setState(() => _showHeartAnim = false);
       });
     });
+  }
+
+  void _openSoundHub() {
+    SoundDetailScreen.open(
+      context,
+      soundTitle: 'Original Audio - ${widget.video.creator}',
+      creatorName: widget.video.creator,
+    );
   }
 
   @override
@@ -164,7 +178,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 2. Play/Pause Indicator
+            // 2. Play/Pause Big Center Indicator
             if (!_isPlaying && _isInit)
               Center(
                 child: Container(
@@ -234,7 +248,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 5. Right Action Rail (Raised above bottom nav bar)
+            // 5. Right Action Rail (Raised cleanly above nav bar)
             Positioned(
               right: 10,
               bottom: 84,
@@ -339,22 +353,25 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 12),
 
-                  // Rotating Vinyl Music Disc
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF1F2937),
-                      border: Border.all(color: Colors.white38, width: 2.5),
+                  // Rotating Vinyl Music Disc -> Tap opens Sound Hub
+                  GestureDetector(
+                    onTap: _openSoundHub,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF1F2937),
+                        border: Border.all(color: Colors.white38, width: 2.5),
+                      ),
+                      child: const Icon(Icons.music_note_rounded, color: Colors.white70, size: 16),
                     ),
-                    child: const Icon(Icons.music_note_rounded, color: Colors.white70, size: 16),
                   ),
                 ],
               ),
             ),
 
-            // 6. Bottom Metadata (Fully visible above the Bottom Navigation Bar)
+            // 6. Bottom Metadata
             Positioned(
               left: 14,
               bottom: 84,
@@ -391,27 +408,93 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.music_note_rounded, color: Colors.white70, size: 13),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          'Original Audio - ${widget.video.creator} • OJAS Sound Studio',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
+                  GestureDetector(
+                    onTap: _openSoundHub,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.music_note_rounded, color: Colors.white70, size: 13),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Original Audio - ${widget.video.creator} • OJAS Sound Studio',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
+
+            // 7. Interactive Timeline Video Scrubber (Bottom Line)
+            if (_isInit && _controller != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 60, // Sits right above navigation bar edge
+                child: ValueListenableBuilder(
+                  valueListenable: _controller!,
+                  builder: (context, VideoPlayerValue val, child) {
+                    final duration = val.duration.inMilliseconds.toDouble();
+                    final position = val.position.inMilliseconds.toDouble();
+                    final currentVal = _isScrubbing ? _scrubPosition : (duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0);
+
+                    return GestureDetector(
+                      onHorizontalDragStart: (details) {
+                        setState(() {
+                          _isScrubbing = true;
+                          _controller?.pause();
+                        });
+                      },
+                      onHorizontalDragUpdate: (details) {
+                        final RenderBox box = context.findRenderObject() as RenderBox;
+                        final relative = (details.localPosition.dx / box.size.width).clamp(0.0, 1.0);
+                        setState(() {
+                          _scrubPosition = relative;
+                        });
+                      },
+                      onHorizontalDragEnd: (details) {
+                        if (duration > 0) {
+                          final targetMs = (_scrubPosition * duration).toInt();
+                          _controller?.seekTo(Duration(milliseconds: targetMs));
+                        }
+                        setState(() {
+                          _isScrubbing = false;
+                          _controller?.play();
+                        });
+                      },
+                      child: Container(
+                        height: 14,
+                        color: Colors.transparent,
+                        alignment: Alignment.bottomCenter,
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            Container(
+                              height: _isScrubbing ? 4 : 2,
+                              color: Colors.white24,
+                            ),
+                            FractionallySizedBox(
+                              widthFactor: currentVal,
+                              child: Container(
+                                height: _isScrubbing ? 4 : 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ),
       ),
