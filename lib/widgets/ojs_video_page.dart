@@ -12,10 +12,12 @@ class OjsVideoPage extends StatefulWidget {
   final bool isFollowing;
   final bool isFollowingFeed;
   final bool isLiked;
+  final bool isSaved;
   final VoidCallback onFollow;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
+  final VoidCallback? onSave;
 
   const OjsVideoPage({
     super.key,
@@ -24,10 +26,12 @@ class OjsVideoPage extends StatefulWidget {
     required this.isFollowing,
     required this.isFollowingFeed,
     required this.isLiked,
+    this.isSaved = false,
     required this.onFollow,
     required this.onLike,
     required this.onComment,
     required this.onShare,
+    this.onSave,
   });
 
   @override
@@ -38,7 +42,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   VideoPlayerController? _controller;
   bool _isInit = false;
   bool _isPlaying = true;
-  bool _isSaved = false;
+  late bool _isSavedLocal;
 
   // Double Tap Heart Animation
   bool _showHeartAnim = false;
@@ -48,6 +52,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+    _isSavedLocal = widget.isSaved;
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -70,6 +75,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   @override
   void didUpdateWidget(covariant OjsVideoPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isSaved != oldWidget.isSaved) {
+      _isSavedLocal = widget.isSaved;
+    }
     if (widget.isVisible != oldWidget.isVisible) {
       if (widget.isVisible) {
         _loadAndPlay();
@@ -227,7 +235,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 5. Right Action Rail (Avatar, Like, Comment, Thanks, Save, Share)
+            // 5. Right Action Rail
             Positioned(
               right: 12,
               bottom: 40,
@@ -304,14 +312,17 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
 
                   // Bookmark / Save
                   _buildActionButton(
-                    icon: _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    icon: _isSavedLocal ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
                     label: 'Save',
-                    color: _isSaved ? const Color(0xFFF59E0B) : Colors.white,
+                    color: _isSavedLocal ? const Color(0xFFF59E0B) : Colors.white,
                     onTap: () {
-                      setState(() => _isSaved = !_isSaved);
+                      setState(() => _isSavedLocal = !_isSavedLocal);
+                      if (widget.onSave != null) {
+                        widget.onSave!();
+                      }
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(_isSaved ? 'Video saved to profile!' : 'Removed from bookmarks.'),
+                          content: Text(_isSavedLocal ? 'Video saved to profile!' : 'Removed from bookmarks.'),
                           behavior: SnackBarBehavior.floating,
                           duration: const Duration(seconds: 1),
                         ),
@@ -344,7 +355,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
               ),
             ),
 
-            // 6. Bottom Metadata (Username, Caption, Tags & Music Marquee)
+            // 6. Bottom Metadata
             Positioned(
               left: 16,
               bottom: 24,
