@@ -12,10 +12,12 @@ class OjsVideoPage extends StatefulWidget {
     required this.isFollowing,
     required this.isFollowingFeed,
     required this.isLiked,
+    required this.isSaved,
     required this.onFollow,
     required this.onLike,
     required this.onComment,
     required this.onShare,
+    required this.onSave,
     super.key,
   });
 
@@ -24,10 +26,12 @@ class OjsVideoPage extends StatefulWidget {
   final bool isFollowing;
   final bool isFollowingFeed;
   final bool isLiked;
+  final bool isSaved;
   final VoidCallback onFollow;
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
+  final VoidCallback onSave;
 
   @override
   State<OjsVideoPage> createState() => _OjsVideoPageState();
@@ -281,6 +285,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               isFollowing: widget.isFollowing,
               isFollowingFeed: widget.isFollowingFeed,
               isLiked: widget.isLiked,
+              isSaved: widget.isSaved,
               likes: widget.video.likes + (widget.isLiked ? 1 : 0),
               comments: widget.video.comments,
               shares: widget.video.shares,
@@ -288,6 +293,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> {
               onLike: widget.onLike,
               onComment: widget.onComment,
               onShare: widget.onShare,
+              onSave: widget.onSave,
               onMore: _showVideoOptions,
               onAudioTap: _openAudioScreen,
               onProfileTap: _openCreatorProfile,
