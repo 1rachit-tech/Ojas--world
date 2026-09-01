@@ -44,7 +44,6 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   bool _isPlaying = true;
   late bool _isSavedLocal;
 
-  // Double Tap Heart Animation
   bool _showHeartAnim = false;
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
@@ -165,7 +164,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 2. Play/Pause Big Center Indicator
+            // 2. Play/Pause Indicator
             if (!_isPlaying && _isInit)
               Center(
                 child: Container(
@@ -191,10 +190,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 4. TikTok 16:9 Landscape Fullscreen Mode Button
+            // 4. TikTok 16:9 Landscape Fullscreen Button
             if (isLandscape)
               Positioned(
-                bottom: 130,
+                bottom: 180,
                 left: 0,
                 right: 0,
                 child: Center(
@@ -235,10 +234,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 ),
               ),
 
-            // 5. Right Action Rail
+            // 5. Right Action Rail (Raised above bottom nav bar)
             Positioned(
-              right: 12,
-              bottom: 40,
+              right: 10,
+              bottom: 84,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -264,7 +263,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       ),
                       if (!widget.isFollowing)
                         Positioned(
-                          bottom: -7,
+                          bottom: -6,
                           child: GestureDetector(
                             onTap: widget.onFollow,
                             child: Container(
@@ -273,13 +272,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                                 color: Color(0xFFEF4444),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.add_rounded, color: Colors.white, size: 14),
+                              child: const Icon(Icons.add_rounded, color: Colors.white, size: 13),
                             ),
                           ),
                         ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
 
                   // Like
                   _buildActionButton(
@@ -288,7 +287,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     color: widget.isLiked ? const Color(0xFFEF4444) : Colors.white,
                     onTap: widget.onLike,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Comment
                   _buildActionButton(
@@ -297,7 +296,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     color: Colors.white,
                     onTap: widget.onComment,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Super Thanks Support
                   _buildActionButton(
@@ -308,7 +307,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       SuperThanksModal.show(context, creatorName: widget.video.creator);
                     },
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Bookmark / Save
                   _buildActionButton(
@@ -329,7 +328,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       );
                     },
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Share
                   _buildActionButton(
@@ -338,28 +337,28 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     color: Colors.white,
                     onTap: widget.onShare,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
 
                   // Rotating Vinyl Music Disc
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: const Color(0xFF1F2937),
-                      border: Border.all(color: Colors.white38, width: 3),
+                      border: Border.all(color: Colors.white38, width: 2.5),
                     ),
-                    child: const Icon(Icons.music_note_rounded, color: Colors.white70, size: 18),
+                    child: const Icon(Icons.music_note_rounded, color: Colors.white70, size: 16),
                   ),
                 ],
               ),
             ),
 
-            // 6. Bottom Metadata
+            // 6. Bottom Metadata (Fully visible above the Bottom Navigation Bar)
             Positioned(
-              left: 16,
-              bottom: 24,
-              right: 86,
+              left: 14,
+              bottom: 84,
+              right: 84,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -371,30 +370,30 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                          fontSize: 15.5,
+                          fontSize: 15,
                           letterSpacing: 0.2,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      const Icon(Icons.verified_rounded, color: Color(0xFF38BDF8), size: 15),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.verified_rounded, color: Color(0xFF38BDF8), size: 14),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 5),
                   Text(
                     widget.video.caption,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13.5,
-                      height: 1.35,
+                      fontSize: 13,
+                      height: 1.3,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.music_note_rounded, color: Colors.white70, size: 14),
+                      const Icon(Icons.music_note_rounded, color: Colors.white70, size: 13),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -403,7 +402,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white70,
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -430,13 +429,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 28),
+          Icon(icon, color: color, size: 26),
           const SizedBox(height: 2),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.2,
             ),
