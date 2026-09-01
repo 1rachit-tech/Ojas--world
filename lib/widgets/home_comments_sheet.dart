@@ -70,7 +70,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.70,
       decoration: const BoxDecoration(
-        color: Color(0xFF12161D),
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
@@ -83,7 +83,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: Colors.grey.shade300,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -98,36 +98,35 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                 Text(
                   'Comments (${_comments.length})',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFF111827),
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                  icon: const Icon(Icons.close_rounded, color: Colors.grey),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
-          const Divider(color: Colors.white10, height: 1),
+          const Divider(color: Color(0xFFF3F4F6), height: 1),
 
           // Comments List
           Expanded(
             child: _comments.isEmpty
                 ? const Center(
                     child: Text(
-                      'No comments yet. Start the conversation!',
-                      style: TextStyle(color: Colors.white38),
+                      'No comments yet. Be the first to share!',
+                      style: TextStyle(color: Colors.grey),
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: _comments.length,
                     itemBuilder: (context, index) {
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.only(bottom: 16),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -143,25 +142,25 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'OJAS Creator',
+                                    'OJAS Member',
                                     style: TextStyle(
-                                      color: Colors.white70,
+                                      color: Color(0xFF111827),
                                       fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                                      fontSize: 12.5,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     _comments[index],
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
+                                      color: Color(0xFF374151),
+                                      fontSize: 13.5,
                                     ),
                                   ),
                                 ],
@@ -201,8 +200,8 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
           Container(
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
             decoration: const BoxDecoration(
-              color: Color(0xFF171C24),
-              border: Border(top: BorderSide(color: Colors.white10)),
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFF3F4F6))),
             ),
             child: Row(
               children: [
@@ -210,16 +209,15 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF222934),
+                      color: const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(24),
                     ),
                     child: TextField(
                       controller: _commentCtrl,
-                      style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                      style: const TextStyle(color: Color(0xFF111827), fontSize: 13.5),
                       decoration: const InputDecoration(
                         hintText: 'Add a community comment...',
-                        hintStyle:
-                            TextStyle(color: Colors.white38, fontSize: 13),
+                        hintStyle: TextStyle(color: Colors.grey, fontSize: 13),
                         border: InputBorder.none,
                       ),
                     ),
@@ -227,7 +225,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.send_rounded, color: Color(0xFFF5B942)),
+                  icon: const Icon(Icons.send_rounded, color: Color(0xFF111827)),
                   onPressed: _addComment,
                 ),
               ],
