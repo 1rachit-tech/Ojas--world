@@ -15,7 +15,13 @@ class FullscreenLandscapePlayer extends StatefulWidget {
     required this.creator,
   });
 
-  static void open(BuildContext context, {required String videoUrl, required String title, required String creator}) {
+  static void open(
+    BuildContext context, {
+    required String videoUrl,
+    required String title,
+    required String creator,
+  }) {
+    HapticFeedback.mediumImpact();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -34,52 +40,45 @@ class FullscreenLandscapePlayer extends StatefulWidget {
 
 class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
   VideoPlayerController? _controller;
-  bool _isPlaying = true;
+  bool _isInit = false;
   bool _showControls = true;
 
   @override
   void initState() {
     super.initState();
-    // 1. फोन को Landscape मोड में रोटेट करें
+    // 🚀 स्क्रीन को लैंडस्केप (हॉरिजॉन्टल) मोड में लॉक करें
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _initVideo();
+    _initPlayer();
   }
 
-  Future<void> _initVideo() async {
+  Future<void> _initPlayer() async {
     final ctrl = await VideoEngineService.instance.getOrCreateController(widget.videoUrl);
     if (!mounted) return;
     setState(() {
       _controller = ctrl;
+      _isInit = ctrl.value.isInitialized;
     });
-    await ctrl.play();
+    if (_isInit) {
+      await ctrl.play();
+    }
+  }
+
+  void _toggleControls() {
+    setState(() => _showControls = !_showControls);
   }
 
   @override
   void dispose() {
-    // 2. वापस आते समय फोन को Portrait (सीधा) करें
+    // 🚀 स्क्रीन को वापस पोर्ट्रेट (सीधा) मोड में सेट करें
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
-  }
-
-  void _togglePlayPause() {
-    if (_controller == null) return;
-    setState(() {
-      if (_controller!.value.isPlaying) {
-        _controller!.pause();
-        _isPlaying = false;
-      } else {
-        _controller!.play();
-        _isPlaying = true;
-      }
-    });
   }
 
   @override
@@ -87,66 +86,141 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: () => setState(() => _showControls = !_showControls),
+        onTap: _toggleControls,
+        behavior: HitTestBehavior.opaque,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Center 16:9 Video
-            if (_controller != null && _controller!.value.isInitialized)
+            // 1. Video Surface (Cinema Aspect Ratio)
+            if (_isInit && _controller != null)
               Center(
                 child: AspectRatio(
                   aspectRatio: _controller!.value.aspectRatio,
-                  child: ColorFiltered(
-                    colorFilter: VideoEngineService.superResolutionEnhancer,
-                    child: VideoPlayer(_controller!),
-                  ),
+                  child: VideoPlayer(_controller!),
                 ),
               )
             else
-              const Center(child: CircularProgressIndicator(color: Colors.white)),
+              const Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white30,
+                ),
+              ),
 
-            // Overlay Controls
+            // 2. Minimalist White Top Bar Control Overlay
             if (_showControls)
-              Container(
-                color: Colors.black38,
-                child: Stack(
-                  children: [
-                    // Top Bar
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      right: 16,
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 28),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
+              Positioned(
+                top: 16,
+                left: 20,
+                right: 20,
+                child: SafeArea(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white, // 🚀 Minimalist White UI Panel
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            Navigator.pop(context);
+                          },
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF111827), size: 18),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(widget.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text(widget.creator, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                              Text(
+                                widget.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF111827),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                              Text(
+                                '@${widget.creator}',
+                                style: const TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-
-                    // Center Play/Pause
-                    Center(
-                      child: IconButton(
-                        iconSize: 64,
-                        icon: Icon(
-                          _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                          color: Colors.white,
                         ),
-                        onPressed: _togglePlayPause,
-                      ),
+                        IconButton(
+                          icon: Icon(
+                            (_controller?.value.isPlaying ?? false)
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            color: const Color(0xFF111827),
+                            size: 26,
+                          ),
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            setState(() {
+                              if (_controller?.value.isPlaying ?? false) {
+                                _controller?.pause();
+                              } else {
+                                _controller?.play();
+                              }
+                            });
+                          },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ),
+              ),
+
+            // 3. Minimalist Timeline Scrubber (Bottom White Rail)
+            if (_showControls && _isInit && _controller != null)
+              Positioned(
+                left: 30,
+                right: 30,
+                bottom: 24,
+                child: SafeArea(
+                  child: ValueListenableBuilder(
+                    valueListenable: _controller!,
+                    builder: (context, VideoPlayerValue val, child) {
+                      final duration = val.duration.inMilliseconds.toDouble();
+                      final position = val.position.inMilliseconds.toDouble();
+                      final currentVal = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
+
+                      return Container(
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: currentVal,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
           ],
