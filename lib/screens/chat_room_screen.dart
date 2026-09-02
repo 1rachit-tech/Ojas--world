@@ -1,145 +1,428 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-// मैसेज का स्ट्रक्चर (डेटा मॉडल)
-class ChatMessage {
-  final String text;
-  final bool isMe;
-  final String time;
-
-  ChatMessage({required this.text, required this.isMe, required this.time});
-}
+import '../models/ojas_message.dart';
+import '../models/ojas_profile.dart';
+import '../services/messaging_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
-  final String userName;
-  final Color userColor;
-  final IconData userIcon;
-
   const ChatRoomScreen({
     super.key,
-    required this.userName,
-    required this.userColor,
-    required this.userIcon,
+    required this.conversationId,
+    required this.otherUser,
   });
 
+  final String conversationId;
+
+  final OjasProfile otherUser;
+
   @override
-  State<ChatRoomScreen> createState() => _ChatRoomScreenState();
+  State<ChatRoomScreen> createState() =>
+      _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends State<ChatRoomScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  bool _isTyping = false;
+class _ChatRoomScreenState
+    extends State<ChatRoomScreen> {
+  final MessagingService _messagingService =
+      MessagingService.instance;
 
-  // डमी मैसेज लिस्ट (ताकि स्क्रीन खाली न दिखे)
-  final List<ChatMessage> _messages = [
-    ChatMessage(text: 'I sent over the new storyboard.', isMe: false, time: '9:40 AM'),
-    ChatMessage(text: 'Looks great! I will review it today.', isMe: true, time: '9:42 AM'),
-  ];
+  final TextEditingController _messageController =
+      TextEditingController();
+
+  final ScrollController _scrollController =
+      ScrollController();
+
+  bool _isSending = false;
+
+  bool get _hasText =>
+      _messageController.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    // जैसे ही यूज़र टाइप करेगा, सेंड/माइक बटन बदलेगा
-    _messageController.addListener(() {
-      setState(() {
-        _isTyping = _messageController.text.trim().isNotEmpty;
-      });
-    });
-  }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
+    _messageController.addListener(
+      _onTextChanged,
+    );
 
-  // मैसेज भेजने का रियल फंक्शन
-  void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
-
-    final now = DateTime.now();
-    final timeString = "${now.hour > 12 ? now.hour - 12 : now.hour}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}";
-
-    setState(() {
-      // नया मैसेज लिस्ट में सबसे ऊपर (0 index) जोड़ें, क्योंकि लिस्ट रिवर्स है
-      _messages.insert(
-        0,
-        ChatMessage(
-          text: _messageController.text.trim(),
-          isMe: true,
-          time: timeString,
-        ),
-      );
-    });
-
-    _messageController.clear();
-  }
-
-  // एक्शन्स दिखाने के लिए फंक्शन
-  void _showAction(String actionName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$actionName action triggered!'),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
+    WidgetsBinding.instance
+        .addPostFrameCallback(
+      (_) {
+        _messagingService.markConversationRead(
+          widget.conversationId,
+        );
+      },
     );
   }
 
   @override
+  void dispose() {
+    _messageController.removeListener(
+      _onTextChanged,
+    );
+
+    _messageController.dispose();
+
+    _scrollController.dispose();
+
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    if (_isSending || !_hasText) {
+      return;
+    }
+
+    final text =
+        _messageController.text.trim();
+
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      await _messagingService.sendTextMessage(
+        conversationId:
+            widget.conversationId,
+        receiverId:
+            widget.otherUser.uid,
+        text: text,
+      );
+
+      _messageController.clear();
+
+      HapticFeedback.lightImpact();
+
+      await _messagingService.markConversationRead(
+        widget.conversationId,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            _errorMessage(error),
+          ),
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteMessage(
+    OjasMessage message,
+  ) async {
+    final confirm =
+        await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              12,
+              20,
+              20,
+            ),
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFFE5E7EB),
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.red,
+                  ),
+                  title: const Text(
+                    'Delete message',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight:
+                          FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(
+                      context,
+                      true,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    try {
+      await _messagingService.deleteMessage(
+        conversationId:
+            widget.conversationId,
+        messageId: message.id,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to delete message.',
+          ),
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final currentUid =
+        _messagingService.currentUid;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA), // बहुत हल्का ग्रे बैकग्राउंड
+      backgroundColor:
+          const Color(0xFFFAFAFA),
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          // चैट लिस्ट
           Expanded(
-            child: ListView.builder(
-              reverse: true, // नए मैसेज नीचे से आएंगे
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _buildMessageBubble(_messages[index]);
+            child:
+                StreamBuilder<List<OjasMessage>>(
+              stream:
+                  _messagingService.watchMessages(
+                widget.conversationId,
+              ),
+              builder: (
+                context,
+                snapshot,
+              ) {
+                if (snapshot.hasData) {
+                  WidgetsBinding.instance
+                      .addPostFrameCallback(
+                    (_) {
+                      _messagingService
+                          .markConversationRead(
+                        widget.conversationId,
+                      );
+                    },
+                  );
+                }
+
+                if (snapshot.connectionState ==
+                        ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(
+                    child:
+                        CircularProgressIndicator(),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text(
+                      'Unable to load messages.',
+                    ),
+                  );
+                }
+
+                final messages =
+                    snapshot.data ?? [];
+
+                if (messages.isEmpty) {
+                  return _buildEmptyChat();
+                }
+
+                return ListView.builder(
+                  controller:
+                      _scrollController,
+                  reverse: true,
+                  padding:
+                      const EdgeInsets.fromLTRB(
+                    16,
+                    20,
+                    16,
+                    20,
+                  ),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior
+                          .onDrag,
+                  itemCount:
+                      messages.length,
+                  itemBuilder:
+                      (context, index) {
+                    final message =
+                        messages[index];
+
+                    final isMe =
+                        message.isSentBy(
+                      currentUid ?? '',
+                    );
+
+                    return _MessageBubble(
+                      message: message,
+                      isMe: isMe,
+                      onLongPress:
+                          isMe && !message.isDeleted
+                              ? () {
+                                  _deleteMessage(
+                                    message,
+                                  );
+                                }
+                              : null,
+                    );
+                  },
+                );
               },
             ),
           ),
-          // टाइपिंग एरिया
-          _buildMessageInput(),
+          _buildInput(),
         ],
       ),
     );
   }
 
-  // टॉप बार (AppBar)
   PreferredSizeWidget _buildAppBar() {
+    final photoUrl =
+        widget.otherUser.photoUrl.trim();
+
+    final initial =
+        widget.otherUser.displayName
+                .trim()
+                .isEmpty
+            ? 'O'
+            : widget.otherUser.displayName
+                .trim()[0]
+                .toUpperCase();
+
     return AppBar(
       backgroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0.5,
-      leadingWidth: 40,
+      surfaceTintColor:
+          Colors.transparent,
+      elevation: 0,
+      leadingWidth: 48,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF111827), size: 20),
-        onPressed: () => Navigator.pop(context),
+        tooltip: 'Back',
+        onPressed: () {
+          Navigator.pop(context);
+        },
+        icon: const Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: Color(0xFF111827),
+          size: 20,
+        ),
       ),
+      titleSpacing: 0,
       title: Row(
         children: [
           CircleAvatar(
-            radius: 18,
-            backgroundColor: widget.userColor,
-            child: Icon(widget.userIcon, color: Colors.black87, size: 20),
+            radius: 19,
+            backgroundColor:
+                const Color(0xFFF1F3F5),
+            backgroundImage:
+                photoUrl.startsWith('http')
+                    ? NetworkImage(photoUrl)
+                    : null,
+            child:
+                photoUrl.startsWith('http')
+                    ? null
+                    : Text(
+                        initial,
+                        style: const TextStyle(
+                          fontWeight:
+                              FontWeight.w800,
+                          color:
+                              Color(0xFF111827),
+                        ),
+                      ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
               children: [
-                Text(
-                  widget.userName,
-                  style: const TextStyle(color: Color(0xFF111827), fontSize: 16, fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        widget.otherUser.displayName,
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color:
+                              Color(0xFF111827),
+                          fontSize: 16,
+                          fontWeight:
+                              FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (widget.otherUser.isVerified)
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(
+                          left: 4,
+                        ),
+                        child: Icon(
+                          Icons.verified_rounded,
+                          size: 16,
+                          color:
+                              Color(0xFF3B82F6),
+                        ),
+                      ),
+                  ],
                 ),
-                const Text(
-                  'Online',
-                  style: TextStyle(color: Color(0xFF4ADE80), fontSize: 12, fontWeight: FontWeight.w600),
+                Text(
+                  widget.otherUser.ojasId.isEmpty
+                      ? 'OJAS'
+                      : '@${widget.otherUser.ojasId}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
                 ),
               ],
             ),
@@ -148,155 +431,438 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.videocam_outlined, color: Color(0xFF111827)),
-          onPressed: () => _showAction('Video Call'),
+          tooltip: 'More',
+          onPressed: _showMoreActions,
+          icon: const Icon(
+            Icons.more_horiz_rounded,
+            color: Color(0xFF111827),
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.call_outlined, color: Color(0xFF111827)),
-          onPressed: () => _showAction('Voice Call'),
-        ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
       ],
     );
   }
 
-  // मैसेज बबल्स (Chat UI)
-  Widget _buildMessageBubble(ChatMessage message) {
-    final isMe = message.isMe;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isMe)
+  Widget _buildEmptyChat() {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 40,
+        ),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
             CircleAvatar(
-              radius: 12,
-              backgroundColor: widget.userColor.withValues(alpha: 0.5),
-              child: Icon(widget.userIcon, size: 12, color: Colors.black87),
-            ),
-          if (!isMe) const SizedBox(width: 8),
-          
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isMe ? const Color(0xFFF5B942) : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: isMe ? const Radius.circular(18) : const Radius.circular(4),
-                  bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(18),
+              radius: 38,
+              backgroundColor:
+                  const Color(0xFFF1F3F5),
+              child: Text(
+                widget.otherUser.displayName
+                        .trim()
+                        .isEmpty
+                    ? 'O'
+                    : widget.otherUser.displayName
+                        .trim()[0]
+                        .toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF111827),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: isMe ? const Color(0xFF111827) : const Color(0xFF111827),
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    message.time,
-                    style: TextStyle(
-                      color: isMe ? Colors.black54 : const Color(0xFF9CA3AF),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
               ),
             ),
-          ),
-          
-          if (isMe) const SizedBox(width: 8),
-          if (isMe)
-            const Icon(Icons.done_all_rounded, size: 14, color: Color(0xFFF5B942)),
-        ],
+            const SizedBox(height: 18),
+            Text(
+              widget.otherUser.displayName,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Start your conversation',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // सबसे नीचे का टाइपिंग एरिया (Input Field)
-  Widget _buildMessageInput() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), // सुरक्षित एरिया के लिए पैडिंग
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB), width: 0.5)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // अटैचमेंट बटन
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF6B7280), size: 28),
-            onPressed: () => _showAction('Attachment'),
+  Widget _buildInput() {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding:
+            const EdgeInsets.fromLTRB(
+          12,
+          10,
+          12,
+          12,
+        ),
+        decoration:
+            const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(
+              color: Color(0xFFF0F0F0),
+            ),
           ),
-          
-          // मैसेज बॉक्स
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      maxLines: 4,
-                      minLines: 1,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: TextStyle(color: Color(0xFF9CA3AF)),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
+        ),
+        child: Row(
+          crossAxisAlignment:
+              CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Container(
+                constraints:
+                    const BoxConstraints(
+                  minHeight: 48,
+                  maxHeight: 130,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      const Color(0xFFF4F5F7),
+                  borderRadius:
+                      BorderRadius.circular(24),
+                ),
+                child: TextField(
+                  controller:
+                      _messageController,
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization:
+                      TextCapitalization.sentences,
+                  textInputAction:
+                      TextInputAction.newline,
+                  decoration:
+                      const InputDecoration(
+                    hintText: 'Message...',
+                    hintStyle: TextStyle(
+                      color: Color(0xFF9CA3AF),
+                    ),
+                    border: InputBorder.none,
+                    contentPadding:
+                        EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 13,
                     ),
                   ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.camera_alt_outlined, color: Color(0xFF6B7280), size: 22),
-                    onPressed: () => _showAction('Camera'),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          
-          // सेंड / माइक बटन (डायनामिक)
-          GestureDetector(
-            onTap: _isTyping ? _sendMessage : () => _showAction('Voice Record'),
-            child: CircleAvatar(
-              radius: 24,
-              backgroundColor: const Color(0xFFF5B942), // OJAS Yellow
-              child: Icon(
-                _isTyping ? Icons.send_rounded : Icons.mic_none_rounded,
-                color: const Color(0xFF111827),
-                size: 24,
-              ),
+            const SizedBox(width: 8),
+            AnimatedSwitcher(
+              duration:
+                  const Duration(milliseconds: 160),
+              child: _hasText
+                  ? IconButton(
+                      key: const ValueKey(
+                        'send',
+                      ),
+                      tooltip: 'Send',
+                      onPressed:
+                          _isSending
+                              ? null
+                              : _sendMessage,
+                      style:
+                          IconButton.styleFrom(
+                        backgroundColor:
+                            const Color(
+                          0xFF111827,
+                        ),
+                        foregroundColor:
+                            Colors.white,
+                      ),
+                      icon: _isSending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color:
+                                    Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                            ),
+                    )
+                  : IconButton(
+                      key: const ValueKey(
+                        'camera',
+                      ),
+                      tooltip:
+                          'Media coming soon',
+                      onPressed:
+                          _showMediaComingSoon,
+                      icon: const Icon(
+                        Icons.add_circle_outline_rounded,
+                        color:
+                            Color(0xFF111827),
+                      ),
+                    ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  void _showMoreActions() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              12,
+              20,
+              24,
+            ),
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFFE5E7EB),
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: const Icon(
+                    Icons.info_outline_rounded,
+                  ),
+                  title: const Text(
+                    'Conversation info',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.notifications_off_outlined,
+                  ),
+                  title: const Text(
+                    'Mute notifications',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Notification controls are coming soon.',
+                        ),
+                        behavior:
+                            SnackBarBehavior
+                                .floating,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showMediaComingSoon() {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Photo, video and voice messages are the next upgrade.',
+        ),
+        behavior:
+            SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  String _errorMessage(
+    Object error,
+  ) {
+    if (error is MessagingException) {
+      return error.message;
+    }
+
+    return 'Unable to send message. Please try again.';
   }
 }
 
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({
+    required this.message,
+    required this.isMe,
+    this.onLongPress,
+  });
+
+  final OjasMessage message;
+
+  final bool isMe;
+
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final time =
+        _formatTime(
+      message.createdAt,
+    );
+
+    return Padding(
+      padding:
+          const EdgeInsets.only(
+        bottom: 10,
+      ),
+      child: Align(
+        alignment: isMe
+            ? Alignment.centerRight
+            : Alignment.centerLeft,
+        child: GestureDetector(
+          onLongPress: onLongPress,
+          child: ConstrainedBox(
+            constraints:
+                BoxConstraints(
+              maxWidth:
+                  MediaQuery.of(context)
+                          .size
+                          .width *
+                      0.76,
+            ),
+            child: Container(
+              padding:
+                  const EdgeInsets.fromLTRB(
+                14,
+                10,
+                14,
+                8,
+              ),
+              decoration: BoxDecoration(
+                color: isMe
+                    ? const Color(0xFF111827)
+                    : Colors.white,
+                borderRadius:
+                    BorderRadius.only(
+                  topLeft:
+                      const Radius.circular(18),
+                  topRight:
+                      const Radius.circular(18),
+                  bottomLeft:
+                      Radius.circular(
+                    isMe ? 18 : 4,
+                  ),
+                  bottomRight:
+                      Radius.circular(
+                    isMe ? 4 : 18,
+                  ),
+                ),
+                border: isMe
+                    ? null
+                    : Border.all(
+                        color:
+                            const Color(
+                          0xFFEAEAEA,
+                        ),
+                      ),
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    message.isDeleted
+                        ? 'This message was deleted.'
+                        : message.text,
+                    style: TextStyle(
+                      color: isMe
+                          ? Colors.white
+                          : const Color(
+                              0xFF111827,
+                            ),
+                      fontSize: 15,
+                      height: 1.35,
+                      fontStyle:
+                          message.isDeleted
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                    ),
+                  ),
+                  if (time.isNotEmpty)
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(
+                        top: 5,
+                      ),
+                      child: Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMe
+                              ? Colors.white70
+                              : const Color(
+                                  0xFF9CA3AF,
+                                ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _formatTime(
+    Timestamp? timestamp,
+  ) {
+    if (timestamp == null) {
+      return '';
+    }
+
+    final date =
+        timestamp.toDate();
+
+    final hour =
+        date.hour > 12
+            ? date.hour - 12
+            : date.hour == 0
+                ? 12
+                : date.hour;
+
+    final minute =
+        date.minute
+            .toString()
+            .padLeft(2, '0');
+
+    final period =
+        date.hour >= 12
+            ? 'PM'
+            : 'AM';
+
+    return '$hour:$minute $period';
+  }
+}
