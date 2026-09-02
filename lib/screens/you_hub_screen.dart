@@ -1,13 +1,15 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/ojas_profile.dart';
 import '../services/auth_service.dart';
+import '../services/profile_service.dart';
+
 import 'login_screen.dart';
 import 'profile_setup_screen.dart';
 import 'settings_screen.dart';
@@ -22,15 +24,19 @@ class YouHubScreen extends StatefulWidget {
   final VoidCallback? onLoggedOut;
 
   @override
-  State<YouHubScreen> createState() => _YouHubScreenState();
+  State<YouHubScreen> createState() =>
+      _YouHubScreenState();
 }
 
 class _YouHubScreenState extends State<YouHubScreen> {
-  static const Color _primary = Color(0xFF111827);
-  static const Color _secondary = Color(0xFF6B7280);
-  static const Color _border = Color(0xFFE5E7EB);
-  static const Color _soft = Color(0xFFF7F8FA);
-  static const Color _accent = Color(0xFFF5B942);
+  static const Color _primary =
+      Color(0xFF111827);
+
+  static const Color _secondary =
+      Color(0xFF6B7280);
+
+  static const Color _soft =
+      Color(0xFFF7F8FA);
 
   final _accountStore = _LocalAccountStore();
 
@@ -48,22 +54,28 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   Future<void> _loadAccounts() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user =
+          FirebaseAuth.instance.currentUser;
 
       if (user != null) {
         await _accountStore.rememberUser(user);
       }
 
-      final accounts = await _accountStore.loadAccounts();
+      final accounts =
+          await _accountStore.loadAccounts();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _accounts = accounts;
         _accountsLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _accountsLoading = false;
@@ -71,25 +83,30 @@ class _YouHubScreenState extends State<YouHubScreen> {
     }
   }
 
-  Future<void> _refreshAccounts({
-    String? displayName,
-    String? ojasId,
-    String? photoUrl,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
+  Future<void> _refreshAccounts(
+    OjasProfile? profile,
+  ) async {
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user != null) {
       await _accountStore.rememberUser(
         user,
-        displayName: displayName,
-        ojasId: ojasId,
-        photoUrl: photoUrl,
+        displayName:
+            profile?.displayName,
+        ojasId:
+            profile?.ojasId,
+        photoUrl:
+            profile?.photoUrl,
       );
     }
 
-    final accounts = await _accountStore.loadAccounts();
+    final accounts =
+        await _accountStore.loadAccounts();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _accounts = accounts;
@@ -97,7 +114,9 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   void _changeTab(int index) {
-    if (_selectedTab == index) return;
+    if (_selectedTab == index) {
+      return;
+    }
 
     HapticFeedback.selectionClick();
 
@@ -108,24 +127,13 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   Future<void> _openAccountSwitcher(
     User user,
-    Map<String, dynamic>? profile,
+    OjasProfile? profile,
   ) async {
-    await _refreshAccounts(
-      displayName: _string(
-        profile?['displayName'],
-        fallback: user.displayName ?? 'OJAS User',
-      ),
-      ojasId: _string(
-        profile?['ojasId'],
-        fallback: 'ojas_user',
-      ),
-      photoUrl: _string(
-        profile?['photoUrl'],
-        fallback: user.photoURL ?? '',
-      ),
-    );
+    await _refreshAccounts(profile);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -138,24 +146,33 @@ class _YouHubScreenState extends State<YouHubScreen> {
           onAccountTap: (account) async {
             Navigator.of(sheetContext).pop();
 
-            if (account.uid == user.uid) return;
+            if (account.uid == user.uid) {
+              return;
+            }
 
             await _openLogin();
           },
           onAddAccount: () async {
             Navigator.of(sheetContext).pop();
+
             await _openLogin();
           },
           onCreateAccount: () async {
             Navigator.of(sheetContext).pop();
+
             await _openSignup();
           },
           onRemoveAccount: (account) async {
-            await _accountStore.removeAccount(account.uid);
+            await _accountStore.removeAccount(
+              account.uid,
+            );
 
-            final accounts = await _accountStore.loadAccounts();
+            final accounts =
+                await _accountStore.loadAccounts();
 
-            if (!mounted) return;
+            if (!mounted) {
+              return;
+            }
 
             setState(() {
               _accounts = accounts;
@@ -163,6 +180,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
           },
           onLogout: () async {
             Navigator.of(sheetContext).pop();
+
             await _logout();
           },
         );
@@ -171,11 +189,15 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   Future<void> _openLogin() async {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
-    final result = await Navigator.of(context).push<bool>(
+    final result =
+        await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => const LoginScreen(),
+        builder: (_) =>
+            const LoginScreen(),
       ),
     );
 
@@ -185,11 +207,15 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   Future<void> _openSignup() async {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
-    final result = await Navigator.of(context).push<bool>(
+    final result =
+        await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => const SignupScreen(),
+        builder: (_) =>
+            const SignupScreen(),
       ),
     );
 
@@ -203,15 +229,18 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const SettingsScreen(),
+        builder: (_) =>
+            const SettingsScreen(),
       ),
     );
   }
 
   Future<void> _openProfileSetup() async {
-    final result = await Navigator.of(context).push<bool>(
+    final result =
+        await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => const ProfileSetupScreen(),
+        builder: (_) =>
+            const ProfileSetupScreen(),
       ),
     );
 
@@ -221,14 +250,17 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
+          surfaceTintColor:
+              Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius:
+                BorderRadius.circular(24),
           ),
           title: const Text(
             'Log out of OJAS?',
@@ -247,135 +279,173 @@ class _YouHubScreenState extends State<YouHubScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop(false);
+                Navigator.of(
+                  dialogContext,
+                ).pop(false);
               },
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+              ),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFDC2626),
-                foregroundColor: Colors.white,
+              style:
+                  FilledButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFFDC2626),
+                foregroundColor:
+                    Colors.white,
               ),
               onPressed: () {
-                Navigator.of(dialogContext).pop(true);
+                Navigator.of(
+                  dialogContext,
+                ).pop(true);
               },
-              child: const Text('Log out'),
+              child: const Text(
+                'Log out',
+              ),
             ),
           ],
         );
       },
     );
 
-    if (confirm != true) return;
+    if (confirmed != true) {
+      return;
+    }
 
     try {
       await AuthService.instance.signOut();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       widget.onLoggedOut?.call();
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Unable to log out. Please try again.',
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     }
   }
 
   Future<void> _shareProfile(
-    User user,
-    Map<String, dynamic>? profile,
+    OjasProfile profile,
   ) async {
     HapticFeedback.selectionClick();
 
-    final ojasId = _string(
-      profile?['ojasId'],
-      fallback: 'ojas_user',
-    );
+    final ojasId = profile.ojasId;
+
+    if (ojasId.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Create your OJAS ID before sharing your profile.',
+          ),
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
+
+      return;
+    }
 
     try {
       await Share.share(
-        'Follow @$ojasId on OJAS.\n'
+        'Follow @${profile.ojasId} on OJAS.\n'
         'Discover creators, videos and communities on OJAS.',
         subject: 'OJAS Profile',
       );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Unable to share your profile right now.',
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     }
   }
 
   Future<void> _editProfile(
-    User user,
-    Map<String, dynamic>? profile,
+    OjasProfile profile,
   ) async {
-    final nameController = TextEditingController(
-      text: _string(
-        profile?['displayName'],
-        fallback: user.displayName ?? '',
-      ),
+    final nameController =
+        TextEditingController(
+      text: profile.displayName,
     );
 
-    final bioController = TextEditingController(
-      text: _string(profile?['bio']),
+    final bioController =
+        TextEditingController(
+      text: profile.bio,
     );
 
-    final websiteController = TextEditingController(
-      text: _string(profile?['website']),
+    final websiteController =
+        TextEditingController(
+      text: profile.website,
     );
 
-    final result = await showModalBottomSheet<bool>(
+    final result =
+        await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor:
+          Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            bottom:
+                MediaQuery.of(sheetContext)
+                    .viewInsets
+                    .bottom,
           ),
           child: _EditProfileSheet(
             nameController: nameController,
             bioController: bioController,
-            websiteController: websiteController,
+            websiteController:
+                websiteController,
             onSave: () async {
-              final name = nameController.text.trim();
-
-              if (name.isEmpty) {
-                throw Exception('Display name cannot be empty.');
-              }
-
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .set(
-                {
-                  'uid': user.uid,
-                  'displayName': name,
-                  'bio': bioController.text.trim(),
-                  'website': websiteController.text.trim(),
-                  'updatedAt': FieldValue.serverTimestamp(),
-                },
-                SetOptions(merge: true),
+              await ProfileService.instance
+                  .updateCurrentProfile(
+                displayName:
+                    nameController.text,
+                bio:
+                    bioController.text,
+                website:
+                    websiteController.text,
               );
 
-              await user.updateDisplayName(name);
-
               await _refreshAccounts(
-                displayName: name,
+                profile.copyWith(
+                  displayName:
+                      nameController.text.trim(),
+                  bio:
+                      bioController.text.trim(),
+                  website:
+                      websiteController.text.trim(),
+                ),
               );
 
               return true;
@@ -390,98 +460,87 @@ class _YouHubScreenState extends State<YouHubScreen> {
     websiteController.dispose();
 
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
-          content: Text('Profile updated successfully.'),
-          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Profile updated successfully.',
+          ),
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     }
   }
 
   Future<void> _changeAvatar(
-    User user,
-    Map<String, dynamic>? profile,
+    OjasProfile profile,
   ) async {
-    final currentAvatar = _string(
-      profile?['photoUrl'],
-      fallback: user.photoURL ?? 'avatar_1',
-    );
-
-    final selectedAvatar = await showModalBottomSheet<String>(
+    final selectedAvatar =
+        await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Colors.transparent,
+      backgroundColor:
+          Colors.transparent,
       builder: (context) {
         return _AvatarPicker(
-          selectedAvatar: currentAvatar,
+          selectedAvatar:
+              profile.photoUrl,
         );
       },
     );
 
     if (selectedAvatar == null ||
-        selectedAvatar == currentAvatar) {
+        selectedAvatar ==
+            profile.photoUrl) {
       return;
     }
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set(
-        {
-          'photoUrl': selectedAvatar,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+      await ProfileService.instance
+          .updateProfilePhoto(
+        selectedAvatar,
       );
 
       await _refreshAccounts(
-        photoUrl: selectedAvatar,
+        profile.copyWith(
+          photoUrl: selectedAvatar,
+        ),
       );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Unable to update profile picture.',
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     }
   }
 
-  String _string(
-    dynamic value, {
-    String fallback = '',
-  }) {
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-
-    return fallback;
-  }
-
-  int _integer(dynamic value) {
-    if (value is int) return value;
-
-    if (value is num) return value.toInt();
-
-    return 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
+      stream:
+          FirebaseAuth.instance.authStateChanges(),
+      builder: (
+        context,
+        authSnapshot,
+      ) {
         if (authSnapshot.connectionState ==
             ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: Colors.white,
+            backgroundColor:
+                Colors.white,
             body: Center(
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 color: _primary,
               ),
             ),
@@ -491,101 +550,102 @@ class _YouHubScreenState extends State<YouHubScreen> {
         final user = authSnapshot.data;
 
         if (user == null) {
-          return Scaffold(
-            backgroundColor: Colors.white,
-            body: SafeArea(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.person_outline_rounded,
-                        size: 56,
-                        color: _primary,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Welcome to OJAS',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: _primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Sign in to access your profile and messages.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: _secondary,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _primary,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: _openLogin,
-                          child: const Text('Log in'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          return _LoggedOutPage(
+            onLogin: _openLogin,
           );
         }
 
-        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .snapshots(),
-          builder: (context, profileSnapshot) {
-            final profile = profileSnapshot.data?.data();
+        return StreamBuilder<OjasProfile?>(
+          stream: ProfileService.instance
+              .watchCurrentProfile(),
+          builder: (
+            context,
+            profileSnapshot,
+          ) {
+            if (profileSnapshot.hasError) {
+              return Scaffold(
+                backgroundColor:
+                    Colors.white,
+                body: SafeArea(
+                  child: Center(
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize:
+                            MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.cloud_off_outlined,
+                            size: 52,
+                            color:
+                                Color(0xFF9CA3AF),
+                          ),
+                          const SizedBox(
+                            height: 16,
+                          ),
+                          const Text(
+                            'Unable to load profile',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight:
+                                  FontWeight.w800,
+                              color: _primary,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 8,
+                          ),
+                          const Text(
+                            'Please check your internet connection and try again.',
+                            textAlign:
+                                TextAlign.center,
+                            style: TextStyle(
+                              color: _secondary,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 20,
+                          ),
+                          FilledButton(
+                            onPressed:
+                                _openProfileSetup,
+                            child: const Text(
+                              'Try profile setup',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
 
-            final displayName = _string(
-              profile?['displayName'],
-              fallback: user.displayName ?? 'OJAS User',
-            );
+            final profile =
+                profileSnapshot.data;
 
-            final ojasId = _string(
-              profile?['ojasId'],
-              fallback: '',
-            );
-
-            final photoUrl = _string(
-              profile?['photoUrl'],
-              fallback: user.photoURL ?? '',
-            );
-
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!_accountsLoading) {
-                _refreshAccounts(
-                  displayName: displayName,
-                  ojasId: ojasId,
-                  photoUrl: photoUrl,
-                );
-              }
-            });
+            if (profile != null &&
+                !_accountsLoading) {
+              WidgetsBinding.instance
+                  .addPostFrameCallback(
+                (_) {
+                  if (mounted) {
+                    _refreshAccounts(profile);
+                  }
+                },
+              );
+            }
 
             return Scaffold(
-              backgroundColor: Colors.white,
+              backgroundColor:
+                  Colors.white,
               body: SafeArea(
                 child: Column(
                   children: [
                     _buildTopBar(
                       user,
                       profile,
-                      displayName,
-                      photoUrl,
                     ),
                     Expanded(
                       child: IndexedStack(
@@ -593,35 +653,45 @@ class _YouHubScreenState extends State<YouHubScreen> {
                         children: [
                           _MessagesPage(
                             onCompose: () {
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'New messaging system will connect to real users.',
+                                    'Real messaging will be connected in the next messaging phase.',
                                   ),
                                   behavior:
-                                      SnackBarBehavior.floating,
+                                      SnackBarBehavior
+                                          .floating,
                                 ),
                               );
                             },
                           ),
                           _ProfilePage(
-                            user: user,
                             profile: profile,
-                            displayName: displayName,
-                            ojasId: ojasId,
-                            photoUrl: photoUrl,
-                            getString: _string,
-                            getInteger: _integer,
-                            onEdit: () {
-                              _editProfile(user, profile);
-                            },
-                            onShare: () {
-                              _shareProfile(user, profile);
-                            },
-                            onChangeAvatar: () {
-                              _changeAvatar(user, profile);
-                            },
+                            firebaseUser: user,
+                            onEdit: profile == null
+                                ? _openProfileSetup
+                                : () {
+                                    _editProfile(
+                                      profile,
+                                    );
+                                  },
+                            onShare: profile == null
+                                ? _openProfileSetup
+                                : () {
+                                    _shareProfile(
+                                      profile,
+                                    );
+                                  },
+                            onChangeAvatar:
+                                profile == null
+                                    ? _openProfileSetup
+                                    : () {
+                                        _changeAvatar(
+                                          profile,
+                                        );
+                                      },
                             onCompleteProfile:
                                 _openProfileSetup,
                           ),
@@ -640,10 +710,18 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   Widget _buildTopBar(
     User user,
-    Map<String, dynamic>? profile,
-    String displayName,
-    String photoUrl,
+    OjasProfile? profile,
   ) {
+    final displayName =
+        profile?.displayName ??
+            user.displayName ??
+            'OJAS User';
+
+    final photoUrl =
+        profile?.photoUrl ??
+            user.photoURL ??
+            '';
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(
@@ -655,9 +733,13 @@ class _YouHubScreenState extends State<YouHubScreen> {
       child: Row(
         children: [
           InkWell(
-            borderRadius: BorderRadius.circular(30),
+            borderRadius:
+                BorderRadius.circular(30),
             onTap: () {
-              _openAccountSwitcher(user, profile);
+              _openAccountSwitcher(
+                user,
+                profile,
+              );
             },
             child: Stack(
               clipBehavior: Clip.none,
@@ -682,7 +764,8 @@ class _YouHubScreenState extends State<YouHubScreen> {
                       ),
                     ),
                     child: const Icon(
-                      Icons.keyboard_arrow_down_rounded,
+                      Icons
+                          .keyboard_arrow_down_rounded,
                       color: Colors.white,
                       size: 13,
                     ),
@@ -697,23 +780,29 @@ class _YouHubScreenState extends State<YouHubScreen> {
               height: 50,
               decoration: BoxDecoration(
                 color: _soft,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius:
+                    BorderRadius.circular(16),
               ),
-              padding: const EdgeInsets.all(4),
+              padding:
+                  const EdgeInsets.all(4),
               child: Row(
                 children: [
                   Expanded(
                     child: _TopTab(
                       title: 'Messages',
-                      selected: _selectedTab == 0,
-                      onTap: () => _changeTab(0),
+                      selected:
+                          _selectedTab == 0,
+                      onTap: () =>
+                          _changeTab(0),
                     ),
                   ),
                   Expanded(
                     child: _TopTab(
                       title: 'Profile',
-                      selected: _selectedTab == 1,
-                      onTap: () => _changeTab(1),
+                      selected:
+                          _selectedTab == 1,
+                      onTap: () =>
+                          _changeTab(1),
                     ),
                   ),
                 ],
@@ -736,6 +825,79 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 }
 
+class _LoggedOutPage extends StatelessWidget {
+  const _LoggedOutPage({
+    required this.onLogin,
+  });
+
+  final Future<void> Function() onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding:
+                const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.person_outline_rounded,
+                  size: 56,
+                  color: Color(0xFF111827),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Welcome to OJAS',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight:
+                        FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Sign in to access your profile and messages.',
+                  textAlign:
+                      TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    style:
+                        FilledButton.styleFrom(
+                      backgroundColor:
+                          const Color(
+                        0xFF111827,
+                      ),
+                      foregroundColor:
+                          Colors.white,
+                    ),
+                    onPressed: onLogin,
+                    child: const Text(
+                      'Log in',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TopTab extends StatelessWidget {
   const _TopTab({
     required this.title,
@@ -753,9 +915,11 @@ class _TopTab extends StatelessWidget {
       color: selected
           ? Colors.white
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(13),
+      borderRadius:
+          BorderRadius.circular(13),
       child: InkWell(
-        borderRadius: BorderRadius.circular(13),
+        borderRadius:
+            BorderRadius.circular(13),
         onTap: onTap,
         child: Center(
           child: Text(
@@ -785,83 +949,82 @@ class _MessagesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        22,
+        16,
+        22,
+        32,
+      ),
       children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              22,
-              16,
-              22,
-              32,
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Messages',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight:
+                      FontWeight.w800,
+                  color: Color(0xFF111827),
+                ),
+              ),
             ),
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Messages',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'New message',
-                    onPressed: onCompose,
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 27,
-                    ),
-                  ),
-                ],
+            IconButton(
+              tooltip: 'New message',
+              onPressed: onCompose,
+              icon: const Icon(
+                Icons.edit_outlined,
+                size: 27,
               ),
-              const SizedBox(height: 22),
-              Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F6F8),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const TextField(
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    prefixIcon: Icon(Icons.search_rounded),
-                    hintText: 'Search conversations',
-                    hintStyle: TextStyle(
-                      color: Color(0xFF9CA3AF),
-                    ),
-                  ),
-                ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F6F8),
+            borderRadius:
+                BorderRadius.circular(18),
+          ),
+          child: const TextField(
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              prefixIcon: Icon(
+                Icons.search_rounded,
               ),
-              const SizedBox(height: 48),
-              const Icon(
-                Icons.forum_outlined,
-                size: 58,
-                color: Color(0xFFD1D5DB),
+              hintText:
+                  'Search conversations',
+              hintStyle: TextStyle(
+                color: Color(0xFF9CA3AF),
               ),
-              const SizedBox(height: 18),
-              const Text(
-                'Your conversations will appear here',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Start connecting with creators and people on OJAS.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF9CA3AF),
-                  height: 1.4,
-                ),
-              ),
-            ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 60),
+        const Icon(
+          Icons.forum_outlined,
+          size: 58,
+          color: Color(0xFFD1D5DB),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Your conversations will appear here',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF374151),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Start connecting with creators and people on OJAS.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF9CA3AF),
+            height: 1.4,
           ),
         ),
       ],
@@ -871,32 +1034,16 @@ class _MessagesPage extends StatelessWidget {
 
 class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
-    required this.user,
     required this.profile,
-    required this.displayName,
-    required this.ojasId,
-    required this.photoUrl,
-    required this.getString,
-    required this.getInteger,
+    required this.firebaseUser,
     required this.onEdit,
     required this.onShare,
     required this.onChangeAvatar,
     required this.onCompleteProfile,
   });
 
-  final User user;
-  final Map<String, dynamic>? profile;
-
-  final String displayName;
-  final String ojasId;
-  final String photoUrl;
-
-  final String Function(
-    dynamic value, {
-    String fallback,
-  }) getString;
-
-  final int Function(dynamic value) getInteger;
+  final OjasProfile? profile;
+  final User firebaseUser;
 
   final VoidCallback onEdit;
   final VoidCallback onShare;
@@ -905,17 +1052,49 @@ class _ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bio = getString(profile?['bio']);
+    final displayName =
+        profile?.displayName ??
+            firebaseUser.displayName ??
+            'OJAS User';
 
-    final website = getString(profile?['website']);
+    final photoUrl =
+        profile?.photoUrl ??
+            firebaseUser.photoURL ??
+            '';
 
-    final followers = getInteger(profile?['followersCount']);
+    final ojasId =
+        profile?.ojasId ?? '';
 
-    final following = getInteger(profile?['followingCount']);
+    final bio =
+        profile?.bio ?? '';
 
-    final likes = getInteger(profile?['likesCount']);
+    final website =
+        profile?.website ?? '';
 
-    final profileComplete = ojasId.isNotEmpty;
+    final isCreator =
+        profile?.isCreator ?? false;
+
+    final category =
+        profile?.creatorCategory ?? '';
+
+    final isVerified =
+        profile?.isVerified ?? false;
+
+    final following =
+        profile?.followingCount ?? 0;
+
+    final followers =
+        profile?.followersCount ?? 0;
+
+    final likes =
+        profile?.likesCount ?? 0;
+
+    final posts =
+        profile?.postsCount ?? 0;
+
+    final profileComplete =
+        profile != null &&
+            ojasId.isNotEmpty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -938,17 +1117,22 @@ class _ProfilePage extends StatelessWidget {
                 right: -4,
                 bottom: -2,
                 child: Material(
-                  color: const Color(0xFFF5B942),
-                  shape: const CircleBorder(),
+                  color:
+                      const Color(0xFFF5B942),
+                  shape:
+                      const CircleBorder(),
                   child: InkWell(
                     onTap: onChangeAvatar,
-                    customBorder: const CircleBorder(),
+                    customBorder:
+                        const CircleBorder(),
                     child: const Padding(
                       padding: EdgeInsets.all(11),
                       child: Icon(
-                        Icons.camera_alt_outlined,
+                        Icons
+                            .camera_alt_outlined,
                         size: 20,
-                        color: Color(0xFF111827),
+                        color:
+                            Color(0xFF111827),
                       ),
                     ),
                   ),
@@ -958,18 +1142,51 @@ class _ProfilePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 28),
-        Text(
-          profileComplete
-              ? '@$ojasId'
-              : 'Complete your OJAS ID',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF111827),
+
+        if (profileComplete)
+          Row(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  '@$ojasId',
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight:
+                        FontWeight.w800,
+                    color:
+                        Color(0xFF111827),
+                  ),
+                ),
+              ),
+              if (isVerified) ...[
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.verified_rounded,
+                  color: Color(0xFF2563EB),
+                  size: 22,
+                ),
+              ],
+            ],
+          )
+        else
+          const Text(
+            'Complete your OJAS ID',
+            textAlign:
+                TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight:
+                  FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
+
+        const SizedBox(height: 7),
+
         Text(
           displayName,
           textAlign: TextAlign.center,
@@ -978,44 +1195,87 @@ class _ProfilePage extends StatelessWidget {
             color: Color(0xFF6B7280),
           ),
         ),
+
+        if (isCreator &&
+            category.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Center(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFFFF7E6),
+                borderRadius:
+                    BorderRadius.circular(99),
+              ),
+              child: Text(
+                category,
+                style: const TextStyle(
+                  color: Color(0xFFB7791F),
+                  fontSize: 12,
+                  fontWeight:
+                      FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+
         if (!profileComplete) ...[
           const SizedBox(height: 16),
           Center(
             child: OutlinedButton.icon(
-              onPressed: onCompleteProfile,
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-              label: const Text('Create OJAS ID'),
+              onPressed:
+                  onCompleteProfile,
+              icon: const Icon(
+                Icons
+                    .person_add_alt_1_outlined,
+              ),
+              label: const Text(
+                'Create OJAS ID',
+              ),
             ),
           ),
         ],
+
         const SizedBox(height: 30),
+
         Row(
           children: [
             Expanded(
               child: _Stat(
-                value: _formatNumber(following),
+                value:
+                    _formatNumber(following),
                 label: 'Following',
               ),
             ),
             Expanded(
               child: _Stat(
-                value: _formatNumber(followers),
+                value:
+                    _formatNumber(followers),
                 label: 'Followers',
               ),
             ),
             Expanded(
               child: _Stat(
-                value: _formatNumber(likes),
+                value:
+                    _formatNumber(likes),
                 label: 'Likes',
               ),
             ),
           ],
         ),
+
         if (bio.isNotEmpty) ...[
           const SizedBox(height: 24),
           Text(
             bio,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
             style: const TextStyle(
               fontSize: 15,
               color: Color(0xFF4B5563),
@@ -1023,37 +1283,52 @@ class _ProfilePage extends StatelessWidget {
             ),
           ),
         ],
+
         if (website.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
             website,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
             style: const TextStyle(
               color: Color(0xFF2563EB),
-              fontWeight: FontWeight.w600,
+              fontWeight:
+                  FontWeight.w600,
             ),
           ),
         ],
+
         const SizedBox(height: 28),
+
         Row(
           children: [
             Expanded(
               child: SizedBox(
                 height: 50,
                 child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF111827),
-                    foregroundColor: Colors.white,
+                  style:
+                      FilledButton.styleFrom(
+                    backgroundColor:
+                        const Color(
+                      0xFF111827,
+                    ),
+                    foregroundColor:
+                        Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        14,
+                      ),
                     ),
                   ),
                   onPressed: onEdit,
                   child: const Text(
                     'Edit Profile',
                     style: TextStyle(
-                      fontWeight: FontWeight.w700,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
                   ),
                 ),
@@ -1064,20 +1339,32 @@ class _ProfilePage extends StatelessWidget {
               child: SizedBox(
                 height: 50,
                 child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF111827),
-                    side: const BorderSide(
-                      color: Color(0xFFD1D5DB),
+                  style:
+                      OutlinedButton.styleFrom(
+                    foregroundColor:
+                        const Color(
+                      0xFF111827,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    side:
+                        const BorderSide(
+                      color: Color(
+                        0xFFD1D5DB,
+                      ),
+                    ),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        14,
+                      ),
                     ),
                   ),
                   onPressed: onShare,
                   child: const Text(
                     'Share Profile',
                     style: TextStyle(
-                      fontWeight: FontWeight.w700,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
                   ),
                 ),
@@ -1085,19 +1372,35 @@ class _ProfilePage extends StatelessWidget {
             ),
           ],
         ),
+
         const SizedBox(height: 36),
-        const Row(
+
+        Row(
           children: [
             Expanded(
-              child: Center(
-                child: Icon(
-                  Icons.grid_view_rounded,
-                  size: 27,
-                  color: Color(0xFF111827),
-                ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.grid_view_rounded,
+                    size: 27,
+                    color:
+                        Color(0xFF111827),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    posts > 0
+                        ? '$posts Posts'
+                        : 'Posts',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color:
+                          Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Expanded(
+            const Expanded(
               child: Center(
                 child: Icon(
                   Icons.bookmark_border_rounded,
@@ -1106,7 +1409,7 @@ class _ProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-            Expanded(
+            const Expanded(
               child: Center(
                 child: Icon(
                   Icons.lock_outline_rounded,
@@ -1117,28 +1420,40 @@ class _ProfilePage extends StatelessWidget {
             ),
           ],
         ),
+
         const SizedBox(height: 18),
+
         const Divider(
           color: Color(0xFFE5E7EB),
           height: 1,
         ),
+
         const SizedBox(height: 65),
-        const Icon(
-          Icons.video_library_outlined,
+
+        Icon(
+          posts > 0
+              ? Icons.video_library_outlined
+              : Icons.video_library_outlined,
           size: 54,
-          color: Color(0xFFD1D5DB),
+          color: const Color(0xFFD1D5DB),
         ),
+
         const SizedBox(height: 16),
-        const Text(
-          'No posts yet',
+
+        Text(
+          posts > 0
+              ? 'Your posts will appear here'
+              : 'No posts yet',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: Color(0xFF374151),
           ),
         ),
+
         const SizedBox(height: 8),
+
         const Text(
           'Your videos and posts will appear here.',
           textAlign: TextAlign.center,
@@ -1152,11 +1467,19 @@ class _ProfilePage extends StatelessWidget {
 
   static String _formatNumber(int value) {
     if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(1)}M';
+      final number = value / 1000000;
+
+      return number % 1 == 0
+          ? '${number.toInt()}M'
+          : '${number.toStringAsFixed(1)}M';
     }
 
     if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}K';
+      final number = value / 1000;
+
+      return number % 1 == 0
+          ? '${number.toInt()}K'
+          : '${number.toStringAsFixed(1)}K';
     }
 
     return value.toString();
@@ -1180,7 +1503,8 @@ class _Stat extends StatelessWidget {
           value,
           style: const TextStyle(
             fontSize: 21,
-            fontWeight: FontWeight.w800,
+            fontWeight:
+                FontWeight.w800,
             color: Color(0xFF111827),
           ),
         ),
@@ -1210,29 +1534,39 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarIcons = <String, IconData>{
-      'avatar_1': Icons.wb_sunny_outlined,
-      'avatar_2': Icons.auto_awesome_outlined,
-      'avatar_3': Icons.local_florist_outlined,
-      'avatar_4': Icons.nightlight_outlined,
+    const avatarIcons =
+        <String, IconData>{
+      'avatar_1':
+          Icons.wb_sunny_outlined,
+      'avatar_2':
+          Icons.auto_awesome_outlined,
+      'avatar_3':
+          Icons.local_florist_outlined,
+      'avatar_4':
+          Icons.nightlight_outlined,
     };
 
-    if (avatarIcons.containsKey(photoUrl)) {
+    if (avatarIcons.containsKey(
+      photoUrl,
+    )) {
       return Container(
         width: radius * 2,
         height: radius * 2,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0xFFF3F4F6),
+          color:
+              const Color(0xFFF3F4F6),
           border: Border.all(
-            color: const Color(0xFFE5E7EB),
+            color:
+                const Color(0xFFE5E7EB),
             width: 2,
           ),
         ),
         child: Icon(
           avatarIcons[photoUrl],
           size: radius,
-          color: const Color(0xFF111827),
+          color:
+              const Color(0xFF111827),
         ),
       );
     }
@@ -1244,7 +1578,11 @@ class _Avatar extends StatelessWidget {
           width: radius * 2,
           height: radius * 2,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
+          errorBuilder: (
+            _,
+            __,
+            ___,
+          ) {
             return _initialAvatar();
           },
         ),
@@ -1255,9 +1593,10 @@ class _Avatar extends StatelessWidget {
   }
 
   Widget _initialAvatar() {
-    final initial = displayName.isNotEmpty
-        ? displayName[0].toUpperCase()
-        : 'O';
+    final initial =
+        displayName.isNotEmpty
+            ? displayName[0].toUpperCase()
+            : 'O';
 
     return Container(
       width: radius * 2,
@@ -1271,15 +1610,18 @@ class _Avatar extends StatelessWidget {
         initial,
         style: TextStyle(
           fontSize: radius * 0.8,
-          fontWeight: FontWeight.w800,
-          color: const Color(0xFF111827),
+          fontWeight:
+              FontWeight.w800,
+          color:
+              const Color(0xFF111827),
         ),
       ),
     );
   }
 }
 
-class _EditProfileSheet extends StatefulWidget {
+class _EditProfileSheet
+    extends StatefulWidget {
   const _EditProfileSheet({
     required this.nameController,
     required this.bioController,
@@ -1298,33 +1640,57 @@ class _EditProfileSheet extends StatefulWidget {
       _EditProfileSheetState();
 }
 
-class _EditProfileSheetState extends State<_EditProfileSheet> {
+class _EditProfileSheetState
+    extends State<_EditProfileSheet> {
   bool _saving = false;
 
   String? _error;
 
   Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+
     setState(() {
       _saving = true;
       _error = null;
     });
 
     try {
-      final success = await widget.onSave();
+      final success =
+          await widget.onSave();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       if (success) {
         Navigator.of(context).pop(true);
       }
-    } catch (error) {
-      if (!mounted) return;
+    } on ProfileException catch (error) {
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
-        _error = error.toString().replaceFirst(
-              'Exception: ',
-              '',
-            );
+        _error = error.message;
+      });
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error =
+            error.message ??
+                'Unable to save your profile.';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _error =
+            'Unable to save your profile. Please try again.';
       });
     } finally {
       if (mounted) {
@@ -1338,16 +1704,19 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration:
+          const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(
+        borderRadius:
+            BorderRadius.vertical(
           top: Radius.circular(28),
         ),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
+          padding:
+              const EdgeInsets.fromLTRB(
             22,
             12,
             22,
@@ -1360,45 +1729,65 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   width: 42,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1D5DB),
-                    borderRadius: BorderRadius.circular(99),
+                    color:
+                        const Color(0xFFD1D5DB),
+                    borderRadius:
+                        BorderRadius.circular(
+                      99,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 22),
                 const Align(
-                  alignment: Alignment.centerLeft,
+                  alignment:
+                      Alignment.centerLeft,
                   child: Text(
                     'Edit Profile',
                     style: TextStyle(
                       fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF111827),
+                      fontWeight:
+                          FontWeight.w800,
+                      color:
+                          Color(0xFF111827),
                     ),
                   ),
                 ),
                 const SizedBox(height: 22),
                 TextField(
-                  controller: widget.nameController,
+                  controller:
+                      widget.nameController,
+                  enabled: !_saving,
+                  maxLength: 50,
                   textCapitalization:
                       TextCapitalization.words,
-                  decoration: _inputDecoration(
+                  decoration:
+                      _inputDecoration(
                     'Display name',
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
                 TextField(
-                  controller: widget.bioController,
+                  controller:
+                      widget.bioController,
+                  enabled: !_saving,
                   minLines: 3,
                   maxLines: 5,
-                  decoration: _inputDecoration(
+                  maxLength: 160,
+                  decoration:
+                      _inputDecoration(
                     'Bio',
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
                 TextField(
-                  controller: widget.websiteController,
-                  keyboardType: TextInputType.url,
-                  decoration: _inputDecoration(
+                  controller:
+                      widget.websiteController,
+                  enabled: !_saving,
+                  keyboardType:
+                      TextInputType.url,
+                  maxLength: 200,
+                  decoration:
+                      _inputDecoration(
                     'Website',
                   ),
                 ),
@@ -1406,15 +1795,22 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(14),
+                    padding:
+                        const EdgeInsets.all(14),
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          const Color(0xFFFEF2F2),
+                      borderRadius:
+                          BorderRadius.circular(
+                        14,
+                      ),
                     ),
                     child: Text(
                       _error!,
                       style: const TextStyle(
-                        color: Color(0xFFB91C1C),
+                        color:
+                            Color(0xFFB91C1C),
                       ),
                     ),
                   ),
@@ -1424,12 +1820,17 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton(
-                    style: FilledButton.styleFrom(
+                    style:
+                        FilledButton.styleFrom(
                       backgroundColor:
-                          const Color(0xFF111827),
-                      foregroundColor: Colors.white,
+                          const Color(
+                        0xFF111827,
+                      ),
+                      foregroundColor:
+                          Colors.white,
                     ),
-                    onPressed: _saving ? null : _save,
+                    onPressed:
+                        _saving ? null : _save,
                     child: _saving
                         ? const SizedBox(
                             width: 22,
@@ -1437,13 +1838,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             child:
                                 CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color:
+                                  Colors.white,
                             ),
                           )
                         : const Text(
                             'Save changes',
                             style: TextStyle(
-                              fontWeight: FontWeight.w700,
+                              fontWeight:
+                                  FontWeight.w700,
                             ),
                           ),
                   ),
@@ -1456,28 +1859,44 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  InputDecoration _inputDecoration(String label) {
+  InputDecoration _inputDecoration(
+    String label,
+  ) {
     return InputDecoration(
       labelText: label,
       filled: true,
-      fillColor: const Color(0xFFF9FAFB),
+      fillColor:
+          const Color(0xFFF9FAFB),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+            BorderRadius.circular(14),
         borderSide: const BorderSide(
           color: Color(0xFFE5E7EB),
         ),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+      enabledBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(14),
         borderSide: const BorderSide(
           color: Color(0xFFE5E7EB),
+        ),
+      ),
+      focusedBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(14),
+        borderSide: const BorderSide(
+          color: Color(0xFF111827),
+          width: 2,
         ),
       ),
     );
   }
 }
 
-class _AvatarPicker extends StatelessWidget {
+class _AvatarPicker
+    extends StatelessWidget {
   const _AvatarPicker({
     required this.selectedAvatar,
   });
@@ -1486,48 +1905,64 @@ class _AvatarPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatars = <String, IconData>{
-      'avatar_1': Icons.wb_sunny_outlined,
-      'avatar_2': Icons.auto_awesome_outlined,
-      'avatar_3': Icons.local_florist_outlined,
-      'avatar_4': Icons.nightlight_outlined,
+    const avatars =
+        <String, IconData>{
+      'avatar_1':
+          Icons.wb_sunny_outlined,
+      'avatar_2':
+          Icons.auto_awesome_outlined,
+      'avatar_3':
+          Icons.local_florist_outlined,
+      'avatar_4':
+          Icons.nightlight_outlined,
     };
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(
+      padding:
+          const EdgeInsets.fromLTRB(
         22,
         12,
         22,
         32,
       ),
-      decoration: const BoxDecoration(
+      decoration:
+          const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(
+        borderRadius:
+            BorderRadius.vertical(
           top: Radius.circular(28),
         ),
       ),
       child: SafeArea(
         top: false,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             Container(
               width: 42,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFD1D5DB),
-                borderRadius: BorderRadius.circular(99),
+                color:
+                    const Color(0xFFD1D5DB),
+                borderRadius:
+                    BorderRadius.circular(
+                  99,
+                ),
               ),
             ),
             const SizedBox(height: 22),
             const Align(
-              alignment: Alignment.centerLeft,
+              alignment:
+                  Alignment.centerLeft,
               child: Text(
                 'Choose profile picture',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
+                  fontWeight:
+                      FontWeight.w800,
+                  color:
+                      Color(0xFF111827),
                 ),
               ),
             ),
@@ -1537,35 +1972,52 @@ class _AvatarPicker extends StatelessWidget {
               crossAxisCount: 4,
               mainAxisSpacing: 14,
               crossAxisSpacing: 14,
-              children: avatars.entries.map((entry) {
-                final selected =
-                    entry.key == selectedAvatar;
+              children:
+                  avatars.entries.map(
+                (entry) {
+                  final selected =
+                      entry.key ==
+                          selectedAvatar;
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(50),
-                  onTap: () {
-                    Navigator.of(context).pop(
-                      entry.key,
-                    );
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFFF3F4F6),
-                      border: Border.all(
-                        color: selected
-                            ? const Color(0xFF111827)
-                            : const Color(0xFFE5E7EB),
-                        width: selected ? 3 : 1,
+                  return InkWell(
+                    borderRadius:
+                        BorderRadius.circular(
+                      50,
+                    ),
+                    onTap: () {
+                      Navigator.of(context)
+                          .pop(entry.key);
+                    },
+                    child: Container(
+                      decoration:
+                          BoxDecoration(
+                        shape:
+                            BoxShape.circle,
+                        color: const Color(
+                          0xFFF3F4F6,
+                        ),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(
+                                  0xFF111827,
+                                )
+                              : const Color(
+                                  0xFFE5E7EB,
+                                ),
+                          width:
+                              selected ? 3 : 1,
+                        ),
+                      ),
+                      child: Icon(
+                        entry.value,
+                        color: const Color(
+                          0xFF111827,
+                        ),
                       ),
                     ),
-                    child: Icon(
-                      entry.value,
-                      color: const Color(0xFF111827),
-                    ),
-                  ),
-                );
-              }).toList(),
+                  );
+                },
+              ).toList(),
             ),
           ],
         ),
@@ -1574,7 +2026,8 @@ class _AvatarPicker extends StatelessWidget {
   }
 }
 
-class _AccountSwitcher extends StatelessWidget {
+class _AccountSwitcher
+    extends StatelessWidget {
   const _AccountSwitcher({
     required this.currentUid,
     required this.accounts,
@@ -1593,48 +2046,60 @@ class _AccountSwitcher extends StatelessWidget {
     _SavedAccount account,
   ) onAccountTap;
 
-  final Future<void> Function() onAddAccount;
+  final Future<void> Function()
+      onAddAccount;
 
-  final Future<void> Function() onCreateAccount;
+  final Future<void> Function()
+      onCreateAccount;
 
   final Future<void> Function(
     _SavedAccount account,
   ) onRemoveAccount;
 
-  final Future<void> Function() onLogout;
+  final Future<void> Function()
+      onLogout;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       constraints: BoxConstraints(
         maxHeight:
-            MediaQuery.of(context).size.height * 0.82,
+            MediaQuery.of(context)
+                    .size
+                    .height *
+                0.82,
       ),
-      decoration: const BoxDecoration(
+      decoration:
+          const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(
+        borderRadius:
+            BorderRadius.vertical(
           top: Radius.circular(28),
         ),
       ),
       child: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
+          padding:
+              const EdgeInsets.fromLTRB(
             20,
             12,
             20,
             28,
           ),
-          shrinkWrap: true,
           children: [
             Center(
               child: Container(
                 width: 42,
                 height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D5DB),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      const Color(0xFFD1D5DB),
                   borderRadius:
-                      BorderRadius.circular(99),
+                      BorderRadius.circular(
+                    99,
+                  ),
                 ),
               ),
             ),
@@ -1643,7 +2108,8 @@ class _AccountSwitcher extends StatelessWidget {
               'Switch account',
               style: TextStyle(
                 fontSize: 23,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
                 color: Color(0xFF111827),
               ),
             ),
@@ -1655,80 +2121,108 @@ class _AccountSwitcher extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            ...accounts.map((account) {
-              final current =
-                  account.uid == currentUid;
 
-              return Padding(
-                padding:
-                    const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(18),
+            ...accounts.map(
+              (account) {
+                final current =
+                    account.uid ==
+                        currentUid;
+
+                return Padding(
+                  padding:
+                      const EdgeInsets.only(
+                    bottom: 8,
                   ),
-                  tileColor:
-                      const Color(0xFFF8F9FA),
-                  leading: _Avatar(
-                    radius: 23,
-                    photoUrl: account.photoUrl,
-                    displayName:
-                        account.displayName,
-                  ),
-                  title: Text(
-                    account.displayName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
+                  child: ListTile(
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        18,
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    account.ojasId.isNotEmpty
-                        ? '@${account.ojasId}'
-                        : 'OJAS account',
-                  ),
-                  trailing: current
-                      ? const Icon(
-                          Icons.check_circle_rounded,
-                          color: Color(0xFF16A34A),
-                        )
-                      : IconButton(
-                          tooltip: 'Remove',
-                          onPressed: () async {
-                            await onRemoveAccount(account);
-                          },
-                          icon: const Icon(
-                            Icons.close_rounded,
+                    tileColor:
+                        const Color(0xFFF8F9FA),
+                    leading: _Avatar(
+                      radius: 23,
+                      photoUrl:
+                          account.photoUrl,
+                      displayName:
+                          account.displayName,
+                    ),
+                    title: Text(
+                      account.displayName,
+                      style: const TextStyle(
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: Text(
+                      account.ojasId.isNotEmpty
+                          ? '@${account.ojasId}'
+                          : 'OJAS account',
+                    ),
+                    trailing: current
+                        ? const Icon(
+                            Icons
+                                .check_circle_rounded,
+                            color:
+                                Color(0xFF16A34A),
+                          )
+                        : IconButton(
+                            tooltip: 'Remove',
+                            onPressed: () async {
+                              await onRemoveAccount(
+                                account,
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.close_rounded,
+                            ),
                           ),
-                        ),
-                  onTap: () async {
-                    await onAccountTap(account);
-                  },
-                ),
-              );
-            }),
+                    onTap: () async {
+                      await onAccountTap(
+                        account,
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+
             const SizedBox(height: 10),
+
             OutlinedButton.icon(
               onPressed: () async {
                 await onAddAccount();
               },
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Log into another account'),
+              icon:
+                  const Icon(Icons.add_rounded),
+              label: const Text(
+                'Log into another account',
+              ),
             ),
+
             const SizedBox(height: 8),
+
             TextButton.icon(
               onPressed: () async {
                 await onCreateAccount();
               },
               icon: const Icon(
-                Icons.person_add_alt_1_outlined,
+                Icons
+                    .person_add_alt_1_outlined,
               ),
               label: const Text(
                 'Create new OJAS account',
               ),
             ),
+
             const Divider(height: 28),
+
             TextButton.icon(
-              style: TextButton.styleFrom(
+              style:
+                  TextButton.styleFrom(
                 foregroundColor:
                     const Color(0xFFDC2626),
               ),
@@ -1741,7 +2235,8 @@ class _AccountSwitcher extends StatelessWidget {
               label: const Text(
                 'Log out',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight:
+                      FontWeight.w700,
                 ),
               ),
             ),
@@ -1778,14 +2273,18 @@ class _SavedAccount {
     Map<String, dynamic> json,
   ) {
     return _SavedAccount(
-      uid: json['uid']?.toString() ?? '',
+      uid:
+          json['uid']?.toString() ?? '',
       displayName:
-          json['displayName']?.toString() ??
+          json['displayName']
+                  ?.toString() ??
               'OJAS User',
       ojasId:
           json['ojasId']?.toString() ?? '',
       photoUrl:
-          json['photoUrl']?.toString() ?? '',
+          json['photoUrl']
+                  ?.toString() ??
+              '',
     );
   }
 }
@@ -1794,11 +2293,13 @@ class _LocalAccountStore {
   static const String _storageKey =
       'ojas_saved_accounts_v1';
 
-  Future<List<_SavedAccount>> loadAccounts() async {
+  Future<List<_SavedAccount>>
+      loadAccounts() async {
     final preferences =
         await SharedPreferences.getInstance();
 
-    final raw = preferences.getString(_storageKey);
+    final raw =
+        preferences.getString(_storageKey);
 
     if (raw == null || raw.isEmpty) {
       return [];
@@ -1814,12 +2315,16 @@ class _LocalAccountStore {
       return decoded
           .whereType<Map>()
           .map(
-            (item) => _SavedAccount.fromJson(
-              Map<String, dynamic>.from(item),
+            (item) =>
+                _SavedAccount.fromJson(
+              Map<String, dynamic>.from(
+                item,
+              ),
             ),
           )
           .where(
-            (account) => account.uid.isNotEmpty,
+            (account) =>
+                account.uid.isNotEmpty,
           )
           .toList();
     } catch (_) {
@@ -1833,20 +2338,25 @@ class _LocalAccountStore {
     String? ojasId,
     String? photoUrl,
   }) async {
-    final accounts = await loadAccounts();
+    final accounts =
+        await loadAccounts();
 
     final account = _SavedAccount(
       uid: user.uid,
       displayName:
-          displayName?.trim().isNotEmpty == true
+          displayName?.trim().isNotEmpty ==
+                  true
               ? displayName!.trim()
-              : user.displayName ?? 'OJAS User',
+              : user.displayName ??
+                  'OJAS User',
       ojasId:
-          ojasId?.trim().isNotEmpty == true
+          ojasId?.trim().isNotEmpty ==
+                  true
               ? ojasId!.trim()
               : '',
       photoUrl:
-          photoUrl?.trim().isNotEmpty == true
+          photoUrl?.trim().isNotEmpty ==
+                  true
               ? photoUrl!.trim()
               : user.photoURL ?? '',
     );
@@ -1864,15 +2374,23 @@ class _LocalAccountStore {
     await preferences.setString(
       _storageKey,
       jsonEncode(
-        updated.map((item) => item.toJson()).toList(),
+        updated
+            .map(
+              (item) => item.toJson(),
+            )
+            .toList(),
       ),
     );
   }
 
-  Future<void> removeAccount(String uid) async {
-    final accounts = await loadAccounts();
+  Future<void> removeAccount(
+    String uid,
+  ) async {
+    final accounts =
+        await loadAccounts();
 
-    final updated = accounts.where(
+    final updated =
+        accounts.where(
       (account) => account.uid != uid,
     );
 
@@ -1882,7 +2400,11 @@ class _LocalAccountStore {
     await preferences.setString(
       _storageKey,
       jsonEncode(
-        updated.map((item) => item.toJson()).toList(),
+        updated
+            .map(
+              (item) => item.toJson(),
+            )
+            .toList(),
       ),
     );
   }
