@@ -179,12 +179,14 @@ class MessagingService {
       );
     }
 
+    final cleanQuery = query.trim();
+
     final nameQuery =
         await _publicProfiles
             .orderBy('displayName')
-            .startAt([query.trim()])
+            .startAt([cleanQuery])
             .endAt(
-              ['${query.trim()}\uf8ff'],
+              ['$cleanQuery\uf8ff'],
             )
             .limit(20)
             .get();
@@ -275,7 +277,9 @@ class MessagingService {
             otherUser.uid,
           ],
           'participantProfiles': {
-            uid: _profileMap(currentProfile),
+            uid: _profileMap(
+              currentProfile,
+            ),
             otherUser.uid:
                 _profileMap(otherUser),
           },
@@ -357,15 +361,20 @@ class MessagingService {
     if (replyTo != null) {
       messageData.addAll(
         {
-          'replyToMessageId': replyTo.id,
-          'replyToSenderId': replyTo.senderId,
+          'replyToMessageId':
+              replyTo.id,
+          'replyToSenderId':
+              replyTo.senderId,
           'replyToText':
               replyTo.isDeleted
                   ? 'This message was deleted.'
-                  : _safeReplyPreview(
-                      replyTo.text,
-                    ),
-          'replyToType': replyTo.type,
+                  : replyTo.isImage
+                      ? 'Photo'
+                      : _safeReplyPreview(
+                          replyTo.text,
+                        ),
+          'replyToType':
+              replyTo.type,
         },
       );
     }
@@ -379,6 +388,120 @@ class MessagingService {
       conversation,
       {
         'lastMessage': cleanText,
+        'lastMessageSenderId': uid,
+        'lastMessageAt':
+            FieldValue.serverTimestamp(),
+        'unreadCounts.$uid': 0,
+        'unreadCounts.$receiverId':
+            FieldValue.increment(1),
+      },
+      SetOptions(merge: true),
+    );
+
+    await batch.commit();
+  }
+
+  Future<void> sendImageMessage({
+    required String conversationId,
+    required String receiverId,
+    required String imageUrl,
+    required String storagePath,
+    required int width,
+    required int height,
+    String? caption,
+    OjasMessage? replyTo,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null) {
+      throw const MessagingException(
+        'Please sign in again.',
+      );
+    }
+
+    if (receiverId.isEmpty) {
+      throw const MessagingException(
+        'Invalid conversation.',
+      );
+    }
+
+    if (imageUrl.trim().isEmpty) {
+      throw const MessagingException(
+        'Image upload failed.',
+      );
+    }
+
+    final cleanCaption =
+        (caption ?? '').trim();
+
+    if (cleanCaption.length > 2000) {
+      throw const MessagingException(
+        'Caption can contain up to 2000 characters.',
+      );
+    }
+
+    final conversation =
+        conversationReference(
+      conversationId,
+    );
+
+    final message =
+        messageCollection(
+      conversationId,
+    ).doc();
+
+    final batch =
+        _firestore.batch();
+
+    final messageData =
+        <String, dynamic>{
+      'conversationId': conversationId,
+      'senderId': uid,
+      'text': cleanCaption,
+      'type': 'image',
+      'isDeleted': false,
+      'reactions': <String, String>{},
+      'mediaUrl': imageUrl,
+      'mediaStoragePath': storagePath,
+      'mediaWidth': width,
+      'mediaHeight': height,
+      'createdAt':
+          FieldValue.serverTimestamp(),
+    };
+
+    if (replyTo != null) {
+      messageData.addAll(
+        {
+          'replyToMessageId':
+              replyTo.id,
+          'replyToSenderId':
+              replyTo.senderId,
+          'replyToText':
+              replyTo.isDeleted
+                  ? 'This message was deleted.'
+                  : replyTo.isImage
+                      ? 'Photo'
+                      : _safeReplyPreview(
+                          replyTo.text,
+                        ),
+          'replyToType':
+              replyTo.type,
+        },
+      );
+    }
+
+    batch.set(
+      message,
+      messageData,
+    );
+
+    batch.set(
+      conversation,
+      {
+        'lastMessage':
+            cleanCaption.isNotEmpty
+                ? cleanCaption
+                : '📷 Photo',
         'lastMessageSenderId': uid,
         'lastMessageAt':
             FieldValue.serverTimestamp(),
