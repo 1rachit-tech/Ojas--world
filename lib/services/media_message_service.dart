@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -19,8 +20,10 @@ class MediaMessageResult {
 
   final String downloadUrl;
   final String storagePath;
+
   final int width;
   final int height;
+
   final int originalBytes;
   final int compressedBytes;
 }
@@ -40,7 +43,8 @@ class MediaMessageService {
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
 
-  final Uuid _uuid = const Uuid();
+  final Uuid _uuid =
+      const Uuid();
 
   static const int maxImageBytes =
       10 * 1024 * 1024;
@@ -71,7 +75,8 @@ class MediaMessageService {
     required String conversationId,
     required XFile sourceFile,
   }) async {
-    final uid = _auth.currentUser?.uid;
+    final uid =
+        _auth.currentUser?.uid;
 
     if (uid == null) {
       throw const MediaMessageException(
@@ -79,7 +84,8 @@ class MediaMessageService {
       );
     }
 
-    final source = File(sourceFile.path);
+    final source =
+        File(sourceFile.path);
 
     if (!await source.exists()) {
       throw const MediaMessageException(
@@ -109,7 +115,8 @@ class MediaMessageService {
       final compressedBytes =
           await compressedFile.length();
 
-      final imageId = _uuid.v4();
+      final imageId =
+          _uuid.v4();
 
       final storagePath =
           'chat_media/$conversationId/images/$imageId.jpg';
@@ -117,12 +124,14 @@ class MediaMessageService {
       final reference =
           _storage.ref().child(storagePath);
 
-      final metadata = SettableMetadata(
+      final metadata =
+          SettableMetadata(
         contentType: 'image/jpeg',
         cacheControl:
             'public,max-age=2592000',
         customMetadata: {
-          'conversationId': conversationId,
+          'conversationId':
+              conversationId,
           'uploadedBy': uid,
           'originalBytes':
               originalBytes.toString(),
@@ -175,7 +184,8 @@ class MediaMessageService {
         '${tempDirectory.path}/${_uuid.v4()}.jpg';
 
     final result =
-        await FlutterImageCompress.compressAndGetFile(
+        await FlutterImageCompress
+            .compressAndGetFile(
       source.path,
       targetPath,
       format: CompressFormat.jpeg,
@@ -195,7 +205,8 @@ class MediaMessageService {
     return File(result.path);
   }
 
-  Future<_ImageDimensions> _readImageDimensions(
+  Future<_ImageDimensions>
+      _readImageDimensions(
     File file,
   ) async {
     final bytes =
@@ -221,7 +232,8 @@ class _ImageDimensions {
   final int height;
 }
 
-class MediaMessageException implements Exception {
+class MediaMessageException
+    implements Exception {
   const MediaMessageException(
     this.message,
   );
