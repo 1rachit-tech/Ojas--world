@@ -14,6 +14,10 @@ class OjasMessage {
     this.replyToSenderId,
     this.replyToText,
     this.replyToType,
+    this.mediaUrl,
+    this.mediaStoragePath,
+    this.mediaWidth,
+    this.mediaHeight,
   });
 
   final String id;
@@ -24,24 +28,17 @@ class OjasMessage {
   final bool isDeleted;
   final Timestamp? createdAt;
 
-  /// Map structure:
-  ///
-  /// {
-  ///   "userUid1": "❤️",
-  ///   "userUid2": "🔥"
-  /// }
-  ///
-  /// One user can have only one reaction per message.
   final Map<String, String> reactions;
 
-  /// Reply metadata.
-  ///
-  /// We intentionally store a small snapshot instead of loading the
-  /// original message every time. This keeps chat reads low-cost.
   final String? replyToMessageId;
   final String? replyToSenderId;
   final String? replyToText;
   final String? replyToType;
+
+  final String? mediaUrl;
+  final String? mediaStoragePath;
+  final int? mediaWidth;
+  final int? mediaHeight;
 
   bool isSentBy(String uid) {
     return senderId == uid;
@@ -52,13 +49,36 @@ class OjasMessage {
         replyToMessageId!.isNotEmpty;
   }
 
+  bool get isImage {
+    return type == 'image';
+  }
+
+  bool get hasMedia {
+    return mediaUrl != null &&
+        mediaUrl!.trim().isNotEmpty;
+  }
+
+  double get mediaAspectRatio {
+    final width = mediaWidth ?? 1;
+    final height = mediaHeight ?? 1;
+
+    if (width <= 0 || height <= 0) {
+      return 1;
+    }
+
+    return width / height;
+  }
+
   String? reactionOf(String uid) {
     return reactions[uid];
   }
 
   int reactionCount(String emoji) {
     return reactions.values
-        .where((reaction) => reaction == emoji)
+        .where(
+          (reaction) =>
+              reaction == emoji,
+        )
         .length;
   }
 
@@ -80,7 +100,8 @@ class OjasMessage {
   factory OjasMessage.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) {
-    final data = document.data() ?? <String, dynamic>{};
+    final data =
+        document.data() ?? <String, dynamic>{};
 
     return OjasMessage(
       id: document.id,
@@ -97,22 +118,44 @@ class OjasMessage {
         data['type'],
         fallback: 'text',
       ),
-      isDeleted: data['isDeleted'] == true,
-      createdAt: data['createdAt'] as Timestamp?,
+      isDeleted:
+          data['isDeleted'] == true,
+      createdAt:
+          data['createdAt'] as Timestamp?,
       reactions: _reactionMap(
         data['reactions'],
       ),
-      replyToMessageId: _nullableString(
+      replyToMessageId:
+          _nullableString(
         data['replyToMessageId'],
       ),
-      replyToSenderId: _nullableString(
+      replyToSenderId:
+          _nullableString(
         data['replyToSenderId'],
       ),
-      replyToText: _nullableString(
+      replyToText:
+          _nullableString(
         data['replyToText'],
       ),
-      replyToType: _nullableString(
+      replyToType:
+          _nullableString(
         data['replyToType'],
+      ),
+      mediaUrl:
+          _nullableString(
+        data['mediaUrl'],
+      ),
+      mediaStoragePath:
+          _nullableString(
+        data['mediaStoragePath'],
+      ),
+      mediaWidth:
+          _nullableInt(
+        data['mediaWidth'],
+      ),
+      mediaHeight:
+          _nullableInt(
+        data['mediaHeight'],
       ),
     );
   }
@@ -125,11 +168,21 @@ class OjasMessage {
       'type': type,
       'isDeleted': isDeleted,
       'reactions': reactions,
-      'replyToMessageId': replyToMessageId,
-      'replyToSenderId': replyToSenderId,
-      'replyToText': replyToText,
-      'replyToType': replyToType,
-      'createdAt': FieldValue.serverTimestamp(),
+      'replyToMessageId':
+          replyToMessageId,
+      'replyToSenderId':
+          replyToSenderId,
+      'replyToText':
+          replyToText,
+      'replyToType':
+          replyToType,
+      'mediaUrl': mediaUrl,
+      'mediaStoragePath':
+          mediaStoragePath,
+      'mediaWidth': mediaWidth,
+      'mediaHeight': mediaHeight,
+      'createdAt':
+          FieldValue.serverTimestamp(),
     };
   }
 
@@ -140,16 +193,19 @@ class OjasMessage {
       return const {};
     }
 
-    final reactions = <String, String>{};
+    final reactions =
+        <String, String>{};
 
-    value.forEach((key, reaction) {
-      if (key is String &&
-          reaction is String &&
-          key.trim().isNotEmpty &&
-          reaction.trim().isNotEmpty) {
-        reactions[key] = reaction;
-      }
-    });
+    value.forEach(
+      (key, reaction) {
+        if (key is String &&
+            reaction is String &&
+            key.trim().isNotEmpty &&
+            reaction.trim().isNotEmpty) {
+          reactions[key] = reaction;
+        }
+      },
+    );
 
     return reactions;
   }
@@ -172,6 +228,20 @@ class OjasMessage {
     if (value is String &&
         value.trim().isNotEmpty) {
       return value.trim();
+    }
+
+    return null;
+  }
+
+  static int? _nullableInt(
+    dynamic value,
+  ) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
     }
 
     return null;
