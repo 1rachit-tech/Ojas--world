@@ -47,7 +47,17 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _activeFilter = kAllOjasFilters[0];
+    
+    // 🚀 FIXED: 'category' parameter added to prevent the build crash!
+    _activeFilter = kAllOjasFilters.isNotEmpty
+        ? kAllOjasFilters[0]
+        : const OjasFilter(
+            id: 0, 
+            name: 'Normal', 
+            category: 'Basic', // यह लाइन मिसिंग थी, जिसकी वजह से एरर आ रहा था
+            icon: Icons.auto_awesome,
+          );
+          
     _initCameras();
   }
 
