@@ -11,13 +11,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(String uid) {
+    function isOwner(uid) {
       return signedIn() && request.auth.uid == uid;
-    }
-
-    function isConversationParticipant() {
-      return signedIn()
-          && request.auth.uid in resource.data.participants;
     }
 
     function validParticipants(data) {
@@ -62,10 +57,10 @@ service cloud.firestore {
 
     match /ojasIds/{ojasId} {
 
-      // Needed for OJAS ID login lookup.
+      // Required for OJAS ID login lookup.
       allow get: if true;
 
-      // Prevent scraping the full registry.
+      // Prevent full registry enumeration.
       allow list: if false;
 
       allow create: if signedIn()
@@ -84,11 +79,6 @@ service cloud.firestore {
 
     // ============================================================
     // PUBLIC PROFILES
-    //
-    // Used by:
-    // - User search
-    // - New conversations
-    // - Messaging participant information
     // ============================================================
 
     match /publicProfiles/{userId} {
@@ -113,23 +103,17 @@ service cloud.firestore {
 
     match /conversations/{conversationId} {
 
-      // ----------------------------------------------------------
-      // READ
-      // ----------------------------------------------------------
-
+      // Conversation can only be read by participants.
       allow get: if signedIn()
           && request.auth.uid in resource.data.participants;
 
-      allow list: if signedIn();
+      // Query filtering must ensure only participant conversations
+      // are returned to the authenticated user.
+      allow list: if signedIn()
+          && request.auth.uid in resource.data.participants;
 
 
-      // ----------------------------------------------------------
-      // CREATE
-      //
-      // MessagingService creates deterministic conversations:
-      // uidA_uidB
-      // ----------------------------------------------------------
-
+      // Create a two-person conversation.
       allow create: if signedIn()
           && validParticipants(request.resource.data)
           && request.auth.uid in request.resource.data.participants
@@ -139,13 +123,7 @@ service cloud.firestore {
           && request.resource.data.lastMessageSenderId is string;
 
 
-      // ----------------------------------------------------------
-      // UPDATE
-      //
-      // Only existing conversation participants can update.
-      // Participants themselves cannot be replaced.
-      // ----------------------------------------------------------
-
+      // Existing participants cannot be changed.
       allow update: if signedIn()
           && request.auth.uid in resource.data.participants
           && request.resource.data.participants
@@ -161,20 +139,14 @@ service cloud.firestore {
 
       match /messages/{messageId} {
 
-        // --------------------------------------------------------
-        // READ
-        // --------------------------------------------------------
-
+        // Only conversation participants can read messages.
         allow get, list: if signedIn()
             && request.auth.uid in get(
               /databases/$(database)/documents/conversations/$(conversationId)
             ).data.participants;
 
 
-        // --------------------------------------------------------
-        // CREATE
-        // --------------------------------------------------------
-
+        // Create message.
         allow create: if signedIn()
             && request.auth.uid in get(
               /databases/$(database)/documents/conversations/$(conversationId)
@@ -188,19 +160,9 @@ service cloud.firestore {
             && validReactionMap(request.resource.data.reactions);
 
 
-        // --------------------------------------------------------
-        // UPDATE
-        //
-        // Supports:
-        // - Reactions
-        // - Soft delete by original sender
-        //
-        // Prevents changing:
-        // - senderId
-        // - conversationId
-        // - message type
-        // --------------------------------------------------------
-
+        // Message update:
+        // - sender can edit permitted fields / soft delete
+        // - participants can update reactions only
         allow update: if signedIn()
             && request.auth.uid in get(
               /databases/$(database)/documents/conversations/$(conversationId)
@@ -223,7 +185,6 @@ service cloud.firestore {
 
 
         // Hard delete disabled.
-        // Application uses soft delete.
         allow delete: if false;
       }
     }
@@ -231,8 +192,6 @@ service cloud.firestore {
 
     // ============================================================
     // BLOCK SYSTEM
-    //
-    // Structure:
     //
     // userBlocks/{userId}/blocked/{blockedUserId}
     // ============================================================
