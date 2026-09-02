@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
+import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'screens/create_screen.dart';
@@ -20,17 +21,19 @@ import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 
 Future<void> main() async {
-  debugPrint('MAIN STARTED');
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 120 FPS Native Display Refresh Rate Lock
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    debugPrint('FIREBASE OK');
-  } catch (error, stackTrace) {
-    debugPrint('FIREBASE FAILED: $error');
-    debugPrint(stackTrace.toString());
+  } catch (error) {
+    // Firebase initialization fallback for offline/isolated tests
   }
 
   runApp(const OjasApp());
@@ -160,14 +163,37 @@ class _OjasHomePageState extends State<OjasHomePage> {
   }
 
   void _openReelInOjsFeed() {
+    HapticFeedback.mediumImpact();
     setState(() => _selectedTab = 1);
+  }
+
+  void _onTabSelected(int index) {
+    if (index == _selectedTab) return;
+    HapticFeedback.selectionClick();
+
+    // Tab 2: Create (Requires Auth)
+    if (index == 2) {
+      _requestCreate();
+      return;
+    }
+
+    setState(() => _selectedTab = index);
   }
 
   @override
   Widget build(BuildContext context) {
-    // 0: Home (AppBar Show), 1: OJS (Hide), 2: Create (Hide), 3: World (Hide), 4: You (Hide)
-    final hideAppBar = _selectedTab != 0;
-    final isOjsDark = _selectedTab == 1;
+    final bool hideAppBar = _selectedTab != 0;
+    final bool isOjsDark = _selectedTab == 1;
+
+    // Dynamic Status & Navigation Bar Styling
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isOjsDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: isOjsDark ? Colors.black : Colors.white,
+        systemNavigationBarIconBrightness: isOjsDark ? Brightness.light : Brightness.dark,
+      ),
+    );
 
     return PopScope<void>(
       canPop: _selectedTab == 0,
@@ -187,21 +213,24 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 : AppBar(
                     backgroundColor: Colors.white,
                     surfaceTintColor: Colors.transparent,
-                    elevation: 0.5,
+                    elevation: 0,
                     titleSpacing: 0,
                     leading: IconButton(
                       tooltip: 'Search World',
                       icon: const Icon(
                         Icons.search_rounded,
                         color: Color(0xFF111827),
-                        size: 26,
+                        size: 24,
                       ),
-                      onPressed: () => WorldSearchSheet.show(context),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        WorldSearchSheet.show(context);
+                      },
                     ),
                     title: const Text(
                       'OJAS',
                       style: TextStyle(
-                        fontSize: 22,
+                        fontSize: 21,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2.2,
                         color: Color(0xFF111827),
@@ -211,6 +240,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                     actions: [
                       IconButton(
                         onPressed: () {
+                          HapticFeedback.selectionClick();
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -224,16 +254,16 @@ class _OjasHomePageState extends State<OjasHomePage> {
                             const Icon(
                               Icons.notifications_none_rounded,
                               color: Color(0xFF111827),
-                              size: 26,
+                              size: 25,
                             ),
                             Positioned(
                               right: 2,
                               top: 2,
                               child: Container(
-                                width: 8,
-                                height: 8,
+                                width: 7,
+                                height: 7,
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFF111827),
+                                  color: Color(0xFFEF4444),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -244,8 +274,11 @@ class _OjasHomePageState extends State<OjasHomePage> {
                       Padding(
                         padding: const EdgeInsets.only(right: 14, left: 4),
                         child: GestureDetector(
-                          onTap: () => setState(() => _selectedTab = 4),
-                          child: _buildDynamicUserAvatar(radius: 15),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _selectedTab = 4);
+                          },
+                          child: _buildDynamicUserAvatar(radius: 14),
                         ),
                       ),
                     ],
@@ -273,7 +306,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                 );
               },
             ),
-            bottomNavigationBar: _buildNavigationBar(isDark: isOjsDark),
+            bottomNavigationBar: _buildMinimalBottomBar(isDark: isOjsDark),
           ),
           if (_authGateLoading) _buildAuthLoadingOverlay(),
         ],
@@ -291,10 +324,10 @@ class _OjasHomePageState extends State<OjasHomePage> {
             radius: radius,
             backgroundColor: const Color(0xFF111827),
             child: Text(
-              'AK',
+              'O',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: radius * 0.8,
+                fontSize: radius * 0.85,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -318,7 +351,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
             initial,
             style: TextStyle(
               color: Colors.white,
-              fontSize: radius * 0.8,
+              fontSize: radius * 0.85,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -401,9 +434,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
         40,
       ),
       children: [
-        Container(
-          height: 104,
-          color: Colors.transparent,
+        SizedBox(
+          height: 98,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -415,6 +447,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
 
               return GestureDetector(
                 onTap: () {
+                  HapticFeedback.selectionClick();
                   if (isUser) {
                     _requestCreate();
                   } else {
@@ -446,19 +479,20 @@ class _OjasHomePageState extends State<OjasHomePage> {
                               ),
                             ),
                             child: CircleAvatar(
-                              radius: 27,
+                              radius: 26,
                               backgroundColor: story['color'] as Color,
                               child: isUser
                                   ? const Icon(
                                       Icons.person,
                                       color: Color(0xFF6B7280),
+                                      size: 24,
                                     )
                                   : Text(
                                       story['avatar'] as String,
                                       style: const TextStyle(
                                         color: Colors.black87,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 17,
+                                        fontSize: 16,
                                       ),
                                     ),
                             ),
@@ -472,18 +506,18 @@ class _OjasHomePageState extends State<OjasHomePage> {
                               ),
                               child: const Icon(
                                 Icons.add,
-                                size: 14,
+                                size: 13,
                                 color: Colors.white,
                               ),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 5),
                       Text(
                         story['name'] as String,
                         style: const TextStyle(
                           color: Color(0xFF4B5563),
-                          fontSize: 11.5,
+                          fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -537,6 +571,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
             ),
             leading: GestureDetector(
               onTap: () {
+                HapticFeedback.selectionClick();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -644,6 +679,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                     size: 24,
                   ),
                   onPressed: () {
+                    HapticFeedback.selectionClick();
                     setState(() {
                       if (isLiked) {
                         _likedPosts.remove(id);
@@ -697,7 +733,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                   tooltip: 'Support Creator',
                   icon: const Icon(
                     Icons.stars_rounded,
-                    color: Color(0xFF111827),
+                    color: Color(0xFFF59E0B),
                     size: 24,
                   ),
                   onPressed: () {
@@ -733,6 +769,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                     size: 24,
                   ),
                   onPressed: () {
+                    HapticFeedback.selectionClick();
                     setState(() {
                       if (isSaved) {
                         _savedPosts.remove(id);
@@ -747,6 +784,8 @@ class _OjasHomePageState extends State<OjasHomePage> {
                               ? 'Saved to Bookmarks!'
                               : 'Removed from Bookmarks.',
                         ),
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 1),
                       ),
                     );
                   },
@@ -771,50 +810,64 @@ class _OjasHomePageState extends State<OjasHomePage> {
     );
   }
 
-  Widget _buildNavigationBar({required bool isDark}) {
+  Widget _buildMinimalBottomBar({required bool isDark}) {
     const items = [
       (Icons.home_outlined, Icons.home_rounded, 'Home'),
       (Icons.smart_display_outlined, Icons.smart_display_rounded, 'OJS'),
-      (Icons.add_box_outlined, Icons.add_box, 'Create'),
-      (Icons.explore_outlined, Icons.explore, 'World'),
+      (Icons.add_box_outlined, Icons.add_box_rounded, 'Create'),
+      (Icons.explore_outlined, Icons.explore_rounded, 'World'),
       (Icons.person_outline_rounded, Icons.person_rounded, 'You'),
     ];
 
-    return NavigationBar(
-      selectedIndex: _selectedTab,
-      onDestinationSelected: (index) {
-        if (index == _selectedTab) return;
-        if (index == 2) {
-          _requestCreate();
-          return;
-        }
-        setState(() => _selectedTab = index);
-      },
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      indicatorColor: isDark ? Colors.white12 : const Color(0xFFF3F4F6),
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      height: 60,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-      destinations: items
-          .map(
-            (item) => NavigationDestination(
-              icon: Icon(
-                item.$1,
-                size: 28,
-                color: isDark ? Colors.white60 : const Color(0xFF6B7280),
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: isDark ? Colors.black : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white10 : const Color(0xFFF3F4F6),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: List.generate(items.length, (index) {
+          final isSelected = _selectedTab == index;
+          final item = items[index];
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _onTabSelected(index),
+            child: SizedBox(
+              width: 60,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isSelected ? item.$2 : item.$1,
+                    size: 26,
+                    color: isSelected
+                        ? (isDark ? Colors.white : const Color(0xFF111827))
+                        : (isDark ? Colors.white38 : const Color(0xFF9CA3AF)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.$3,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? (isDark ? Colors.white : const Color(0xFF111827))
+                          : (isDark ? Colors.white38 : const Color(0xFF9CA3AF)),
+                    ),
+                  ),
+                ],
               ),
-              selectedIcon: Icon(
-                item.$2,
-                size: 28,
-                color: isDark ? Colors.white : const Color(0xFF111827),
-              ),
-              label: item.$3,
-              tooltip: item.$3,
             ),
-          )
-          .toList(),
+          );
+        }),
+      ),
     );
   }
 }
