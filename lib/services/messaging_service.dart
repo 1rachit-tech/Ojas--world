@@ -52,6 +52,15 @@ class MessagingService {
     );
   }
 
+  CollectionReference<Map<String, dynamic>>
+      messageCollection(
+    String conversationId,
+  ) {
+    return conversationReference(
+      conversationId,
+    ).collection('messages');
+  }
+
   Stream<List<OjasConversation>>
       watchConversations() {
     final uid = currentUid;
@@ -109,10 +118,9 @@ class MessagingService {
       watchMessages(
     String conversationId,
   ) {
-    return conversationReference(
+    return messageCollection(
       conversationId,
     )
-        .collection('messages')
         .orderBy(
           'createdAt',
           descending: true,
@@ -292,6 +300,7 @@ class MessagingService {
     required String conversationId,
     required String receiverId,
     required String text,
+    OjasMessage? replyTo,
   }) async {
     final uid = currentUid;
 
@@ -326,22 +335,44 @@ class MessagingService {
     );
 
     final message =
-        conversation.collection('messages').doc();
+        messageCollection(
+      conversationId,
+    ).doc();
 
     final batch =
         _firestore.batch();
 
+    final messageData =
+        <String, dynamic>{
+      'conversationId': conversationId,
+      'senderId': uid,
+      'text': cleanText,
+      'type': 'text',
+      'isDeleted': false,
+      'reactions': <String, String>{},
+      'createdAt':
+          FieldValue.serverTimestamp(),
+    };
+
+    if (replyTo != null) {
+      messageData.addAll(
+        {
+          'replyToMessageId': replyTo.id,
+          'replyToSenderId': replyTo.senderId,
+          'replyToText':
+              replyTo.isDeleted
+                  ? 'This message was deleted.'
+                  : _safeReplyPreview(
+                      replyTo.text,
+                    ),
+          'replyToType': replyTo.type,
+        },
+      );
+    }
+
     batch.set(
       message,
-      {
-        'conversationId': conversationId,
-        'senderId': uid,
-        'text': cleanText,
-        'type': 'text',
-        'isDeleted': false,
-        'createdAt':
-            FieldValue.serverTimestamp(),
-      },
+      messageData,
     );
 
     batch.set(
@@ -359,6 +390,109 @@ class MessagingService {
     );
 
     await batch.commit();
+  }
+
+  Future<void> toggleReaction({
+    required String conversationId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null) {
+      throw const MessagingException(
+        'Please sign in again.',
+      );
+    }
+
+    if (!_allowedReactions.contains(emoji)) {
+      throw const MessagingException(
+        'Invalid reaction.',
+      );
+    }
+
+    final reference =
+        messageCollection(
+      conversationId,
+    ).doc(messageId);
+
+    await _firestore.runTransaction(
+      (transaction) async {
+        final snapshot =
+            await transaction.get(reference);
+
+        final data = snapshot.data();
+
+        if (!snapshot.exists ||
+            data == null) {
+          throw const MessagingException(
+            'Message no longer exists.',
+          );
+        }
+
+        if (data['isDeleted'] == true) {
+          throw const MessagingException(
+            'Deleted messages cannot be reacted to.',
+          );
+        }
+
+        final rawReactions =
+            data['reactions'];
+
+        final reactions =
+            <String, String>{};
+
+        if (rawReactions is Map) {
+          rawReactions.forEach(
+            (key, value) {
+              if (key is String &&
+                  value is String) {
+                reactions[key] = value;
+              }
+            },
+          );
+        }
+
+        final existingReaction =
+            reactions[uid];
+
+        if (existingReaction == emoji) {
+          reactions.remove(uid);
+        } else {
+          reactions[uid] = emoji;
+        }
+
+        transaction.update(
+          reference,
+          {
+            'reactions': reactions,
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> removeReaction({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null) {
+      return;
+    }
+
+    final reference =
+        messageCollection(
+      conversationId,
+    ).doc(messageId);
+
+    await reference.update(
+      {
+        'reactions.$uid':
+            FieldValue.delete(),
+      },
+    );
   }
 
   Future<void> markConversationRead(
@@ -391,9 +525,9 @@ class MessagingService {
     }
 
     final reference =
-        conversationReference(
+        messageCollection(
       conversationId,
-    ).collection('messages').doc(messageId);
+    ).doc(messageId);
 
     final snapshot =
         await reference.get();
@@ -411,6 +545,7 @@ class MessagingService {
       {
         'text': 'This message was deleted.',
         'isDeleted': true,
+        'reactions': <String, String>{},
       },
     );
   }
@@ -452,6 +587,32 @@ class MessagingService {
       'photoUrl': profile.photoUrl,
       'isVerified': profile.isVerified,
     };
+  }
+
+  static const List<String>
+      _allowedReactions = [
+    '❤️',
+    '👍',
+    '😂',
+    '😮',
+    '😢',
+    '🔥',
+  ];
+
+  static String _safeReplyPreview(
+    String text,
+  ) {
+    final clean =
+        text.trim().replaceAll(
+      RegExp(r'\s+'),
+      ' ',
+    );
+
+    if (clean.length <= 140) {
+      return clean;
+    }
+
+    return '${clean.substring(0, 137)}...';
   }
 }
 
