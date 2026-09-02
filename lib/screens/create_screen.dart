@@ -48,14 +48,15 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // 🚀 FIXED: 'category' parameter added to prevent the build crash!
+    // 🚀 FIXED: Added ALL required parameters (including category & previewColor)
     _activeFilter = kAllOjasFilters.isNotEmpty
         ? kAllOjasFilters[0]
         : const OjasFilter(
-            id: 0, 
-            name: 'Normal', 
-            category: 'Basic', // यह लाइन मिसिंग थी, जिसकी वजह से एरर आ रहा था
+            id: 0,
+            name: 'Normal',
+            category: 'Popular',
             icon: Icons.auto_awesome,
+            previewColor: Colors.white24, // Fixed: previewColor added
           );
           
     _initCameras();
