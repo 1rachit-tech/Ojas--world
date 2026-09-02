@@ -40,16 +40,14 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   String _selectedResolution = '1080p 60fps';
   bool _autoSaveToGallery = false;
 
-  // Active Filter with Safe Fallback Guard
+  // Active Filter from kAllOjasFilters List
   late OjasFilter _activeFilter;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _activeFilter = kAllOjasFilters.isNotEmpty
-        ? kAllOjasFilters[0]
-        : const OjasFilter(id: 0, name: 'Normal', icon: Icons.auto_awesome);
+    _activeFilter = kAllOjasFilters[0];
     _initCameras();
   }
 
