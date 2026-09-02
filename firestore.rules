@@ -2,20 +2,39 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create, update: if request.auth != null
+
+      allow read: if request.auth != null
+        && request.auth.uid == userId;
+
+      allow create: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.uid == userId;
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId;
+
       allow delete: if false;
     }
 
     match /ojasIds/{ojasId} {
-      allow read: if request.auth != null;
+
+      allow get: if true;
+
+      allow list: if false;
+
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid
-        && !exists(/databases/$(database)/documents/ojasIds/$(ojasId));
-      allow update, delete: if false;
+        && !exists(
+          /databases/$(database)/documents/ojasIds/$(ojasId)
+        );
+
+      allow update: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if false;
     }
   }
 }
