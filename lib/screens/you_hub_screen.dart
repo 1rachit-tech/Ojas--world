@@ -19,8 +19,8 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    // 3 Tabs: Videos, Saved, Drafts
-    _tabController = TabController(length: 3, vsync: this);
+    // 🚀 FIXED: Restored to 4 Tabs (Videos, Saved, Drafts, Messages)
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -32,7 +32,6 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
   void _handleLogout() async {
     HapticFeedback.mediumImpact();
     
-    // Logout confirmation dialog (Minimalist White)
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -76,7 +75,7 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // 🚀 100% Minimalist Pure White
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -212,7 +211,7 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
             ),
           ),
 
-          // 3. Persistent Tab Bar
+          // 3. Persistent Tab Bar (Now with 4 Tabs including Messages)
           SliverPersistentHeader(
             pinned: true,
             delegate: _SliverAppBarDelegate(
@@ -227,6 +226,7 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
                   Tab(icon: Icon(Icons.grid_on_rounded, size: 22)),
                   Tab(icon: Icon(Icons.bookmark_outline_rounded, size: 24)),
                   Tab(icon: Icon(Icons.inventory_2_outlined, size: 22)),
+                  Tab(icon: Icon(Icons.chat_bubble_outline_rounded, size: 22)), // 🚀 Messages Tab Restored
                 ],
               ),
             ),
@@ -235,9 +235,10 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
         body: TabBarView(
           controller: _tabController,
           children: [
-            _buildVideoGrid(isDrafts: false), // Published Videos
-            _buildVideoGrid(isDrafts: false, isSaved: true), // Saved Videos
-            _buildVideoGrid(isDrafts: true), // Drafts
+            _buildVideoGrid(isDrafts: false), // 1. Published Videos
+            _buildVideoGrid(isDrafts: false, isSaved: true), // 2. Saved Videos
+            _buildVideoGrid(isDrafts: true), // 3. Drafts
+            _buildMessagesList(), // 4. Direct Messages (Inbox)
           ],
         ),
       ),
@@ -276,7 +277,6 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
   }
 
   Widget _buildVideoGrid({required bool isDrafts, bool isSaved = false}) {
-    // 🚀 Dummy items to simulate zero-lag high-performance grid
     final int itemCount = isDrafts ? 2 : (isSaved ? 5 : 8);
 
     return GridView.builder(
@@ -343,9 +343,108 @@ class _YouHubScreenState extends State<YouHubScreen> with SingleTickerProviderSt
       },
     );
   }
+
+  // 🚀 Clean Minimalist Messages Inbox UI
+  Widget _buildMessagesList() {
+    final List<Map<String, String>> dummyChats = [
+      {'name': 'Maya Chen', 'msg': 'Loved your recent Folk track! 🔥', 'time': '2m', 'color': '0xFFD97706', 'unread': '1'},
+      {'name': 'Brand Collab', 'msg': 'Are you available for a sponsored video?', 'time': '1h', 'color': '0xFF2563EB', 'unread': '0'},
+      {'name': 'Rohan Mehta', 'msg': 'Sent an attachment.', 'time': '3h', 'color': '0xFF059669', 'unread': '0'},
+      {'name': 'Sneha Rao', 'msg': 'Can you share the camera settings you used?', 'time': '1d', 'color': '0xFFDB2777', 'unread': '0'},
+    ];
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      physics: const BouncingScrollPhysics(),
+      itemCount: dummyChats.length,
+      separatorBuilder: (_, __) => const Divider(color: Color(0xFFF3F4F6), height: 1, indent: 70),
+      itemBuilder: (context, index) {
+        final chat = dummyChats[index];
+        final bool hasUnread = chat['unread'] != '0';
+        
+        return InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            // Open Chat Screen
+          },
+          highlightColor: const Color(0xFFF9FAFB),
+          splashColor: const Color(0xFFF3F4F6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Color(int.parse(chat['color']!)),
+                  child: Text(
+                    chat['name']![0],
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        chat['name']!,
+                        style: TextStyle(
+                          color: const Color(0xFF111827),
+                          fontWeight: hasUnread ? FontWeight.w800 : FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        chat['msg']!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: hasUnread ? const Color(0xFF111827) : const Color(0xFF6B7280),
+                          fontWeight: hasUnread ? FontWeight.w600 : FontWeight.w400,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      chat['time']!,
+                      style: TextStyle(
+                        color: hasUnread ? const Color(0xFF2563EB) : const Color(0xFF9CA3AF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (hasUnread)
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF2563EB),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          chat['unread']!,
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-// 🚀 Helper class for sticky TabBar in Minimalist White UI
+// Helper class for sticky TabBar in Minimalist White UI
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar _tabBar;
 
