@@ -48,31 +48,50 @@ class MessagePaginationService {
           ? await orderedQuery.get()
           : await orderedQuery.startAfterDocument(cursor).get();
     } on FirebaseException catch (error) {
-      // A missing Firestore index must not make the real-time chat unusable.
-      // Fall back to document-ID pagination; the chat screen sorts the merged
-      // messages by createdAt before rendering them.
+      // Pagination is an enhancement; real-time watchMessages remains the
+      // source of truth for the active chat. A missing index must not block it.
       if (error.code != 'failed-precondition') {
-        rethrow;
+        return _emptyPage(cursor);
       }
 
       final fallbackQuery = _messages(conversationId)
           .orderBy(FieldPath.documentId, descending: true)
           .limit(pageSize);
 
-      snapshot = cursor == null
-          ? await fallbackQuery.get()
-          : await fallbackQuery.startAfterDocument(cursor).get();
+      try {
+        snapshot = cursor == null
+            ? await fallbackQuery.get()
+            : await fallbackQuery.startAfterDocument(cursor).get();
+      } on FirebaseException {
+        return _emptyPage(cursor);
+      }
     }
 
     final documents = snapshot.docs;
-    final messages = documents
-        .map(OjasMessage.fromFirestore)
-        .toList(growable: false);
+    final messages = <OjasMessage>[];
+
+    for (final document in documents) {
+      try {
+        messages.add(OjasMessage.fromFirestore(document));
+      } catch (_) {
+        // Ignore a malformed legacy message instead of breaking the chat.
+      }
+    }
 
     return MessagePage(
       messages: messages,
       hasMore: documents.length == pageSize,
       cursor: documents.isEmpty ? cursor : documents.last,
+    );
+  }
+
+  MessagePage _emptyPage(
+    DocumentSnapshot<Map<String, dynamic>>? cursor,
+  ) {
+    return MessagePage(
+      messages: const <OjasMessage>[],
+      hasMore: false,
+      cursor: cursor,
     );
   }
 }
