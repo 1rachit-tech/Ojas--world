@@ -13,6 +13,7 @@ import '../services/media_message_service.dart';
 import '../services/message_delivery_service.dart';
 import '../services/message_pagination_service.dart';
 import '../services/messaging_service.dart';
+import '../services/realtime_presence_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -29,11 +30,15 @@ class ChatRoomScreen extends StatefulWidget {
 }
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
+  static const int _maxInMemoryMessages = 400;
+
   final MessagingService _messagingService = MessagingService.instance;
   final MediaMessageService _mediaMessageService = MediaMessageService.instance;
   final MessageDeliveryService _deliveryService = MessageDeliveryService.instance;
   final MessagePaginationService _paginationService =
       MessagePaginationService.instance;
+  final RealtimePresenceService _presenceService =
+      RealtimePresenceService.instance;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -58,6 +63,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _messagingService.registerPresenceConversation(widget.conversationId);
+    unawaited(_presenceService.start());
     _messageController.addListener(_onTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markRead();
@@ -76,6 +82,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ));
     }
     _messagingService.unregisterPresenceConversation(widget.conversationId);
+    unawaited(_presenceService.stop());
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _scrollController.dispose();
@@ -114,7 +121,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       setState(() {
         _loadedMessages
           ..clear()
-          ..addAll(page.messages);
+          ..addAll(page.messages.take(_maxInMemoryMessages));
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
         _paginationInitialized = true;
@@ -161,6 +168,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
       setState(() {
         _loadedMessages.addAll(additions);
+        if (_loadedMessages.length > _maxInMemoryMessages) {
+          _loadedMessages.removeRange(
+            _maxInMemoryMessages,
+            _loadedMessages.length,
+          );
+        }
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
       });
@@ -204,7 +217,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       return bTime.compareTo(aTime);
     });
 
-    return messages;
+    if (messages.length <= _maxInMemoryMessages) {
+      return messages;
+    }
+
+    return messages.take(_maxInMemoryMessages).toList(growable: false);
   }
 
   void _onTextChanged() {
@@ -346,6 +363,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         storagePath: result.storagePath,
         width: result.width,
         height: result.height,
+        mediaBytes: result.compressedBytes,
         caption: _messageController.text.trim(),
         replyTo: _replyingTo,
       );
@@ -631,55 +649,64 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 stream: _messagingService.watchConversation(
                   widget.conversationId,
                 ),
-                builder: (context, snapshot) {
-                  final conversation = snapshot.data;
-                  final typing = conversation?.isTyping(
-                        widget.otherUser.uid,
-                      ) ??
-                      false;
-                  final online = conversation?.isOnline(
-                        widget.otherUser.uid,
-                      ) ??
-                      false;
-                  final lastActiveAt = conversation?.lastActiveAtFor(
-                    widget.otherUser.uid,
-                  );
+                builder: (context, conversationSnapshot) {
+                  final conversation = conversationSnapshot.data;
+                  return StreamBuilder<RealtimePresenceState>(
+                    stream: _presenceService.watch(widget.otherUser.uid),
+                    builder: (context, presenceSnapshot) {
+                      final presence = presenceSnapshot.data;
+                      final typing = conversation?.isTyping(
+                            widget.otherUser.uid,
+                          ) ??
+                          false;
+                      final online = presence?.online ??
+                          (conversation?.isOnline(
+                                widget.otherUser.uid,
+                              ) ??
+                              false);
+                      final lastActiveAt = presence?.lastChanged != null
+                          ? Timestamp.fromDate(presence!.lastChanged!)
+                          : conversation?.lastActiveAtFor(
+                              widget.otherUser.uid,
+                            );
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        widget.otherUser.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF111827),
-                        ),
-                      ),
-                      Text(
-                        typing
-                            ? 'typing…'
-                            : online
-                                ? 'Online'
-                                : _formatLastSeen(lastActiveAt),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: typing
-                              ? const Color(0xFF2563EB)
-                              : online
-                                  ? const Color(0xFF16A34A)
-                                  : const Color(0xFF6B7280),
-                          fontWeight: typing || online
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ],
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            widget.otherUser.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                          Text(
+                            typing
+                                ? 'typing…'
+                                : online
+                                    ? 'Online'
+                                    : _formatLastSeen(lastActiveAt),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: typing
+                                  ? const Color(0xFF2563EB)
+                                  : online
+                                      ? const Color(0xFF16A34A)
+                                      : const Color(0xFF6B7280),
+                              fontWeight: typing || online
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -1344,7 +1371,9 @@ class _ChatImage extends StatelessWidget {
           child: CachedNetworkImage(
             imageUrl: imageUrl,
             fit: BoxFit.cover,
-            memCacheWidth: 1200,
+            memCacheWidth: 900,
+            maxWidthDiskCache: 1200,
+            maxHeightDiskCache: 1440,
             placeholder: (context, url) => Container(
               color: const Color(0xFFF1F3F5),
               child: const Center(
@@ -1386,6 +1415,9 @@ class _FullScreenImage extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.contain,
+                memCacheWidth: 1600,
+                maxWidthDiskCache: 1920,
+                maxHeightDiskCache: 1920,
                 placeholder: (context, url) =>
                     const CircularProgressIndicator(color: Colors.white),
                 errorWidget: (context, url, error) => const Icon(
