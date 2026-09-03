@@ -38,7 +38,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final MessageDeliveryService _deliveryService = MessageDeliveryService.instance;
   final MessagePaginationService _paginationService =
       MessagePaginationService.instance;
-  final RealtimePresenceService _presenceService = RealtimePresenceService.instance;
+  final RealtimePresenceService _presenceService =
+      RealtimePresenceService.instance;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -167,14 +168,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       final additions = page.messages.where(
         (message) => !existingIds.contains(message.id),
       );
+      final combined = <OjasMessage>[...\_loadedMessages, ...additions];
 
       setState(() {
         _loadedMessages
-          ..addAll(additions)
           ..clear()
           ..addAll(
             MessageMemoryWindow.takeNewest(
-              _loadedMessages,
+              combined,
               _maxInMemoryMessages,
             ),
           );
@@ -217,10 +218,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       return bTime.compareTo(aTime);
     });
 
-    return MessageMemoryWindow.takeNewest(
-      messages,
-      _maxInMemoryMessages,
-    );
+    return MessageMemoryWindow.takeNewest(messages, _maxInMemoryMessages);
   }
 
   void _onTextChanged() {
@@ -446,7 +444,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (message.text.trim().isEmpty) {
       return;
     }
-
     Clipboard.setData(ClipboardData(text: message.text));
     HapticFeedback.selectionClick();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -687,7 +684,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       if (snapshot.hasError) {
                         return const _MessageLoadError();
                       }
-
                       if (!snapshot.hasData && !_paginationInitialized) {
                         return const Center(
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -845,10 +841,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(
-                            Icons.add_circle_outline_rounded,
-                            color: Color(0xFF111827),
-                          ),
+                        : const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF111827)),
                   ),
                 ),
         ],
@@ -862,30 +855,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   static String _formatLastSeen(Timestamp? timestamp) {
-    if (timestamp == null) {
-      return 'Last seen recently';
-    }
-
+    if (timestamp == null) return 'Last seen recently';
     final date = timestamp.toDate();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final dateOnly = DateTime(date.year, date.month, date.day);
     final difference = today.difference(dateOnly).inDays;
     final time = _formatTime(timestamp);
-
-    if (difference == 0) {
-      return 'Last seen $time';
-    }
-    if (difference == 1) {
-      return 'Last seen yesterday $time';
-    }
+    if (difference == 0) return 'Last seen $time';
+    if (difference == 1) return 'Last seen yesterday $time';
     return 'Last seen ${date.day} ${_monthName(date.month)} $time';
   }
 
   static String _formatTime(Timestamp? timestamp) {
-    if (timestamp == null) {
-      return '';
-    }
+    if (timestamp == null) return '';
     final date = timestamp.toDate();
     final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
     final minute = date.minute.toString().padLeft(2, '0');
@@ -1088,7 +1071,6 @@ class _ReplyBubble extends StatelessWidget {
     final currentUid = MessagingService.instance.currentUid;
     final senderName = message.replyToSenderId == currentUid ? 'You' : otherUserName;
     final replyText = message.replyToText ?? 'Original message unavailable';
-
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
@@ -1112,23 +1094,13 @@ class _ReplyBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  senderName,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: isMe ? Colors.white : const Color(0xFF111827),
-                  ),
-                ),
+                Text(senderName, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: isMe ? Colors.white : const Color(0xFF111827))),
                 const SizedBox(height: 2),
                 Text(
                   message.replyToType == 'image' ? '📷 Photo' : replyText,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isMe ? Colors.white70 : const Color(0xFF6B7280),
-                  ),
+                  style: TextStyle(fontSize: 11, color: isMe ? Colors.white70 : const Color(0xFF6B7280)),
                 ),
               ],
             ),
@@ -1150,42 +1122,27 @@ class _ReplyComposer extends StatelessWidget {
     final currentUid = MessagingService.instance.currentUid;
     final senderName = message.senderId == currentUid ? 'You' : otherUserName;
     final preview = message.isImage ? '📷 Photo' : message.text;
-
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F6F8),
-          borderRadius: BorderRadius.circular(14),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFFF5F6F8), borderRadius: BorderRadius.circular(14)),
         child: Row(
           children: [
             Container(
               width: 3,
               height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(8)),
             ),
             const SizedBox(width: 9),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Replying to $senderName',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
-                  ),
+                  Text('Replying to $senderName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                   const SizedBox(height: 2),
-                  Text(
-                    preview.trim().isEmpty ? 'Message' : preview,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                  ),
+                  Text(preview.trim().isEmpty ? 'Message' : preview, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
                 ],
               ),
             ),
@@ -1226,9 +1183,7 @@ class _ChatImage extends StatelessWidget {
             ),
             errorWidget: (context, url, error) => Container(
               color: const Color(0xFFF1F3F5),
-              child: const Center(
-                child: Icon(Icons.broken_image_outlined, size: 32, color: Color(0xFF9CA3AF)),
-              ),
+              child: const Center(child: Icon(Icons.broken_image_outlined, size: 32, color: Color(0xFF9CA3AF))),
             ),
           ),
         ),
