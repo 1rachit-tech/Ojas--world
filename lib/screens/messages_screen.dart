@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/ojas_conversation.dart';
 import '../models/ojas_profile.dart';
@@ -310,6 +311,7 @@ class _MessagesScreenState
           );
             },
           ),
+        ),
         ],
       ),
     );
