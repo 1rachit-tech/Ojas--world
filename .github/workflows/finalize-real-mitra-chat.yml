@@ -1,0 +1,435 @@
+name: Finalize real Mitra chat
+
+on:
+  push:
+    paths:
+      - .github/workflows/finalize-real-mitra-chat.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply guarded production fixes
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          messaging = Path('lib/services/messaging_service.dart')
+          text = messaging.read_text(encoding='utf-8')
+          start = text.index('  Future<String> openConversation(OjasProfile otherUser) async {')
+          end = text.index('  Future<void> sendTextMessage({', start)
+          new_method = '''  Future<String> openConversation(OjasProfile otherUser) async {
+    final uid = currentUid;
+    if (uid == null) {
+      throw const MessagingException('Please sign in again.');
+    }
+    if (otherUser.uid.isEmpty || otherUser.uid == uid) {
+      throw const MessagingException('Invalid OJAS user.');
+    }
+
+    final currentProfile = await _getCurrentProfile(uid);
+    final conversationId = conversationIdFor(uid, otherUser.uid);
+    final reference = conversationReference(conversationId);
+
+    final conversationData = <String, dynamic>{
+      'participants': [uid, otherUser.uid],
+      'participantProfiles': {
+        uid: _profileMap(currentProfile),
+        otherUser.uid: _profileMap(otherUser),
+      },
+      'lastMessage': '',
+      'lastMessageSenderId': '',
+      'unreadCounts': {uid: 0, otherUser.uid: 0},
+      'lastReadAtBy': {uid: FieldValue.serverTimestamp()},
+      'typingBy': {uid: false, otherUser.uid: false},
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      final snapshot = await reference.get();
+      if (!snapshot.exists) {
+        await reference.set(conversationData);
+      }
+    } on FirebaseException catch (error) {
+      final retryable =
+          error.code == 'unavailable' ||
+          error.code == 'deadline-exceeded' ||
+          error.code == 'aborted';
+      if (!retryable) {
+        rethrow;
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final retrySnapshot = await reference.get();
+      if (!retrySnapshot.exists) {
+        await reference.set(conversationData);
+      }
+    }
+
+    return conversationId;
+  }
+
+'''
+          text = text[:start] + new_method + text[end:]
+          messaging.write_text(text, encoding='utf-8')
+
+          messages = Path('lib/screens/messages_screen.dart')
+          text = messages.read_text(encoding='utf-8')
+          if "import '../services/profile_service.dart';\n" not in text:
+              anchor = "import '../services/messaging_service.dart';\n"
+              if anchor not in text:
+                  raise SystemExit('MessagesScreen service import anchor missing; refusing to patch.')
+              text = text.replace(anchor, anchor + "import '../services/profile_service.dart';\n", 1)
+
+          old_open = '''    final profileData =
+        conversation.profileFor(otherUid);
+
+    final profile =
+        OjasProfile.fromMap(
+      profileData,
+      uid: otherUid,
+    );
+
+    await Navigator.of(context).push(
+'''
+          new_open = '''    final profileData =
+        conversation.profileFor(otherUid);
+
+    OjasProfile profile;
+    if (profileData.isEmpty) {
+      final fetchedProfile =
+          await ProfileService.instance.getProfile(otherUid);
+      profile = fetchedProfile ??
+          OjasProfile.empty(
+            uid: otherUid,
+            displayName: 'OJAS User',
+            photoUrl: 'avatar_1',
+          );
+    } else {
+      profile = OjasProfile.fromMap(
+        profileData,
+        uid: otherUid,
+      );
+
+      if (profile.ojasId.isEmpty) {
+        final fetchedProfile =
+            await ProfileService.instance.getProfile(otherUid);
+        if (fetchedProfile != null) {
+          profile = fetchedProfile;
+        }
+      }
+    }
+
+    await Navigator.of(context).push(
+'''
+          if old_open not in text:
+              raise SystemExit('Conversation profile opening block missing; refusing to patch.')
+          text = text.replace(old_open, new_open, 1)
+
+          old_error = '''  String _errorMessage(
+    Object error,
+  ) {
+    if (error is MessagingException) {
+      return error.message;
+    }
+
+    return 'Something went wrong. Please try again.';
+  }
+'''
+          new_error = '''  String _errorMessage(
+    Object error,
+  ) {
+    if (error is MessagingException) {
+      return error.message;
+    }
+    if (error is FirebaseException) {
+      final message = error.message?.trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    return 'Unable to start this conversation right now. Please try again.';
+  }
+'''
+          if old_error not in text:
+              raise SystemExit('Messages error formatter missing; refusing to patch.')
+          text = text.replace(old_error, new_error, 1)
+
+          old_empty = '''            const Text(
+              'Your messages live here',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF111827),
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Start a private conversation with any OJAS creator.',
+'''
+          new_empty = '''            const Text(
+              'Find your Mitra',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF111827),
+                letterSpacing: -0.25,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Apne OJAS mitra ko dhoondhiye aur pehli baatcheet shuru kijiye.',
+'''
+          if old_empty not in text:
+              raise SystemExit('Messages empty-state title block missing; refusing to patch.')
+          text = text.replace(old_empty, new_empty, 1)
+          messages.write_text(text, encoding='utf-8')
+
+          router = Path('lib/screens/notification_chat_router.dart')
+          text = router.read_text(encoding='utf-8')
+          text = text.replace(
+              "import '../services/notification_service.dart';\n",
+              "import '../services/notification_service.dart';\nimport '../services/profile_service.dart';\n",
+              1,
+          ) if "import '../services/profile_service.dart';\n" not in text else text
+
+          old_router = '''      final profiles = data['participantProfiles'];
+      if (profiles is! Map) {
+        throw StateError('Conversation profile data is unavailable.');
+      }
+
+      final rawProfile = profiles[widget.openData.senderId];
+      if (rawProfile is! Map) {
+        throw StateError('The sender profile is unavailable.');
+      }
+
+      final profile = OjasProfile.fromMap(
+        Map<String, dynamic>.from(rawProfile),
+        uid: widget.openData.senderId,
+      );
+'''
+          new_router = '''      final profiles = data['participantProfiles'];
+      OjasProfile? profile;
+
+      if (profiles is Map) {
+        final rawProfile = profiles[widget.openData.senderId];
+        if (rawProfile is Map) {
+          profile = OjasProfile.fromMap(
+            Map<String, dynamic>.from(rawProfile),
+            uid: widget.openData.senderId,
+          );
+        }
+      }
+
+      profile ??= await ProfileService.instance.getProfile(
+        widget.openData.senderId,
+      );
+
+      if (profile == null) {
+        throw StateError('The sender profile is unavailable.');
+      }
+'''
+          if old_router not in text:
+              raise SystemExit('Notification router profile block missing; refusing to patch.')
+          text = text.replace(old_router, new_router, 1)
+          router.write_text(text, encoding='utf-8')
+
+          you = Path('lib/screens/you_hub_screen.dart')
+          text = you.read_text(encoding='utf-8')
+
+          old_field = '''  final _accountStore = _LocalAccountStore();
+
+  int _selectedTab = 0;
+'''
+          new_field = '''  final _accountStore = _LocalAccountStore();
+  late final PageController _pageController;
+
+  int _selectedTab = 0;
+'''
+          if old_field not in text:
+              raise SystemExit('YouHub controller insertion anchor missing; refusing to patch.')
+          text = text.replace(old_field, new_field, 1)
+
+          old_init = '''  void _changeTab(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _selectedTab = index;
+    });
+  }
+'''
+          new_init = '''  void _changeTab(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTab = index;
+    });
+
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _onPageChanged(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTab = index;
+    });
+  }
+'''
+          if old_init not in text:
+              raise SystemExit('YouHub tab handler missing; refusing to patch.')
+          text = text.replace(old_init, new_init, 1)
+
+          old_initstate = '''  @override
+  void initState() {
+    super.initState();
+    _loadAccounts();
+  }
+'''
+          new_initstate = '''  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    _loadAccounts();
+  }
+'''
+          if old_initstate not in text:
+              raise SystemExit('YouHub initState missing; refusing to patch.')
+          text = text.replace(old_initstate, new_initstate, 1)
+
+          old_dispose = '''  @override
+  Widget build(BuildContext context) {
+'''
+          new_dispose = '''  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+'''
+          if old_dispose not in text:
+              raise SystemExit('YouHub build anchor missing; refusing to patch.')
+          text = text.replace(old_dispose, new_dispose, 1)
+
+          old_stack = '''                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragEnd: (details) {
+                          final velocity =
+                              details.primaryVelocity ?? 0;
+                          if (velocity < -220 &&
+                              _selectedTab == 0) {
+                            _changeTab(1);
+                          } else if (velocity > 220 &&
+                              _selectedTab == 1) {
+                            _changeTab(0);
+                          }
+                        },
+                        child: IndexedStack(
+                          index: _selectedTab,
+                          children: [
+                            const MessagesScreen(
+                              showAppBar: false,
+                            ),
+                            _ProfilePage(
+'''
+          new_stack = '''                    Expanded(
+                      child: PageView(
+                        controller: _pageController,
+                        onPageChanged: _onPageChanged,
+                        physics: const PageScrollPhysics(),
+                        children: [
+                          const MessagesScreen(
+                            showAppBar: false,
+                          ),
+                          _ProfilePage(
+'''
+          if old_stack not in text:
+              raise SystemExit('YouHub swipe stack missing; refusing to patch.')
+          text = text.replace(old_stack, new_stack, 1)
+
+          old_stack_tail = '''                            onCompleteProfile:
+                                _openProfileSetup,
+                          ),
+                        ],
+                      ),
+                    ),
+'''
+          new_stack_tail = '''                            onCompleteProfile:
+                                _openProfileSetup,
+                          ),
+                        ],
+                      ),
+                    ),
+'''
+          if old_stack_tail not in text:
+              raise SystemExit('YouHub stack tail missing; refusing to patch.')
+
+          you.write_text(text, encoding='utf-8')
+      - name: Validate exact source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -q "Future<String> openConversation(OjasProfile otherUser)" lib/services/messaging_service.dart
+          grep -q "await Future<void>.delayed(const Duration(milliseconds: 250))" lib/services/messaging_service.dart
+          grep -q "ProfileService.instance.getProfile(otherUid)" lib/screens/messages_screen.dart
+          grep -q "Find your Mitra" lib/screens/messages_screen.dart
+          grep -q "late final PageController _pageController" lib/screens/you_hub_screen.dart
+          grep -q "onPageChanged: _onPageChanged" lib/screens/you_hub_screen.dart
+          grep -q "ProfileService.instance.getProfile" lib/screens/notification_chat_router.dart
+      - name: Format changed Dart files with Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter dependency and source check
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart format lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/screens/you_hub_screen.dart
+          git diff --check
+      - name: Commit production fixes and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/finalize-real-mitra-chat.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/screens/you_hub_screen.dart .github/workflows/finalize-real-mitra-chat.yml
+          git commit -m "fix: finalize real Mitra chat and You navigation"
+          git push origin HEAD:main
