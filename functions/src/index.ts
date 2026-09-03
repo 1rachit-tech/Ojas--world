@@ -1,5 +1,5 @@
 import {initializeApp} from 'firebase-admin/app';
-import {getFirestore} from 'firebase-admin/firestore';
+import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
 import {setGlobalOptions} from 'firebase-functions/v2';
 import {onDocumentCreated} from 'firebase-functions/v2/firestore';
@@ -19,7 +19,6 @@ interface ConversationData {
 
 interface MessageData {
   senderId?: unknown;
-  conversationId?: unknown;
   text?: unknown;
   type?: unknown;
   isDeleted?: unknown;
@@ -210,10 +209,11 @@ export const sendMessagePush = onDocumentCreated(
     const userRef = firestore.doc(`users/${receiverId}`);
     const current = (await userRef.get()).data() ?? {};
     const raw = current['fcmTokens'];
+
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-      const updates: Record<string, null> = {};
+      const updates: Record<string, FieldValue> = {};
       for (const token of invalidTokens) {
-        updates[`fcmTokens.${token}`] = null;
+        updates[`fcmTokens.${token}`] = FieldValue.delete();
       }
       await userRef.update(updates);
       return;
