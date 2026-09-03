@@ -1,0 +1,54 @@
+name: Messages 2.3 Security
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'database.rules.json'
+      - 'functions/**'
+      - 'azure_media_broker/**'
+      - 'lib/services/**'
+      - 'lib/screens/chat_room_screen.dart'
+      - 'test/message_memory_window_test.dart'
+      - 'tools/messages_security_audit.py'
+      - '.github/workflows/messages-security.yml'
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'database.rules.json'
+      - 'functions/**'
+      - 'azure_media_broker/**'
+      - 'lib/services/**'
+      - 'lib/screens/chat_room_screen.dart'
+      - 'test/message_memory_window_test.dart'
+      - 'tools/messages_security_audit.py'
+      - '.github/workflows/messages-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Messages 2.3 security and cost audit
+        run: python tools/messages_security_audit.py
+
+  flutter-memory-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Run 10k-message memory test
+        run: flutter test test/message_memory_window_test.dart
