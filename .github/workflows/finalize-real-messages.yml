@@ -1,0 +1,60 @@
+name: Finalize real Mitra messaging
+
+on:
+  push:
+    paths:
+      - .github/workflows/finalize-real-messages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply verified source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/fix_real_chat.py
+          sed -i 's/otherUser: profile,/otherUser: profile!,/' lib/screens/notification_chat_router.dart
+
+      - name: Verify and build
+        run: |
+          flutter pub get
+          dart format lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
+          git diff --check
+          flutter build apk --release
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OJAS-Real-Mitra-Release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit only application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: finalize real Mitra messaging and You swipe navigation"
+          git push origin HEAD:main
