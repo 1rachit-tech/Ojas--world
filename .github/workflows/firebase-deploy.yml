@@ -1,4 +1,4 @@
-name: Deploy Firebase Security Rules
+name: Deploy Firebase Firestore Rules
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'firestore.rules'
-      - 'storage.rules'
       - 'firebase.json'
       - '.firebaserc'
       - '.github/workflows/firebase-deploy.yml'
@@ -21,8 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-firebase-rules:
-    name: Deploy Firestore and Storage Rules
+  deploy-firestore-rules:
+    name: Deploy Firestore Rules
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -34,7 +33,6 @@ jobs:
         run: |
           test -f firebase.json
           test -f firestore.rules
-          test -f storage.rules
           test -f .firebaserc
 
       - name: Verify target Firebase project
@@ -61,12 +59,5 @@ jobs:
         run: |
           firebase deploy \
             --only firestore:rules \
-            --project ojas-e8161 \
-            --non-interactive
-
-      - name: Deploy Storage security rules
-        run: |
-          firebase deploy \
-            --only storage \
             --project ojas-e8161 \
             --non-interactive
