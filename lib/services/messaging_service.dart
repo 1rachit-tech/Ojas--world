@@ -57,11 +57,31 @@ class MessagingService extends WidgetsBindingObserver {
 
     return _conversations
         .where('participants', arrayContains: uid)
-        .orderBy('lastMessageAt', descending: true)
+        .limit(50)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map(OjasConversation.fromFirestore)
-            .toList());
+        .map((snapshot) {
+      final conversations = snapshot.docs
+          .map(OjasConversation.fromFirestore)
+          .toList();
+
+      conversations.sort((a, b) {
+        final aTime = a.lastMessageAt;
+        final bTime = b.lastMessageAt;
+
+        if (aTime == null && bTime == null) {
+          return 0;
+        }
+        if (aTime == null) {
+          return 1;
+        }
+        if (bTime == null) {
+          return -1;
+        }
+        return bTime.compareTo(aTime);
+      });
+
+      return conversations;
+    });
   }
 
   Stream<OjasConversation> watchConversation(String conversationId) =>

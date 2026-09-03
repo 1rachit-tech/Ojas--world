@@ -41,7 +41,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   final _accountStore = _LocalAccountStore();
 
-  int _selectedTab = 1;
+  int _selectedTab = 0;
 
   List<_SavedAccount> _accounts = [];
 
@@ -637,13 +637,26 @@ class _YouHubScreenState extends State<YouHubScreen> {
                       profile,
                     ),
                     Expanded(
-                      child: IndexedStack(
-                        index: _selectedTab,
-                        children: [
-                          const MessagesScreen(
-                            showAppBar: false,
-                          ),
-                          _ProfilePage(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragEnd: (details) {
+                          final velocity =
+                              details.primaryVelocity ?? 0;
+                          if (velocity < -220 &&
+                              _selectedTab == 0) {
+                            _changeTab(1);
+                          } else if (velocity > 220 &&
+                              _selectedTab == 1) {
+                            _changeTab(0);
+                          }
+                        },
+                        child: IndexedStack(
+                          index: _selectedTab,
+                          children: [
+                            const MessagesScreen(
+                              showAppBar: false,
+                            ),
+                            _ProfilePage(
                             profile: profile,
                             firebaseUser: user,
                             onEdit: profile == null
