@@ -1,20 +1,43 @@
 from pathlib import Path
+import re
+
+
+def read(path: str) -> str:
+    return Path(path).read_text(encoding='utf-8')
+
+
+def write(path: str, text: str) -> None:
+    Path(path).write_text(text, encoding='utf-8')
 
 
 def replace_once(path: str, old: str, new: str, label: str) -> None:
-    file = Path(path)
-    text = file.read_text(encoding='utf-8')
+    text = read(path)
     if old not in text:
         raise SystemExit(f'{label}: expected block missing; refusing to modify.')
-    file.write_text(text.replace(old, new, 1), encoding='utf-8')
+    write(path, text.replace(old, new, 1))
 
 
-# Create/read a deterministic conversation without a get() on a missing document.
-messaging = Path('lib/services/messaging_service.dart')
-text = messaging.read_text(encoding='utf-8')
-start = text.index('  Future<String> openConversation(OjasProfile otherUser) async {')
-end = text.index('  Future<void> sendTextMessage({', start)
-new_open_conversation = '''  Future<String> openConversation(OjasProfile otherUser) async {
+def ensure_import(path: str, anchor: str, import_line: str, label: str) -> None:
+    text = read(path)
+    if import_line in text:
+        return
+    if anchor not in text:
+        raise SystemExit(f'{label}: import anchor missing; refusing to modify.')
+    write(path, text.replace(anchor, anchor + import_line, 1))
+
+
+# Real first-chat creation: do not read a missing conversation document.
+# Firestore's participant read rule denies a get when the document does not exist.
+messaging_path = 'lib/services/messaging_service.dart'
+text = read(messaging_path)
+pattern = re.compile(
+    r"  Future<String> openConversation\(OjasProfile otherUser\) async \{.*?\n  \}\n\n  Future<void> sendTextMessage",
+    re.S,
+)
+match = pattern.search(text)
+if not match:
+    raise SystemExit('real conversation creation method missing; refusing to modify.')
+new_method = '''  Future<String> openConversation(OjasProfile otherUser) async {
     final uid = currentUid;
     if (uid == null) {
       throw const MessagingException('Please sign in again.');
@@ -26,18 +49,7 @@ new_open_conversation = '''  Future<String> openConversation(OjasProfile otherUs
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
-
-    final existing = await _conversations
-        .where('participants', arrayContains: uid)
-        .get();
-
-    for (final document in existing.docs) {
-      if (document.id == conversationId) {
-        return conversationId;
-      }
-    }
-
-    await reference.set({
+    final data = {
       'participants': [uid, otherUser.uid],
       'participantProfiles': {
         uid: _profileMap(currentProfile),
@@ -50,43 +62,52 @@ new_open_conversation = '''  Future<String> openConversation(OjasProfile otherUs
       'typingBy': {uid: false, otherUser.uid: false},
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
-    });
+    };
+
+    try {
+      await reference.create(data);
+    } on FirebaseException catch (error) {
+      if (error.code != 'already-exists') {
+        rethrow;
+      }
+    }
 
     return conversationId;
   }
 
-'''
-messaging.write_text(text[:start] + new_open_conversation + text[end:], encoding='utf-8')
+  Future<void> sendTextMessage'''
+text = text[:match.start()] + new_method + text[match.end():]
+write(messaging_path, text)
 
-# Hide an empty conversation until the first real message is sent.
+# Keep empty conversations out of the list until a real message exists.
 replace_once(
-    'lib/services/messaging_service.dart',
+    messaging_path,
     '''      return conversations;
     });
   }
 
   Stream<OjasConversation> watchConversation''',
     '''      return conversations
-          .where((conversation) =>
-              conversation.lastMessage.trim().isNotEmpty)
+          .where((conversation) => conversation.lastMessage.trim().isNotEmpty)
           .toList(growable: false);
     });
   }
 
   Stream<OjasConversation> watchConversation''',
-    'conversation empty-state filter',
+    'empty conversation filter',
 )
 
-# Older conversations may not contain participantProfiles.
-messages = Path('lib/screens/messages_screen.dart')
-text = messages.read_text(encoding='utf-8')
-if "import '../services/profile_service.dart';\n" not in text:
-    text = text.replace(
-        "import '../services/messaging_service.dart';\n",
-        "import '../services/messaging_service.dart';\nimport '../services/profile_service.dart';\n",
-        1,
-    )
-old_open = '''    final profileData =
+# Older conversations can lack the newer participantProfiles snapshot.
+messages_path = 'lib/screens/messages_screen.dart'
+ensure_import(
+    messages_path,
+    "import '../services/messaging_service.dart';\n",
+    "import '../services/profile_service.dart';\n",
+    'Messages profile service import',
+)
+replace_once(
+    messages_path,
+    '''    final profileData =
         conversation.profileFor(otherUid);
 
     final profile =
@@ -96,13 +117,13 @@ old_open = '''    final profileData =
     );
 
     await Navigator.of(context).push(
-'''
-new_open = '''    final profileData =
-        conversation.profileFor(otherUid);
+''',
+    '''    final profileData = conversation.profileFor(otherUid);
 
     OjasProfile profile;
     if (profileData.isEmpty) {
-      profile = await ProfileService.instance.getProfile(otherUid) ??
+      final fetched = await ProfileService.instance.getProfile(otherUid);
+      profile = fetched ??
           OjasProfile.empty(
             uid: otherUid,
             displayName: 'OJAS User',
@@ -122,44 +143,27 @@ new_open = '''    final profileData =
     }
 
     await Navigator.of(context).push(
-'''
-replace_once('lib/screens/messages_screen.dart', old_open, new_open, 'messages older-conversation profile fallback')
+''',
+    'Messages old conversation profile fallback',
+)
 replace_once(
-    'lib/screens/messages_screen.dart',
-    '''            const Text(
-              'Your messages live here',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
-              ),
-            ),
-''',
-    '''            const Text(
-              'Find your Mitra',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
-                letterSpacing: -0.25,
-              ),
-            ),
-''',
-    'messages empty-state title',
+    messages_path,
+    "              'Your messages live here',",
+    "              'Find your Mitra',",
+    'Messages empty-state title',
 )
 
-# Notification taps also support older conversation documents.
-router = Path('lib/screens/notification_chat_router.dart')
-text = router.read_text(encoding='utf-8')
-if "import '../services/profile_service.dart';\n" not in text:
-    text = text.replace(
-        "import '../services/notification_service.dart';\n",
-        "import '../services/notification_service.dart';\nimport '../services/profile_service.dart';\n",
-        1,
-    )
-old_router = '''      final profiles = data['participantProfiles'];
+# Notification tap compatibility with older conversation documents.
+router_path = 'lib/screens/notification_chat_router.dart'
+ensure_import(
+    router_path,
+    "import '../services/notification_service.dart';\n",
+    "import '../services/profile_service.dart';\n",
+    'Notification router profile service import',
+)
+replace_once(
+    router_path,
+    '''      final profiles = data['participantProfiles'];
       if (profiles is! Map) {
         throw StateError('Conversation profile data is unavailable.');
       }
@@ -173,8 +177,8 @@ old_router = '''      final profiles = data['participantProfiles'];
         Map<String, dynamic>.from(rawProfile),
         uid: widget.openData.senderId,
       );
-'''
-new_router = '''      final profiles = data['participantProfiles'];
+''',
+    '''      final profiles = data['participantProfiles'];
       OjasProfile? profile;
 
       if (profiles is Map) {
@@ -194,28 +198,14 @@ new_router = '''      final profiles = data['participantProfiles'];
       if (profile == null) {
         throw StateError('The sender profile is unavailable.');
       }
-'''
-replace_once('lib/screens/notification_chat_router.dart', old_router, new_router, 'notification profile fallback')
-
-# Remove unused simulation-only notification code.
-replace_once(
-    'lib/services/notification_service.dart',
-    '''  void simulateIncomingNotification({
-    required String title,
-    required String body,
-    required String type,
-  }) {
-    debugPrint('Simulation only: $title / $body / $type');
-  }
-
 ''',
-    '',
-    'simulation-only notification helper',
+    'Notification old conversation profile fallback',
 )
 
-# Use PageView so top tabs and horizontal swipes share the same navigation state.
+# Make You use a real PageView so top tabs and horizontal swipes share one state.
+you_path = 'lib/screens/you_hub_screen.dart'
 replace_once(
-    'lib/screens/you_hub_screen.dart',
+    you_path,
     '''  final _accountStore = _LocalAccountStore();
 
   int _selectedTab = 0;
@@ -228,7 +218,7 @@ replace_once(
     'You PageController field',
 )
 replace_once(
-    'lib/screens/you_hub_screen.dart',
+    you_path,
     '''  @override
   void initState() {
     super.initState();
@@ -245,7 +235,7 @@ replace_once(
     'You PageController init',
 )
 replace_once(
-    'lib/screens/you_hub_screen.dart',
+    you_path,
     '''  void _changeTab(int index) {
     if (_selectedTab == index) {
       return;
@@ -288,10 +278,10 @@ replace_once(
     });
   }
 ''',
-    'You tab controller',
+    'You tab handler',
 )
 replace_once(
-    'lib/screens/you_hub_screen.dart',
+    you_path,
     '''  @override
   Widget build(BuildContext context) {
 ''',
@@ -307,7 +297,7 @@ replace_once(
     'You PageController dispose',
 )
 replace_once(
-    'lib/screens/you_hub_screen.dart',
+    you_path,
     '''                    Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -344,4 +334,4 @@ replace_once(
     'You PageView',
 )
 
-print('real Mitra chat and You navigation fixes prepared')
+print('guarded real messaging and You navigation fixes prepared')
