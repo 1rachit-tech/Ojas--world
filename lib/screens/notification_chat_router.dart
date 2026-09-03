@@ -5,13 +5,11 @@ import 'package:flutter/material.dart';
 // Real Mitra compatibility verification trigger; no runtime behavior change.
 import '../models/ojas_profile.dart';
 import '../services/notification_service.dart';
+import '../services/profile_service.dart';
 import 'chat_room_screen.dart';
 
 class NotificationChatRouter extends StatefulWidget {
-  const NotificationChatRouter({
-    super.key,
-    required this.openData,
-  });
+  const NotificationChatRouter({super.key, required this.openData});
 
   final NotificationOpenData openData;
 
@@ -55,19 +53,25 @@ class _NotificationChatRouterState extends State<NotificationChatRouter> {
       }
 
       final profiles = data['participantProfiles'];
-      if (profiles is! Map) {
-        throw StateError('Conversation profile data is unavailable.');
+      OjasProfile? profile;
+
+      if (profiles is Map) {
+        final rawProfile = profiles[widget.openData.senderId];
+        if (rawProfile is Map) {
+          profile = OjasProfile.fromMap(
+            Map<String, dynamic>.from(rawProfile),
+            uid: widget.openData.senderId,
+          );
+        }
       }
 
-      final rawProfile = profiles[widget.openData.senderId];
-      if (rawProfile is! Map) {
+      profile ??= await ProfileService.instance.getProfile(
+        widget.openData.senderId,
+      );
+
+      if (profile == null) {
         throw StateError('The sender profile is unavailable.');
       }
-
-      final profile = OjasProfile.fromMap(
-        Map<String, dynamic>.from(rawProfile),
-        uid: widget.openData.senderId,
-      );
 
       if (!mounted) {
         return;
@@ -77,7 +81,7 @@ class _NotificationChatRouterState extends State<NotificationChatRouter> {
         MaterialPageRoute(
           builder: (_) => ChatRoomScreen(
             conversationId: widget.openData.conversationId,
-            otherUser: profile,
+            otherUser: profile!,
           ),
         ),
       );
@@ -91,11 +95,7 @@ class _NotificationChatRouterState extends State<NotificationChatRouter> {
   @override
   Widget build(BuildContext context) {
     if (_error.isEmpty) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(

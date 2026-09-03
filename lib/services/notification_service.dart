@@ -78,10 +78,12 @@ class NotificationService {
       }
 
       _authSubscription ??= _auth.authStateChanges().listen(_handleAuthChanged);
-      _foregroundSubscription ??=
-          FirebaseMessaging.onMessage.listen(_notificationStream.add);
-      _openedSubscription ??=
-          FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedMessage);
+      _foregroundSubscription ??= FirebaseMessaging.onMessage.listen(
+        _notificationStream.add,
+      );
+      _openedSubscription ??= FirebaseMessaging.onMessageOpenedApp.listen(
+        _handleOpenedMessage,
+      );
       _tokenSubscription ??= _messaging.onTokenRefresh.listen(_saveToken);
 
       await _registerCurrentToken();
@@ -193,15 +195,11 @@ class NotificationService {
         tokenMap.remove(tokenMap.keys.first);
       }
 
-      transaction.set(
-        userRef,
-        {
-          'uid': uid,
-          'fcmTokens': tokenMap,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      transaction.set(userRef, {
+        'uid': uid,
+        'fcmTokens': tokenMap,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     });
   }
 
@@ -229,17 +227,15 @@ class NotificationService {
         });
       } else if (rawTokens is List) {
         for (final value in rawTokens) {
-          if (value is String && value.trim().isNotEmpty && value != cleanToken) {
+          if (value is String &&
+              value.trim().isNotEmpty &&
+              value != cleanToken) {
             cleaned[value.trim()] = true;
           }
         }
       }
 
-      transaction.set(
-        userRef,
-        {'fcmTokens': cleaned},
-        SetOptions(merge: true),
-      );
+      transaction.set(userRef, {'fcmTokens': cleaned}, SetOptions(merge: true));
     });
   }
 

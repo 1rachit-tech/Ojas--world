@@ -41,13 +41,11 @@ class MessagingService extends WidgetsBindingObserver {
 
   DocumentReference<Map<String, dynamic>> conversationReference(
     String conversationId,
-  ) =>
-      _conversations.doc(conversationId);
+  ) => _conversations.doc(conversationId);
 
   CollectionReference<Map<String, dynamic>> messageCollection(
     String conversationId,
-  ) =>
-      conversationReference(conversationId).collection('messages');
+  ) => conversationReference(conversationId).collection('messages');
 
   Stream<List<OjasConversation>> watchConversations() {
     final uid = currentUid;
@@ -60,28 +58,32 @@ class MessagingService extends WidgetsBindingObserver {
         .limit(50)
         .snapshots()
         .map((snapshot) {
-      final conversations = snapshot.docs
-          .map(OjasConversation.fromFirestore)
-          .toList();
+          final conversations = snapshot.docs
+              .map(OjasConversation.fromFirestore)
+              .toList();
 
-      conversations.sort((a, b) {
-        final aTime = a.lastMessageAt;
-        final bTime = b.lastMessageAt;
+          conversations.sort((a, b) {
+            final aTime = a.lastMessageAt;
+            final bTime = b.lastMessageAt;
 
-        if (aTime == null && bTime == null) {
-          return 0;
-        }
-        if (aTime == null) {
-          return 1;
-        }
-        if (bTime == null) {
-          return -1;
-        }
-        return bTime.compareTo(aTime);
-      });
+            if (aTime == null && bTime == null) {
+              return 0;
+            }
+            if (aTime == null) {
+              return 1;
+            }
+            if (bTime == null) {
+              return -1;
+            }
+            return bTime.compareTo(aTime);
+          });
 
-      return conversations;
-    });
+          return conversations
+              .where(
+                (conversation) => conversation.lastMessage.trim().isNotEmpty,
+              )
+              .toList(growable: false);
+        });
   }
 
   Stream<OjasConversation> watchConversation(String conversationId) =>
@@ -110,10 +112,9 @@ class MessagingService extends WidgetsBindingObserver {
       return;
     }
 
-    await conversationReference(conversationId).set(
-      {'typingBy.$uid': isTyping},
-      SetOptions(merge: true),
-    );
+    await conversationReference(
+      conversationId,
+    ).set({'typingBy.$uid': isTyping}, SetOptions(merge: true));
   }
 
   void registerPresenceConversation(String conversationId) {
@@ -160,9 +161,9 @@ class MessagingService extends WidgetsBindingObserver {
         .orderBy('createdAt', descending: true)
         .limit(40)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map(OjasMessage.fromFirestore)
-            .toList());
+        .map(
+          (snapshot) => snapshot.docs.map(OjasMessage.fromFirestore).toList(),
+        );
   }
 
   Future<List<OjasProfile>> searchUsers(String query) async {
@@ -223,9 +224,7 @@ class MessagingService extends WidgetsBindingObserver {
       if (!aExact && bExact) {
         return 1;
       }
-      return a.displayName.toLowerCase().compareTo(
-            b.displayName.toLowerCase(),
-          );
+      return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
     });
     return users;
   }
@@ -235,31 +234,39 @@ class MessagingService extends WidgetsBindingObserver {
     if (uid == null) {
       throw const MessagingException('Please sign in again.');
     }
-    if (otherUser.uid == uid) {
-      throw const MessagingException('You cannot message yourself.');
+    if (otherUser.uid.isEmpty || otherUser.uid == uid) {
+      throw const MessagingException('Invalid OJAS user.');
     }
 
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
-    final snapshot = await reference.get();
 
-    if (!snapshot.exists) {
-      await reference.set({
-        'participants': [uid, otherUser.uid],
-        'participantProfiles': {
-          uid: _profileMap(currentProfile),
-          otherUser.uid: _profileMap(otherUser),
-        },
-        'lastMessage': '',
-        'lastMessageSenderId': '',
-        'unreadCounts': {uid: 0, otherUser.uid: 0},
-        'lastReadAtBy': {uid: FieldValue.serverTimestamp()},
-        'typingBy': {uid: false, otherUser.uid: false},
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastMessageAt': FieldValue.serverTimestamp(),
-      });
+    final existing = await _conversations
+        .where('participants', arrayContains: uid)
+        .limit(50)
+        .get();
+
+    for (final document in existing.docs) {
+      if (document.id == conversationId) {
+        return conversationId;
+      }
     }
+
+    await reference.set({
+      'participants': [uid, otherUser.uid],
+      'participantProfiles': {
+        uid: _profileMap(currentProfile),
+        otherUser.uid: _profileMap(otherUser),
+      },
+      'lastMessage': '',
+      'lastMessageSenderId': '',
+      'unreadCounts': {uid: 0, otherUser.uid: 0},
+      'lastReadAtBy': {uid: FieldValue.serverTimestamp()},
+      'typingBy': {uid: false, otherUser.uid: false},
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    });
 
     return conversationId;
   }
@@ -311,26 +318,22 @@ class MessagingService extends WidgetsBindingObserver {
         'replyToText': replyTo.isDeleted
             ? 'This message was deleted.'
             : replyTo.isImage
-                ? 'Photo'
-                : _safeReplyPreview(replyTo.text),
+            ? 'Photo'
+            : _safeReplyPreview(replyTo.text),
         'replyToType': replyTo.type,
       });
     }
 
     batch.set(message, messageData);
-    batch.set(
-      conversation,
-      {
-        'lastMessage': cleanText,
-        'lastMessageSenderId': uid,
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'unreadCounts.$uid': 0,
-        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
-        'typingBy.$uid': false,
-        'unreadCounts.$receiverId': FieldValue.increment(1),
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(conversation, {
+      'lastMessage': cleanText,
+      'lastMessageSenderId': uid,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'unreadCounts.$uid': 0,
+      'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
+      'typingBy.$uid': false,
+      'unreadCounts.$receiverId': FieldValue.increment(1),
+    }, SetOptions(merge: true));
 
     await batch.commit();
   }
@@ -395,25 +398,21 @@ class MessagingService extends WidgetsBindingObserver {
         'replyToText': replyTo.isDeleted
             ? 'This message was deleted.'
             : replyTo.isImage
-                ? 'Photo'
-                : _safeReplyPreview(replyTo.text),
+            ? 'Photo'
+            : _safeReplyPreview(replyTo.text),
         'replyToType': replyTo.type,
       });
     }
 
     batch.set(message, messageData);
-    batch.set(
-      conversation,
-      {
-        'lastMessage': cleanCaption.isNotEmpty ? cleanCaption : '📷 Photo',
-        'lastMessageSenderId': uid,
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'unreadCounts.$uid': 0,
-        'unreadCounts.$receiverId': FieldValue.increment(1),
-        'typingBy.$uid': false,
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(conversation, {
+      'lastMessage': cleanCaption.isNotEmpty ? cleanCaption : '📷 Photo',
+      'lastMessageSenderId': uid,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'unreadCounts.$uid': 0,
+      'unreadCounts.$receiverId': FieldValue.increment(1),
+      'typingBy.$uid': false,
+    }, SetOptions(merge: true));
 
     await batch.commit();
   }
@@ -483,13 +482,10 @@ class MessagingService extends WidgetsBindingObserver {
       return;
     }
 
-    await conversationReference(conversationId).set(
-      {
-        'unreadCounts.$uid': 0,
-        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await conversationReference(conversationId).set({
+      'unreadCounts.$uid': 0,
+      'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> deleteMessage({
@@ -506,9 +502,7 @@ class MessagingService extends WidgetsBindingObserver {
     final data = snapshot.data();
 
     if (data == null || data['senderId'] != uid) {
-      throw const MessagingException(
-        'You can only delete your own messages.',
-      );
+      throw const MessagingException('You can only delete your own messages.');
     }
 
     await reference.update({
