@@ -35,8 +35,52 @@ service cloud.firestore {
     function validFcmTokens(data) {
       return !('fcmTokens' in data)
           || (
-            data.fcmTokens is list
+            data.fcmTokens is map
             && data.fcmTokens.size() <= 10
+          );
+    }
+
+    function validConversationMaps(data) {
+      return data.unreadCounts is map
+          && data.unreadCounts.size() <= 2
+          && data.typingBy is map
+          && data.typingBy.size() <= 2;
+    }
+
+    function validImageMessage(data) {
+      return data.type != 'image'
+          || (
+            data.mediaUrl is string
+            && data.mediaUrl.size() > 0
+            && data.mediaUrl.size() <= 2048
+            && data.mediaStoragePath is string
+            && data.mediaStoragePath.size() > 0
+            && data.mediaStoragePath.size() <= 512
+            && data.mediaWidth is int
+            && data.mediaWidth > 0
+            && data.mediaWidth <= 4096
+            && data.mediaHeight is int
+            && data.mediaHeight > 0
+            && data.mediaHeight <= 4096
+            && data.mediaBytes is int
+            && data.mediaBytes > 0
+            && data.mediaBytes <= 10485760
+          );
+    }
+
+    function validReplyFields(data) {
+      return !('replyToMessageId' in data)
+          || (
+            data.replyToMessageId is string
+            && data.replyToMessageId.size() > 0
+            && data.replyToMessageId.size() <= 128
+            && data.replyToSenderId is string
+            && data.replyToSenderId.size() > 0
+            && data.replyToSenderId.size() <= 128
+            && data.replyToText is string
+            && data.replyToText.size() <= 200
+            && data.replyToType is string
+            && validMessageType(data.replyToType)
           );
     }
 
@@ -83,6 +127,7 @@ service cloud.firestore {
           && request.resource.data.participantProfiles is map
           && request.resource.data.unreadCounts is map
           && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessage.size() <= 2000
           && request.resource.data.lastMessageSenderId is string;
 
       allow update: if isConversationParticipant()
@@ -101,11 +146,10 @@ service cloud.firestore {
           && request.resource.data.lastMessage is string
           && request.resource.data.lastMessage.size() <= 2000
           && request.resource.data.lastMessageSenderId is string
-          && (
-            request.resource.data.lastMessageSenderId == resource.data.lastMessageSenderId
-            || request.resource.data.lastMessageSenderId in request.resource.data.participants
-            || request.resource.data.lastMessageSenderId == ''
-          );
+          && validConversationMaps(request.resource.data)
+          && request.resource.data.lastMessageSenderId == resource.data.lastMessageSenderId
+              || request.resource.data.lastMessageSenderId in request.resource.data.participants
+              || request.resource.data.lastMessageSenderId == '';
 
       allow delete: if false;
 
@@ -123,9 +167,13 @@ service cloud.firestore {
             && request.resource.data.senderId == request.auth.uid
             && request.resource.data.text is string
             && request.resource.data.text.size() <= 2000
+            && request.resource.data.type is string
             && validMessageType(request.resource.data.type)
             && request.resource.data.isDeleted == false
-            && validReactionMap(request.resource.data.reactions);
+            && validReactionMap(request.resource.data.reactions)
+            && request.resource.data.createdAt == request.time
+            && validImageMessage(request.resource.data)
+            && validReplyFields(request.resource.data);
 
         allow update: if signedIn()
             && request.auth.uid in get(
@@ -137,9 +185,33 @@ service cloud.firestore {
             && request.resource.data.text is string
             && request.resource.data.text.size() <= 2000
             && validReactionMap(request.resource.data.reactions)
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.mediaUrl == resource.data.mediaUrl
+            && request.resource.data.mediaStoragePath == resource.data.mediaStoragePath
+            && request.resource.data.mediaWidth == resource.data.mediaWidth
+            && request.resource.data.mediaHeight == resource.data.mediaHeight
+            && request.resource.data.mediaBytes == resource.data.mediaBytes
             && (
-              request.auth.uid == resource.data.senderId
-              || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+              (
+                request.auth.uid != resource.data.senderId
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+              )
+              || (
+                request.auth.uid == resource.data.senderId
+                && (
+                  request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+                  || (
+                    request.resource.data.isDeleted == true
+                    && request.resource.data.text == 'This message was deleted.'
+                    && request.resource.data.reactions.size() == 0
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'text',
+                      'isDeleted',
+                      'reactions'
+                    ])
+                  )
+                )
+              )
             );
 
         allow delete: if false;
@@ -156,7 +228,9 @@ service cloud.firestore {
 
     match /reports/{reportId} {
       allow create: if signedIn()
-          && request.resource.data.reporterId == request.auth.uid;
+          && request.resource.data.reporterId == request.auth.uid
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() <= 500;
       allow read, update, delete: if false;
     }
 
