@@ -7,6 +7,8 @@ from typing import Any
 
 import azure.functions as func
 from azure.storage.blob import BlobSasPermissions, generate_blob_sas
+import firebase_admin
+from firebase_admin import auth, credentials, firestore
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -17,6 +19,22 @@ _MAX_MEDIA_BYTES = 10 * 1024 * 1024
 _SAS_TTL_MINUTES = 5
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_FIREBASE_READY = False
+_FIREBASE_ERROR = ""
+
+try:
+    if not firebase_admin._apps:
+        firebase_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if firebase_json:
+            firebase_admin.initialize_app(
+                credentials.Certificate(json.loads(firebase_json)),
+            )
+        else:
+            firebase_admin.initialize_app()
+    _FIREBASE_READY = True
+except Exception as error:
+    _FIREBASE_ERROR = str(error)[:300]
+    logging.exception("Firebase Admin initialization failed.")
 
 
 def _json(status: int, body: dict[str, Any]) -> func.HttpResponse:
@@ -28,39 +46,59 @@ def _json(status: int, body: dict[str, Any]) -> func.HttpResponse:
     )
 
 
-def _decode_user(req: func.HttpRequest) -> dict[str, Any] | None:
-    """Validate an OJAS Firebase ID token without storing credentials here.
-
-    Firebase Admin authentication intentionally stays inside the Firebase
-    Cloud Function notification backend. Azure only signs a short-lived blob
-    upload URL after the client presents a trusted identity assertion.
-    """
-    token = req.headers.get("X-OJAS-User-Token", "").strip()
-    if not token:
+def _user_from_request(req: func.HttpRequest) -> dict[str, Any] | None:
+    if not _FIREBASE_READY:
         return None
 
-    # This broker is now deliberately fail-closed until a trusted gateway
-    # supplies a validated UID in X-OJAS-User-Id alongside the token.
-    # The client service uses this pair only after authenticating with Firebase.
-    uid = req.headers.get("X-OJAS-User-Id", "").strip()
-    if not uid or len(uid) > 128:
+    authorization = req.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
         return None
 
-    return {"uid": uid, "token": token}
+    try:
+        return auth.verify_id_token(authorization[7:])
+    except Exception:
+        return None
+
+
+def _is_participant(uid: str, conversation_id: str) -> bool:
+    if not _FIREBASE_READY:
+        return False
+
+    snapshot = (
+        firestore.client()
+        .collection("conversations")
+        .document(conversation_id)
+        .get()
+    )
+    if not snapshot.exists:
+        return False
+
+    data = snapshot.to_dict() or {}
+    participants = data.get("participants", [])
+    return isinstance(participants, list) and uid in participants
 
 
 @app.route(route="health", methods=["GET"])
 def health(req: func.HttpRequest) -> func.HttpResponse:
     del req
-    ready = bool(_ACCOUNT_NAME and _ACCOUNT_KEY and _CONTAINER)
+    ready = bool(
+        _FIREBASE_READY
+        and _ACCOUNT_NAME
+        and _ACCOUNT_KEY
+        and _CONTAINER
+    )
     return _json(
         200 if ready else 503,
         {
             "service": "ojas-media-broker",
             "ready": ready,
+            "firebaseAdminReady": _FIREBASE_READY,
+            "storageConfigured": bool(_ACCOUNT_NAME and _ACCOUNT_KEY),
+            "containerConfigured": bool(_CONTAINER),
             "mode": "usage-driven",
             "idleNotificationPolling": False,
             "maxUploadBytes": _MAX_MEDIA_BYTES,
+            "error": _FIREBASE_ERROR if not _FIREBASE_READY else "",
         },
     )
 
@@ -71,7 +109,7 @@ def upload_target(req: func.HttpRequest) -> func.HttpResponse:
         logging.error("Azure storage credentials are not configured.")
         return _json(503, {"error": "Media service is unavailable."})
 
-    decoded = _decode_user(req)
+    decoded = _user_from_request(req)
     if decoded is None:
         return _json(401, {"error": "Authentication required."})
 
@@ -84,8 +122,10 @@ def upload_target(req: func.HttpRequest) -> func.HttpResponse:
     blob_name = str(data.get("blobName", "")).strip()
     content_length = data.get("contentLength")
     content_type = str(data.get("contentType", "")).strip().lower()
-    uid = decoded["uid"]
+    uid = decoded.get("uid", "")
 
+    if not isinstance(uid, str) or not uid or len(uid) > 128:
+        return _json(401, {"error": "Authentication required."})
     if not conversation_id or len(conversation_id) > 128:
         return _json(400, {"error": "Invalid conversation."})
     if not _SAFE_NAME.fullmatch(blob_name):
@@ -98,6 +138,8 @@ def upload_target(req: func.HttpRequest) -> func.HttpResponse:
         return _json(400, {"error": "Invalid file size."})
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         return _json(400, {"error": "Unsupported media type."})
+    if not _is_participant(uid, conversation_id):
+        return _json(403, {"error": "You are not allowed to upload to this conversation."})
 
     safe_conversation = re.sub(r"[^A-Za-z0-9_-]", "_", conversation_id)
     blob_path = f"chat_media/{safe_conversation}/images/{uid}/{blob_name}"
