@@ -10,6 +10,7 @@ class OjasConversation {
     required this.unreadCounts,
     this.lastReadAtBy = const <String, Timestamp>{},
     this.typingBy = const <String, bool>{},
+    this.presenceBy = const <String, Map<String, dynamic>>{},
     this.createdAt,
     this.lastMessageAt,
   });
@@ -30,6 +31,8 @@ class OjasConversation {
   final Map<String, Timestamp> lastReadAtBy;
 
   final Map<String, bool> typingBy;
+
+  final Map<String, Map<String, dynamic>> presenceBy;
 
   final Timestamp? createdAt;
 
@@ -66,6 +69,15 @@ class OjasConversation {
 
   bool isTyping(String uid) {
     return typingBy[uid] ?? false;
+  }
+
+  bool isOnline(String uid) {
+    return presenceBy[uid]?['online'] == true;
+  }
+
+  Timestamp? lastActiveAtFor(String uid) {
+    final value = presenceBy[uid]?['lastActiveAt'];
+    return value is Timestamp ? value : null;
   }
 
   factory OjasConversation.fromFirestore(
@@ -140,6 +152,23 @@ class OjasConversation {
       );
     }
 
+    final presenceBy =
+        <String, Map<String, dynamic>>{};
+
+    final rawPresenceBy =
+        data['presenceBy'];
+
+    if (rawPresenceBy is Map) {
+      rawPresenceBy.forEach(
+        (key, value) {
+          if (key is String && value is Map) {
+            presenceBy[key] =
+                Map<String, dynamic>.from(value);
+          }
+        },
+      );
+    }
+
     final rawUnread =
         data['unreadCounts'];
 
@@ -170,6 +199,7 @@ class OjasConversation {
       unreadCounts: unread,
       lastReadAtBy: lastReadAt,
       typingBy: typingBy,
+      presenceBy: presenceBy,
       createdAt: data['createdAt'] as Timestamp?,
       lastMessageAt:
           data['lastMessageAt'] as Timestamp?,
