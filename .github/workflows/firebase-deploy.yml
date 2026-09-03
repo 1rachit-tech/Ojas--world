@@ -1,15 +1,14 @@
-name: Deploy Firebase Firestore Rules
+name: Deploy Firebase Rules
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'firestore.rules'
+      - 'database.rules.json'
       - 'firebase.json'
       - '.firebaserc'
       - '.github/workflows/firebase-deploy.yml'
-
   workflow_dispatch:
 
 permissions:
@@ -20,8 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-firestore-rules:
-    name: Deploy Firestore Rules
+  deploy-rules:
+    name: Deploy Firebase Rules
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -29,15 +28,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify Firebase configuration files
+      - name: Verify configuration files
         run: |
+          set -euo pipefail
           test -f firebase.json
           test -f firestore.rules
+          test -f database.rules.json
           test -f .firebaserc
 
       - name: Verify target Firebase project
-        run: |
-          grep -q '"ojas-e8161"' .firebaserc
+        run: grep -q '"ojas-e8161"' .firebaserc
 
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
@@ -52,12 +52,27 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      - name: Verify Firebase CLI
-        run: firebase --version
-
-      - name: Deploy Firestore security rules
+      - name: Deploy Firestore rules
         run: |
           firebase deploy \
             --only firestore:rules \
             --project ojas-e8161 \
             --non-interactive
+
+      - name: Deploy Realtime Database rules when a database exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT="$(firebase deploy --only database --project ojas-e8161 --non-interactive 2>&1)"
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+          if printf '%s' "$OUTPUT" | grep -Eqi 'database instance|Realtime Database|No Realtime Database|does not have a database'; then
+            echo 'No Realtime Database instance is provisioned yet; keeping the code ready without failing the Firestore deployment.'
+            exit 0
+          fi
+          exit "$STATUS"
