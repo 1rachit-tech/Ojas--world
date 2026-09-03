@@ -25,7 +25,6 @@ class RealtimePresenceService {
 
   StreamSubscription<DatabaseEvent>? _connectionSubscription;
   DatabaseReference? _connectionRef;
-  String? _activeUid;
   bool _started = false;
 
   Future<void> start() async {
@@ -39,7 +38,6 @@ class RealtimePresenceService {
     }
 
     _started = true;
-    _activeUid = uid;
 
     try {
       final root = FirebaseDatabase.instance.ref();
@@ -52,25 +50,22 @@ class RealtimePresenceService {
           .child('.info/connected')
           .onValue
           .listen((event) {
-        final connected = event.snapshot.value == true;
-        if (connected) {
+        if (event.snapshot.value == true) {
           unawaited(_markConnected(connectionRef));
         }
       });
     } catch (_) {
       _started = false;
       _connectionRef = null;
-      _activeUid = null;
     }
   }
 
   Future<void> stop() async {
     final connectionRef = _connectionRef;
 
-    _connectionSubscription?.cancel();
+    await _connectionSubscription?.cancel();
     _connectionSubscription = null;
     _connectionRef = null;
-    _activeUid = null;
     _started = false;
 
     if (connectionRef == null) {
@@ -146,8 +141,6 @@ class RealtimePresenceService {
         online: online,
         lastChanged: newest,
       );
-    }).handleError((_) {
-      return const RealtimePresenceState(online: false);
     });
   }
 
