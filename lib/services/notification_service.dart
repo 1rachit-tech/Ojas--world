@@ -34,9 +34,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     try {
-      FirebaseMessaging.onBackgroundMessage(
-        firebaseMessagingBackgroundHandler,
-      );
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       if (!kIsWeb) {
         await _messaging.requestPermission(
@@ -47,18 +45,11 @@ class NotificationService {
         );
       }
 
-      _authSubscription ??= _auth.authStateChanges().listen(
-        _handleAuthChanged,
-      );
-
+      _authSubscription ??= _auth.authStateChanges().listen(_handleAuthChanged);
       await _registerCurrentToken();
-
       _foregroundSubscription ??=
           FirebaseMessaging.onMessage.listen(_notificationStream.add);
-
-      _tokenSubscription ??= _messaging.onTokenRefresh.listen(
-        _saveToken,
-      );
+      _tokenSubscription ??= _messaging.onTokenRefresh.listen(_saveToken);
     } catch (error) {
       debugPrint('FCM initialization failed: $error');
     }
@@ -72,19 +63,13 @@ class NotificationService {
         previousUid != nextUid &&
         _currentToken != null) {
       try {
-        await _firestore.collection('users').doc(previousUid).set(
-          {
-            'fcmTokens': FieldValue.arrayRemove([_currentToken]),
-          },
-          SetOptions(merge: true),
-        );
+        await _removeToken(previousUid, _currentToken!);
       } catch (error) {
         debugPrint('Unable to remove old FCM token: $error');
       }
     }
 
     _registeredUid = nextUid;
-
     if (user != null) {
       await _registerCurrentToken();
     }
@@ -92,10 +77,14 @@ class NotificationService {
 
   Future<void> _registerCurrentToken() async {
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
 
     final token = await _messaging.getToken();
-    if (token == null || token.trim().isEmpty) return;
+    if (token == null || token.trim().isEmpty) {
+      return;
+    }
 
     _currentToken = token;
     _registeredUid = user.uid;
@@ -104,16 +93,33 @@ class NotificationService {
 
   Future<void> _saveToken(String token) async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null || token.trim().isEmpty) return;
+    final cleanToken = token.trim();
+    if (uid == null || cleanToken.isEmpty) {
+      return;
+    }
 
-    _currentToken = token;
+    _currentToken = cleanToken;
     _registeredUid = uid;
 
     await _firestore.collection('users').doc(uid).set(
       {
         'uid': uid,
-        'fcmTokens': FieldValue.arrayUnion([token]),
+        'fcmTokens.$cleanToken': true,
         'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> _removeToken(String uid, String token) async {
+    final cleanToken = token.trim();
+    if (cleanToken.isEmpty) {
+      return;
+    }
+
+    await _firestore.collection('users').doc(uid).set(
+      {
+        'fcmTokens.$cleanToken': FieldValue.delete(),
       },
       SetOptions(merge: true),
     );
