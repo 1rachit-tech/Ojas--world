@@ -44,6 +44,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
+    _messagingService.registerPresenceConversation(
+      widget.conversationId,
+    );
     _messageController.addListener(_onTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _markRead();
@@ -61,6 +64,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
       );
     }
+    _messagingService.unregisterPresenceConversation(
+      widget.conversationId,
+    );
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _scrollController.dispose();
@@ -483,13 +489,24 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: StreamBuilder<bool>(
-                stream: _messagingService.watchTyping(
+              child: StreamBuilder<OjasConversation>(
+                stream: _messagingService.watchConversation(
                   widget.conversationId,
-                  widget.otherUser.uid,
                 ),
                 builder: (context, snapshot) {
-                  final typing = snapshot.data == true;
+                  final conversation = snapshot.data;
+                  final typing = conversation?.isTyping(
+                        widget.otherUser.uid,
+                      ) ??
+                      false;
+                  final online = conversation?.isOnline(
+                        widget.otherUser.uid,
+                      ) ??
+                      false;
+                  final lastActiveAt = conversation?.lastActiveAtFor(
+                    widget.otherUser.uid,
+                  );
+
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -507,17 +524,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       Text(
                         typing
                             ? 'typing…'
-                            : (widget.otherUser.ojasId.trim().isNotEmpty
-                                  ? '@${widget.otherUser.ojasId}'
-                                  : 'OJAS'),
+                            : online
+                                ? 'Online'
+                                : _formatLastSeen(lastActiveAt),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
                           color: typing
                               ? const Color(0xFF2563EB)
-                              : const Color(0xFF6B7280),
-                          fontWeight: typing
+                              : online
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFF6B7280),
+                          fontWeight: typing || online
                               ? FontWeight.w600
                               : FontWeight.w400,
                         ),
@@ -708,6 +727,60 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   static String _initial(String name) {
     final clean = name.trim();
     return clean.isEmpty ? 'O' : clean.substring(0, 1).toUpperCase();
+  }
+
+  static String _formatLastSeen(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return 'Last seen recently';
+    }
+
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    final difference = today.difference(dateOnly).inDays;
+    final time = _formatTime(timestamp);
+
+    if (difference == 0) {
+      return 'Last seen $time';
+    }
+
+    if (difference == 1) {
+      return 'Last seen yesterday $time';
+    }
+
+    return 'Last seen ${date.day} ${_monthName(date.month)} $time';
+  }
+
+  static String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return '';
+    }
+    final date = timestamp.toDate();
+    final hour = date.hour > 12
+        ? date.hour - 12
+        : (date.hour == 0 ? 12 : date.hour);
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  static String _monthName(int month) {
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[(month - 1).clamp(0, 11)];
   }
 }
 
