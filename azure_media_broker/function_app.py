@@ -22,7 +22,6 @@ if not firebase_admin._apps:
     else:
         firebase_admin.initialize_app()
 
-_db = firestore.client()
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
@@ -46,7 +45,8 @@ def _user_from_request(req):
 
 
 def _is_participant(uid, conversation_id):
-    snapshot = _db.collection("conversations").document(conversation_id).get()
+    db = firestore.client()
+    snapshot = db.collection("conversations").document(conversation_id).get()
     if not snapshot.exists:
         return False
     participants = snapshot.to_dict().get("participants", [])
