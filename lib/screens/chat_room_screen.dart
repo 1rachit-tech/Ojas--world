@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
 import '../services/media_message_service.dart';
@@ -27,8 +28,7 @@ class ChatRoomScreen extends StatefulWidget {
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final MessagingService _messagingService = MessagingService.instance;
-  final MediaMessageService _mediaMessageService =
-      MediaMessageService.instance;
+  final MediaMessageService _mediaMessageService = MediaMessageService.instance;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -74,14 +74,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
 
     final hasText = _messageController.text.trim().isNotEmpty;
-
     if (!hasText) {
       _setTyping(false);
       return;
     }
 
     _setTyping(true);
-
     _typingTimer?.cancel();
     _typingTimer = Timer(
       const Duration(milliseconds: 1800),
@@ -537,46 +535,64 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder<List<OjasMessage>>(
-                stream: _messagingService.watchMessages(
+              child: StreamBuilder<OjasConversation>(
+                stream: _messagingService.watchConversation(
                   widget.conversationId,
                 ),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const _MessageLoadError();
-                  }
+                builder: (context, conversationSnapshot) {
+                  final conversation = conversationSnapshot.data;
+                  final otherReadAt = conversation?.lastReadAtFor(
+                    widget.otherUser.uid,
+                  );
 
-                  if (!snapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    );
-                  }
+                  return StreamBuilder<List<OjasMessage>>(
+                    stream: _messagingService.watchMessages(
+                      widget.conversationId,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const _MessageLoadError();
+                      }
 
-                  final messages = snapshot.data!;
-                  if (messages.isEmpty) {
-                    return const _EmptyConversation();
-                  }
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
 
-                  _markRead();
+                      final messages = snapshot.data!;
+                      if (messages.isEmpty) {
+                        return const _EmptyConversation();
+                      }
 
-                  return ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(14, 20, 14, 16),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final isMe = currentUid != null &&
-                          message.isSentBy(currentUid);
+                      return ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        padding: const EdgeInsets.fromLTRB(14, 20, 14, 16),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final message = messages[index];
+                          final isMe = currentUid != null &&
+                              message.isSentBy(currentUid);
+                          final seen = isMe &&
+                              otherReadAt != null &&
+                              message.createdAt != null &&
+                              !message.createdAt!.toDate().isAfter(
+                                otherReadAt.toDate(),
+                              );
 
-                      return _MessageBubble(
-                        message: message,
-                        isMe: isMe,
-                        currentUid: currentUid ?? '',
-                        otherUserName: widget.otherUser.displayName,
-                        onLongPress: () => _showMessageActions(message),
-                        onReactionTap: (emoji) =>
-                            _reactToMessage(message, emoji),
+                          return _MessageBubble(
+                            message: message,
+                            isMe: isMe,
+                            seen: seen,
+                            currentUid: currentUid ?? '',
+                            otherUserName: widget.otherUser.displayName,
+                            onLongPress: () =>
+                                _showMessageActions(message),
+                            onReactionTap: (emoji) =>
+                                _reactToMessage(message, emoji),
+                          );
+                        },
                       );
                     },
                   );
@@ -699,6 +715,7 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.isMe,
+    required this.seen,
     required this.currentUid,
     required this.otherUserName,
     required this.onLongPress,
@@ -707,6 +724,7 @@ class _MessageBubble extends StatelessWidget {
 
   final OjasMessage message;
   final bool isMe;
+  final bool seen;
   final String currentUid;
   final String otherUserName;
   final VoidCallback onLongPress;
@@ -736,9 +754,7 @@ class _MessageBubble extends StatelessWidget {
                       ? const EdgeInsets.fromLTRB(5, 5, 5, 8)
                       : const EdgeInsets.fromLTRB(14, 10, 14, 8),
                   decoration: BoxDecoration(
-                    color: isMe
-                        ? const Color(0xFF111827)
-                        : Colors.white,
+                    color: isMe ? const Color(0xFF111827) : Colors.white,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(18),
                       topRight: const Radius.circular(18),
@@ -747,9 +763,7 @@ class _MessageBubble extends StatelessWidget {
                     ),
                     border: isMe
                         ? null
-                        : Border.all(
-                            color: const Color(0xFFEAEAEA),
-                          ),
+                        : Border.all(color: const Color(0xFFEAEAEA)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -818,13 +832,11 @@ class _MessageBubble extends StatelessWidget {
                               if (isMe) ...[
                                 const SizedBox(width: 4),
                                 Icon(
-                                  message.isSeenBy(
-                                            currentUid,
-                                          )
+                                  seen
                                       ? Icons.done_all_rounded
                                       : Icons.done_rounded,
                                   size: 15,
-                                  color: message.isSeenBy(currentUid)
+                                  color: seen
                                       ? const Color(0xFF60A5FA)
                                       : Colors.white70,
                                 ),
@@ -927,9 +939,7 @@ class _ReplyBubble extends StatelessWidget {
             width: 3,
             height: 32,
             decoration: BoxDecoration(
-              color: isMe
-                  ? Colors.white70
-                  : const Color(0xFF6B7280),
+              color: isMe ? Colors.white70 : const Color(0xFF6B7280),
               borderRadius: BorderRadius.circular(8),
             ),
           ),
