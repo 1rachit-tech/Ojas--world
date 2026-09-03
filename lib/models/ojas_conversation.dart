@@ -8,6 +8,7 @@ class OjasConversation {
     required this.lastMessage,
     required this.lastMessageSenderId,
     required this.unreadCounts,
+    this.lastReadAtBy = const <String, Timestamp>{},
     this.createdAt,
     this.lastMessageAt,
   });
@@ -24,6 +25,8 @@ class OjasConversation {
   final String lastMessageSenderId;
 
   final Map<String, int> unreadCounts;
+
+  final Map<String, Timestamp> lastReadAtBy;
 
   final Timestamp? createdAt;
 
@@ -50,6 +53,12 @@ class OjasConversation {
     String uid,
   ) {
     return unreadCounts[uid] ?? 0;
+  }
+
+  Timestamp? lastReadAtFor(
+    String uid,
+  ) {
+    return lastReadAtBy[uid];
   }
 
   factory OjasConversation.fromFirestore(
@@ -92,6 +101,22 @@ class OjasConversation {
     final unread =
         <String, int>{};
 
+    final lastReadAt =
+        <String, Timestamp>{};
+
+    final rawLastReadAt =
+        data['lastReadAtBy'];
+
+    if (rawLastReadAt is Map) {
+      rawLastReadAt.forEach(
+        (key, value) {
+          if (key is String && value is Timestamp) {
+            lastReadAt[key] = value;
+          }
+        },
+      );
+    }
+
     final rawUnread =
         data['unreadCounts'];
 
@@ -120,6 +145,7 @@ class OjasConversation {
         data['lastMessageSenderId'],
       ),
       unreadCounts: unread,
+      lastReadAtBy: lastReadAt,
       createdAt: data['createdAt'] as Timestamp?,
       lastMessageAt:
           data['lastMessageAt'] as Timestamp?,
