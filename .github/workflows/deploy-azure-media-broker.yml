@@ -31,6 +31,7 @@ jobs:
           python -m py_compile azure_media_broker/function_app.py
           test -f azure_media_broker/requirements.txt
 
+      # Flex Consumption deployment: remote build is required.
       - name: Deploy broker
         uses: Azure/functions-action@v1
         with:
