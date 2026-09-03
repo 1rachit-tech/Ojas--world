@@ -168,7 +168,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       final additions = page.messages.where(
         (message) => !existingIds.contains(message.id),
       );
-      final combined = <OjasMessage>[...\_loadedMessages, ...additions];
+      final combined = <OjasMessage>[..._loadedMessages, ...additions];
 
       setState(() {
         _loadedMessages
