@@ -36,4 +36,6 @@ jobs:
         with:
           app-name: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
           package: azure_media_broker
+          sku: flexconsumption
+          remote-build: true
           publish-profile: ${{ secrets.AZURE_MEDIA_FUNCTION_PUBLISH_PROFILE }}
