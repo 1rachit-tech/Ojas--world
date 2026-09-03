@@ -1,0 +1,76 @@
+name: Repair You navigation and messages
+
+on:
+  push:
+    paths:
+      - .github/workflows/repair-you-navigation-and-messages.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply guarded fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          messaging = Path('lib/services/messaging_service.dart')
+          text = messaging.read_text(encoding='utf-8')
+
+          old_watch = """    return _conversations\n        .where('participants', arrayContains: uid)\n        .orderBy('lastMessageAt', descending: true)\n        .snapshots()\n        .map((snapshot) => snapshot.docs\n            .map(OjasConversation.fromFirestore)\n            .toList());\n"""
+          new_watch = """    return _conversations\n        .where('participants', arrayContains: uid)\n        .limit(50)\n        .snapshots()\n        .map((snapshot) {\n      final conversations = snapshot.docs\n          .map(OjasConversation.fromFirestore)\n          .toList();\n\n      conversations.sort((a, b) {\n        final aTime = a.lastMessageAt;\n        final bTime = b.lastMessageAt;\n\n        if (aTime == null && bTime == null) {\n          return 0;\n        }\n        if (aTime == null) {\n          return 1;\n        }\n        if (bTime == null) {\n          return -1;\n        }\n        return bTime.compareTo(aTime);\n      });\n\n      return conversations;\n    });\n"""
+          if old_watch not in text:
+              raise SystemExit('Expected conversation query was not found; refusing to modify.')
+          text = text.replace(old_watch, new_watch, 1)
+          messaging.write_text(text, encoding='utf-8')
+
+          you = Path('lib/screens/you_hub_screen.dart')
+          text = you.read_text(encoding='utf-8')
+
+          old_state = """  int _selectedTab = 1;\n\n  List<_SavedAccount> _accounts = [];\n"""
+          new_state = """  int _selectedTab = 0;\n\n  List<_SavedAccount> _accounts = [];\n"""
+          if old_state not in text:
+              raise SystemExit('Expected You default tab state was not found; refusing to modify.')
+          text = text.replace(old_state, new_state, 1)
+
+          old_children = """                    Expanded(\n                      child: IndexedStack(\n                        index: _selectedTab,\n                        children: [\n                          const MessagesScreen(\n                            showAppBar: false,\n                          ),\n                          _ProfilePage(\n"""
+          new_children = """                    Expanded(\n                      child: GestureDetector(\n                        behavior: HitTestBehavior.opaque,\n                        onHorizontalDragEnd: (details) {\n                          final velocity =\n                              details.primaryVelocity ?? 0;\n                          if (velocity < -220 &&\n                              _selectedTab == 0) {\n                            _changeTab(1);\n                          } else if (velocity > 220 &&\n                              _selectedTab == 1) {\n                            _changeTab(0);\n                          }\n                        },\n                        child: IndexedStack(\n                          index: _selectedTab,\n                          children: [\n                            const MessagesScreen(\n                              showAppBar: false,\n                            ),\n                            _ProfilePage(\n"""
+          if old_children not in text:
+              raise SystemExit('Expected You content stack was not found; refusing to modify.')
+          text = text.replace(old_children, new_children, 1)
+
+          old_tail = """                            onCompleteProfile:\n                                _openProfileSetup,\n                          ),\n                        ],\n                      ),\n                    ),\n"""
+          new_tail = """                            onCompleteProfile:\n                                _openProfileSetup,\n                          ),\n                        ],\n                      ),\n                    ),\n"""
+          if old_tail not in text:
+              raise SystemExit('Expected You content stack tail was not found; refusing to modify.')
+          # The tail is structurally unchanged; the guarded replacement above adds only the swipe wrapper.
+
+          you.write_text(text, encoding='utf-8')
+      - name: Format and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format lib/services/messaging_service.dart lib/screens/you_hub_screen.dart
+          git diff --check
+          grep -q ".limit(50)" lib/services/messaging_service.dart
+          grep -q "int _selectedTab = 0;" lib/screens/you_hub_screen.dart
+          grep -q "onHorizontalDragEnd" lib/screens/you_hub_screen.dart
+      - name: Commit fixes and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/repair-you-navigation-and-messages.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/services/messaging_service.dart lib/screens/you_hub_screen.dart .github/workflows/repair-you-navigation-and-messages.yml
+          git commit -m "fix: stabilize messages query and You navigation"
+          git push origin HEAD:main
