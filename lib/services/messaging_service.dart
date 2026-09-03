@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
 
-class MessagingService {
-  MessagingService._();
+class MessagingService extends WidgetsBindingObserver {
+  MessagingService._() {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   static final MessagingService instance =
       MessagingService._();
@@ -16,6 +21,10 @@ class MessagingService {
 
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
+
+  final Set<String>
+      _activePresenceConversations =
+      <String>{};
 
   CollectionReference<Map<String, dynamic>>
       get _conversations =>
@@ -137,6 +146,112 @@ class MessagingService {
       },
       SetOptions(merge: true),
     );
+  }
+
+  void registerPresenceConversation(
+    String conversationId,
+  ) {
+    if (conversationId.trim().isEmpty) {
+      return;
+    }
+
+    _activePresenceConversations.add(
+      conversationId,
+    );
+
+    if (WidgetsBinding.instance.lifecycleState ==
+        AppLifecycleState.resumed) {
+      unawaited(
+        setPresence(
+          conversationId: conversationId,
+          isOnline: true,
+        ),
+      );
+    }
+  }
+
+  void unregisterPresenceConversation(
+    String conversationId,
+  ) {
+    _activePresenceConversations.remove(
+      conversationId,
+    );
+
+    unawaited(
+      setPresence(
+        conversationId: conversationId,
+        isOnline: false,
+      ),
+    );
+  }
+
+  Future<void> setPresence({
+    required String conversationId,
+    required bool isOnline,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null ||
+        conversationId.trim().isEmpty) {
+      return;
+    }
+
+    await conversationReference(conversationId).set(
+      {
+        'presenceBy.$uid.online': isOnline,
+        'presenceBy.$uid.lastActiveAt':
+            FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> _setPresenceForActiveConversations(
+    bool isOnline,
+  ) async {
+    final conversations =
+        List<String>.from(
+      _activePresenceConversations,
+    );
+
+    if (conversations.isEmpty) {
+      return;
+    }
+
+    await Future.wait(
+      conversations.map(
+        (conversationId) => setPresence(
+          conversationId: conversationId,
+          isOnline: isOnline,
+        ),
+      ),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(
+    AppLifecycleState state,
+  ) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(
+          _setPresenceForActiveConversations(
+            true,
+          ),
+        );
+        break;
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        unawaited(
+          _setPresenceForActiveConversations(
+            false,
+          ),
+        );
+        break;
+      case AppLifecycleState.inactive:
+        break;
+    }
   }
 
   Stream<int> watchTotalUnreadCount() {
@@ -342,6 +457,15 @@ class MessagingService {
           'typingBy': {
             uid: false,
             otherUser.uid: false,
+          },
+          'presenceBy': {
+            uid: {
+              'online': true,
+              'lastActiveAt': FieldValue.serverTimestamp(),
+            },
+            otherUser.uid: {
+              'online': false,
+            },
           },
           'createdAt':
               FieldValue.serverTimestamp(),
