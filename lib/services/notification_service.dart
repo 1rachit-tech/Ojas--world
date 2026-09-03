@@ -5,6 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('FCM background message: ${message.messageId}');
+}
+
 class NotificationService {
   NotificationService._();
 
@@ -17,13 +22,22 @@ class NotificationService {
   final StreamController<RemoteMessage> _notificationStream =
       StreamController<RemoteMessage>.broadcast();
 
-  Stream<RemoteMessage> get onNotificationReceived => _notificationStream.stream;
+  Stream<RemoteMessage> get onNotificationReceived =>
+      _notificationStream.stream;
 
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<User?>? _authSubscription;
+
+  String? _registeredUid;
+  String? _currentToken;
 
   Future<void> initialize() async {
     try {
+      FirebaseMessaging.onBackgroundMessage(
+        firebaseMessagingBackgroundHandler,
+      );
+
       if (!kIsWeb) {
         await _messaging.requestPermission(
           alert: true,
@@ -32,6 +46,10 @@ class NotificationService {
           provisional: true,
         );
       }
+
+      _authSubscription ??= _auth.authStateChanges().listen(
+        _handleAuthChanged,
+      );
 
       await _registerCurrentToken();
 
@@ -46,6 +64,32 @@ class NotificationService {
     }
   }
 
+  Future<void> _handleAuthChanged(User? user) async {
+    final previousUid = _registeredUid;
+    final nextUid = user?.uid;
+
+    if (previousUid != null &&
+        previousUid != nextUid &&
+        _currentToken != null) {
+      try {
+        await _firestore.collection('users').doc(previousUid).set(
+          {
+            'fcmTokens': FieldValue.arrayRemove([_currentToken]),
+          },
+          SetOptions(merge: true),
+        );
+      } catch (error) {
+        debugPrint('Unable to remove old FCM token: $error');
+      }
+    }
+
+    _registeredUid = nextUid;
+
+    if (user != null) {
+      await _registerCurrentToken();
+    }
+  }
+
   Future<void> _registerCurrentToken() async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -53,12 +97,17 @@ class NotificationService {
     final token = await _messaging.getToken();
     if (token == null || token.trim().isEmpty) return;
 
+    _currentToken = token;
+    _registeredUid = user.uid;
     await _saveToken(token);
   }
 
   Future<void> _saveToken(String token) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null || token.trim().isEmpty) return;
+
+    _currentToken = token;
+    _registeredUid = uid;
 
     await _firestore.collection('users').doc(uid).set(
       {
@@ -79,6 +128,7 @@ class NotificationService {
   }
 
   Future<void> dispose() async {
+    await _authSubscription?.cancel();
     await _foregroundSubscription?.cancel();
     await _tokenSubscription?.cancel();
     await _notificationStream.close();
