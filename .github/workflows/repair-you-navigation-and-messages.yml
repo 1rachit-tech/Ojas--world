@@ -49,11 +49,10 @@ jobs:
           text = text.replace(old_children, new_children, 1)
 
           you.write_text(text, encoding='utf-8')
-      - name: Format and validate
+      - name: Validate source guards
         shell: bash
         run: |
           set -euo pipefail
-          dart format lib/services/messaging_service.dart lib/screens/you_hub_screen.dart
           git diff --check
           grep -q ".limit(50)" lib/services/messaging_service.dart
           grep -q "int _selectedTab = 0;" lib/screens/you_hub_screen.dart
@@ -68,5 +67,3 @@ jobs:
           git add lib/services/messaging_service.dart lib/screens/you_hub_screen.dart .github/workflows/repair-you-navigation-and-messages.yml
           git commit -m "fix: stabilize messages query and You navigation"
           git push origin HEAD:main
-
-# Retriggered after guarded source validation.
