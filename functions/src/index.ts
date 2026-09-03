@@ -77,16 +77,6 @@ function isRateLimited(senderId: string): boolean {
   return false;
 }
 
-async function softDeleteSpamMessage(
-  messagePath: string,
-): Promise<void> {
-  await getFirestore().doc(messagePath).update({
-    text: 'This message was deleted.',
-    isDeleted: true,
-    reactions: {},
-  });
-}
-
 function tokenListFromUserData(data: Record<string, unknown>): string[] {
   const rawTokens = data['fcmTokens'];
 
@@ -121,7 +111,7 @@ export const sendMessagePush = onDocumentCreated(
     }
 
     if (isRateLimited(senderId)) {
-      await softDeleteSpamMessage(snapshot.ref.path);
+      console.warn(`Skipping push for rate-limited sender ${senderId}.`);
       return;
     }
 
