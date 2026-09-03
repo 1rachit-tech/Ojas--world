@@ -1,0 +1,108 @@
+name: Diagnose Azure Media Broker
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Login to Azure via OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 31e8b31a-02e0-49b3-85ca-a6b9ea27cc6a
+          tenant-id: 0d1e31fd-6b7e-432a-b12b-bdbbb3ce1159
+          subscription-id: 6d21da10-c262-4f29-993b-dffc04e34d43
+
+      - name: Inspect Function App metadata
+        shell: bash
+        env:
+          FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
+          RESOURCE_GROUP: ojas-rg
+        run: |
+          set -euo pipefail
+
+          test -n "$FUNCTION_APP_NAME"
+          app_json="$(mktemp)"
+          resource_json="$(mktemp)"
+          plan_json="$(mktemp)"
+          trap 'rm -f "$app_json" "$resource_json" "$plan_json"' EXIT
+
+          az account show -o json
+
+          az functionapp show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            -o json > "$app_json"
+
+          az resource show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --resource-type Microsoft.Web/sites \
+            -o json > "$resource_json"
+
+          server_farm_id="$(jq -r '.serverFarmId // .properties.serverFarmId // empty' "$app_json")"
+          if [[ -n "$server_farm_id" ]]; then
+            az resource show --ids "$server_farm_id" -o json > "$plan_json"
+          else
+            printf '%s\n' '{}'
+          fi
+
+          echo '--- Function App metadata ---'
+          jq '{name, kind, reserved, serverFarmId, state, hostNames, httpsOnly,
+            siteConfig: {linuxFxVersion: .siteConfig.linuxFxVersion},
+            functionAppConfig: .properties.functionAppConfig}' "$app_json"
+
+          echo '--- Raw deployment-related properties ---'
+          jq '{id, type, kind, properties: {
+            serverFarmId: .properties.serverFarmId,
+            functionAppConfig: .properties.functionAppConfig,
+            siteConfig: {linuxFxVersion: .properties.siteConfig.linuxFxVersion},
+            storageAccountRequired: .properties.storageAccountRequired,
+            enabled: .properties.enabled,
+            state: .properties.state
+          }}' "$resource_json"
+
+          echo '--- Hosting plan details ---'
+          jq '{id, name, type, kind, location, sku: .sku,
+            reserved, properties: {status: .properties.status,
+            targetWorkerCount: .properties.targetWorkerCount}}' "$plan_json"
+
+          echo '--- App setting names only ---'
+          az functionapp config appsettings list \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
+            --query '[].name' -o json
+
+          flex_consumption="$(jq -r '
+            ((.kind // "") | ascii_downcase | contains("flex")) or
+            (.properties.functionAppConfig != null)
+          ' "$resource_json")"
+          runtime_name="$(jq -r '.properties.functionAppConfig.runtime.name // empty' "$resource_json")"
+          runtime_version="$(jq -r '.properties.functionAppConfig.runtime.version // empty' "$resource_json")"
+          linux_fx_version="$(jq -r '.properties.siteConfig.linuxFxVersion // empty' "$resource_json")"
+          python_3_11=false
+          if [[ "$runtime_name" == "python" && "$runtime_version" == "3.11" ]] ||
+             [[ "$linux_fx_version" == "PYTHON|3.11" ]]; then
+            python_3_11=true
+          fi
+
+          deployment_storage_configured="$(jq -r '
+            (.properties.functionAppConfig.deployment.storage // {}) as $storage |
+            (($storage.type // "") != "" and ($storage.value // "") != "")
+          ' "$resource_json")"
+
+          echo '--- Determination ---'
+          printf 'FLEX_CONSUMPTION = %s\n' "$flex_consumption"
+          printf 'PYTHON_3_11 = %s\n' "$python_3_11"
+          printf 'DEPLOYMENT_STORAGE_CONFIGURED = %s\n' "$deployment_storage_configured"
+          printf 'LEGACY_NODE_METADATA = %s\n' "$(jq -r '
+            ((.properties.siteConfig.linuxFxVersion // "") | ascii_downcase | contains("node"))
+          ' "$resource_json")"
+          printf 'SERVER_FARM_ID_PRESENT = %s\n' "$([[ -n "$server_farm_id" ]] && echo true || echo false)"
