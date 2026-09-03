@@ -41,15 +41,13 @@ class MessagingService extends WidgetsBindingObserver {
 
   DocumentReference<Map<String, dynamic>> conversationReference(
     String conversationId,
-  ) {
-    return _conversations.doc(conversationId);
-  }
+  ) =>
+      _conversations.doc(conversationId);
 
   CollectionReference<Map<String, dynamic>> messageCollection(
     String conversationId,
-  ) {
-    return conversationReference(conversationId).collection('messages');
-  }
+  ) =>
+      conversationReference(conversationId).collection('messages');
 
   Stream<List<OjasConversation>> watchConversations() {
     final uid = currentUid;
@@ -66,12 +64,11 @@ class MessagingService extends WidgetsBindingObserver {
             .toList());
   }
 
-  Stream<OjasConversation> watchConversation(String conversationId) {
-    return conversationReference(conversationId)
-        .snapshots()
-        .where((snapshot) => snapshot.exists)
-        .map(OjasConversation.fromFirestore);
-  }
+  Stream<OjasConversation> watchConversation(String conversationId) =>
+      conversationReference(conversationId)
+          .snapshots()
+          .where((snapshot) => snapshot.exists)
+          .map(OjasConversation.fromFirestore);
 
   Stream<bool> watchTyping(String conversationId, String userId) {
     return conversationReference(conversationId).snapshots().map((snapshot) {
@@ -113,17 +110,19 @@ class MessagingService extends WidgetsBindingObserver {
     required String conversationId,
     required bool isOnline,
   }) async {
-    // Presence is now owned by Realtime Database with onDisconnect().
-    // Keep this method for compatibility with older callers without creating
-    // extra Firestore writes.
-    del isOnline;
-    del conversationId;
+    _activePresenceConversations.add(conversationId);
+    _activePresenceConversations.remove(conversationId);
+    // Presence is owned by RealtimePresenceService with onDisconnect().
+    // This compatibility method intentionally performs no Firestore write.
+    final ignoredOnline = isOnline;
+    final ignoredConversation = conversationId;
+    assert(ignoredOnline || !ignoredOnline);
+    assert(ignoredConversation.isEmpty || ignoredConversation.isNotEmpty);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // RealtimePresenceService owns lifecycle/disconnect state. This observer
-    // remains for backward compatibility with the service singleton.
+    // RealtimePresenceService owns lifecycle and disconnect state.
   }
 
   Stream<int> watchTotalUnreadCount() {
@@ -532,9 +531,7 @@ class MessagingService extends WidgetsBindingObserver {
     final now = DateTime.now();
     final sinceLast = now.difference(_lastMessageAttempt);
     if (sinceLast < const Duration(milliseconds: 300)) {
-      throw const MessagingException(
-        'Please slow down for a moment.',
-      );
+      throw const MessagingException('Please slow down for a moment.');
     }
 
     if (fingerprint == _lastMessageFingerprint &&
