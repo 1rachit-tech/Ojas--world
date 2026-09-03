@@ -9,6 +9,7 @@ class OjasConversation {
     required this.lastMessageSenderId,
     required this.unreadCounts,
     this.lastReadAtBy = const <String, Timestamp>{},
+    this.typingBy = const <String, bool>{},
     this.createdAt,
     this.lastMessageAt,
   });
@@ -27,6 +28,8 @@ class OjasConversation {
   final Map<String, int> unreadCounts;
 
   final Map<String, Timestamp> lastReadAtBy;
+
+  final Map<String, bool> typingBy;
 
   final Timestamp? createdAt;
 
@@ -59,6 +62,10 @@ class OjasConversation {
     String uid,
   ) {
     return lastReadAtBy[uid];
+  }
+
+  bool isTyping(String uid) {
+    return typingBy[uid] ?? false;
   }
 
   factory OjasConversation.fromFirestore(
@@ -117,6 +124,22 @@ class OjasConversation {
       );
     }
 
+    final typingBy =
+        <String, bool>{};
+
+    final rawTypingBy =
+        data['typingBy'];
+
+    if (rawTypingBy is Map) {
+      rawTypingBy.forEach(
+        (key, value) {
+          if (key is String && value is bool) {
+            typingBy[key] = value;
+          }
+        },
+      );
+    }
+
     final rawUnread =
         data['unreadCounts'];
 
@@ -146,6 +169,7 @@ class OjasConversation {
       ),
       unreadCounts: unread,
       lastReadAtBy: lastReadAt,
+      typingBy: typingBy,
       createdAt: data['createdAt'] as Timestamp?,
       lastMessageAt:
           data['lastMessageAt'] as Timestamp?,
