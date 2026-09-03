@@ -19,11 +19,11 @@ import 'widgets/super_thanks_modal.dart';
 import 'widgets/ojas_smart_video_player.dart';
 import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
+import 'services/notification_service.dart';
 
 Future<void> main() async {
 WidgetsFlutterBinding.ensureInitialized();
 
-// Portrait-first social media experience.
 SystemChrome.setPreferredOrientations([
 DeviceOrientation.portraitUp,
 ]);
@@ -32,9 +32,9 @@ try {
 await Firebase.initializeApp(
 options: DefaultFirebaseOptions.currentPlatform,
 );
+await NotificationService.instance.initialize();
 } catch (error) {
-// Firebase initialization fallback for offline/isolated tests.
-// Existing app behavior is intentionally preserved.
+// Firebase/notification initialization fallback for offline/isolated tests.
 }
 
 runApp(const OjasApp());
@@ -179,7 +179,6 @@ if (index == _selectedTab) return;
 
 HapticFeedback.selectionClick();
 
-// Tab 2: Create requires authentication.
 if (index == 2) {
   _requestCreate();
   return;
@@ -461,7 +460,6 @@ color: Color(0xFF111827),
 ),
 ),
 ),
-),
 ],
 ),
 );
@@ -594,425 +592,227 @@ final isUser = story['isUser'] as bool;
       thickness: 1,
     ),
     ..._posts.map(
-      (post) => _buildPostCard(
-        post: post,
-        isDesktop: isDesktop,
-      ),
+      (post) => _buildFeedPost(context, post),
     ),
   ],
 );
-
 }
 
-Widget _buildPostCard({
-required Map<String, dynamic> post,
-required bool isDesktop,
-}) {
+Widget _buildFeedPost(
+BuildContext context,
+Map<String, dynamic> post,
+) {
 final int id = post['id'] as int;
-final bool isLiked = _likedPosts.contains(id);
-final bool isSaved = _savedPosts.contains(id);
+final bool liked = _likedPosts.contains(id);
+final bool saved = _savedPosts.contains(id);
 
-final int likes =
-    (post['likes'] as int) + (isLiked ? 1 : 0);
-
-final int comments = post['comments'] as int;
-final bool isPortrait =
-    post['isPortraitReel'] as bool;
-
-return Container(
-  margin: const EdgeInsets.symmetric(
-    horizontal: 14,
-    vertical: 8,
-  ),
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(20),
-    border: Border.all(
-      color: const Color(0xFFF3F4F6),
-    ),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withValues(alpha: 0.02),
-        blurRadius: 10,
-        offset: const Offset(0, 4),
-      ),
-    ],
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 4,
-        ),
-        leading: GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => CreatorProfileScreen(
-                  creatorName: post['name'] as String,
-                  avatarColor: const Color(0xFF111827),
-                ),
-              ),
-            );
-          },
-          child: CircleAvatar(
-            radius: 20,
-            backgroundColor:
-                const Color(0xFFF3F4F6),
-            child: Text(
-              (post['name'] as String)[0],
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        title: Text(
-          post['name'] as String,
-          style: const TextStyle(
-            color: Color(0xFF111827),
-            fontWeight: FontWeight.w700,
-            fontSize: 14.5,
-          ),
-        ),
-        subtitle: Text(
-          '${post['handle']} · ${post['time']}',
-          style: const TextStyle(
-            color: Color(0xFF9CA3AF),
-            fontSize: 12,
-          ),
-        ),
-        trailing: IconButton(
-          icon: const Icon(
-            Icons.more_horiz_rounded,
-            color: Color(0xFF9CA3AF),
-          ),
-          onPressed: () {},
-        ),
-      ),
-      Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Text(
-              post['title'] as String,
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 15.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              post['body'] as String,
-              style: const TextStyle(
-                color: Color(0xFF4B5563),
-                fontSize: 13.5,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              children:
-                  (post['tags'] as List<String>).map(
-                (tag) {
-                  return Text(
-                    tag,
-                    style: const TextStyle(
-                      color: Color(0xFF111827),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  );
-                },
-              ).toList(),
-            ),
-          ],
+return Padding(
+padding: const EdgeInsets.only(bottom: 22),
+child: Card(
+margin: EdgeInsets.zero,
+elevation: 0,
+color: Colors.white,
+shape: RoundedRectangleBorder(
+borderRadius: BorderRadius.circular(18),
+border: Border.all(
+color: const Color(0xFFE5E7EB),
+),
+),
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+Padding(
+padding: const EdgeInsets.fromLTRB(14, 14, 10, 12),
+child: Row(
+children: [
+CircleAvatar(
+radius: 20,
+backgroundColor: const Color(0xFFE5E7EB),
+child: Text(
+(post['name'] as String).substring(0, 1),
+style: const TextStyle(
+fontWeight: FontWeight.w700,
+color: Color(0xFF111827),
+),
+),
+),
+const SizedBox(width: 10),
+Expanded(
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+Text(
+post['name'] as String,
+style: const TextStyle(
+fontWeight: FontWeight.w700,
+fontSize: 14,
+),
+),
+Text(
+'${post['handle']} · ${post['time']}',
+style: const TextStyle(
+fontSize: 12,
+color: Color(0xFF6B7280),
+),
+),
+],
+),
+),
+IconButton(
+icon: const Icon(Icons.more_horiz_rounded),
+onPressed: () {},
+),
+],
+),
+),
+GestureDetector(
+onTap: _openReelInOjsFeed,
+child: AspectRatio(
+aspectRatio:
+(post['aspectRatio'] as num).toDouble(),
+child: OjasSmartVideoPlayer(
+videoUrl: post['videoUrl'] as String,
+),
+),
+),
+Padding(
+padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+child: Text(
+post['title'] as String,
+style: const TextStyle(
+fontSize: 16,
+fontWeight: FontWeight.w800,
+),
+),
+),
+Padding(
+padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+child: Text(
+post['body'] as String,
+style: const TextStyle(
+height: 1.4,
+color: Color(0xFF374151),
+),
+),
+),
+Padding(
+padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+child: Wrap(
+spacing: 6,
+children: (post['tags'] as List<String>)
+    .map(
+      (tag) => Text(
+        tag,
+        style: const TextStyle(
+          color: Color(0xFF4B5563),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
         ),
       ),
-      const SizedBox(height: 12),
-      Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12),
-        child: OjasSmartVideoPlayer(
-          videoUrl: post['videoUrl'] as String,
-          aspectRatio: post['aspectRatio'] as double,
-          isPortraitReel: isPortrait,
-          onReelTap:
-              isPortrait ? _openReelInOjsFeed : null,
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 8,
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              icon: Icon(
-                isLiked
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: isLiked
-                    ? const Color(0xFFEF4444)
-                    : const Color(0xFF4B5563),
-                size: 24,
-              ),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-
-                setState(() {
-                  if (isLiked) {
-                    _likedPosts.remove(id);
-                  } else {
-                    _likedPosts.add(id);
-                  }
-                });
-              },
-            ),
-            Text(
-              '$likes',
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 12.5,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(width: 12),
-            IconButton(
-              icon: const Icon(
-                Icons.mode_comment_outlined,
-                color: Color(0xFF4B5563),
-                size: 22,
-              ),
-              onPressed: () {
-                HomeCommentsSheet.show(
-                  context,
-                  postId: '$id',
-                  creatorName:
-                      post['name'] as String,
-                  initialComments:
-                      List<String>.from(
-                    post['commentsList'] as List,
-                  ),
-                  onCommentsUpdated: (newCount) {
-                    setState(() {
-                      post['comments'] = newCount;
-                    });
-                  },
-                );
-              },
-            ),
-            Text(
-              '$comments',
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 12.5,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(width: 12),
-            IconButton(
-              tooltip: 'Support Creator',
-              icon: const Icon(
-                Icons.stars_rounded,
-                color: Color(0xFFF59E0B),
-                size: 24,
-              ),
-              onPressed: () {
-                SuperThanksModal.show(
-                  context,
-                  creatorName:
-                      post['name'] as String,
-                );
-              },
-            ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(
-                Icons.reply_rounded,
-                color: Color(0xFF4B5563),
-                size: 24,
-              ),
-              onPressed: () {
-                ShareBottomSheet.show(
-                  context,
-                  videoUrl:
-                      post['videoUrl'] as String,
-                  creatorName:
-                      post['name'] as String,
-                );
-              },
-            ),
-            IconButton(
-              icon: Icon(
-                isSaved
-                    ? Icons.bookmark_rounded
-                    : Icons.bookmark_border_rounded,
-                color: isSaved
-                    ? const Color(0xFF111827)
-                    : const Color(0xFF4B5563),
-                size: 24,
-              ),
-              onPressed: () {
-                HapticFeedback.selectionClick();
-
-                setState(() {
-                  if (isSaved) {
-                    _savedPosts.remove(id);
-                  } else {
-                    _savedPosts.add(id);
-                  }
-                });
-
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      !isSaved
-                          ? 'Saved to Bookmarks!'
-                          : 'Removed from Bookmarks.',
-                    ),
-                    behavior:
-                        SnackBarBehavior.floating,
-                    duration:
-                        const Duration(seconds: 1),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    ],
-  ),
+    )
+    .toList(),
+),
+),
+Padding(
+padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
+child: Row(
+children: [
+IconButton(
+onPressed: () {
+setState(() {
+if (liked) {
+_likedPosts.remove(id);
+} else {
+_likedPosts.add(id);
+}
+});
+},
+icon: Icon(
+liked ? Icons.favorite : Icons.favorite_border,
+color:
+liked ? const Color(0xFFEF4444) : const Color(0xFF111827),
+),
+),
+Text('${post['likes'] as int + (liked ? 1 : 0)}'),
+const SizedBox(width: 8),
+IconButton(
+onPressed: () {
+HomeCommentsSheet.show(
+context,
+comments:
+List<String>.from(post['commentsList'] as List),
 );
-
+},
+icon: const Icon(Icons.chat_bubble_outline_rounded),
+),
+Text('${post['comments']}'),
+const Spacer(),
+IconButton(
+onPressed: () {
+setState(() {
+if (saved) {
+_savedPosts.remove(id);
+} else {
+_savedPosts.add(id);
+}
+});
+},
+icon: Icon(
+saved ? Icons.bookmark : Icons.bookmark_border,
+),
+),
+],
+),
+),
+],
+),
+),
+);
 }
 
 Widget _buildOjsTab() {
-return const OjsFeedScreen(isActive: true);
+return const OjsFeedScreen();
 }
 
 Widget _buildProfileTab() {
-return YouHubScreen(
-onLoggedOut: () {
-if (mounted) {
-setState(() => _selectedTab = 0);
-}
-},
-);
+return const CreatorProfileScreen();
 }
 
-Widget _buildMinimalBottomBar({
-required bool isDark,
-}) {
-const items = [
-(
-Icons.home_outlined,
-Icons.home_rounded,
-'Home',
+Widget _buildMinimalBottomBar({required bool isDark}) {
+return NavigationBar(
+backgroundColor: isDark ? Colors.black : Colors.white,
+indicatorColor: isDark
+? Colors.white.withValues(alpha: 0.12)
+: const Color(0xFFE5E7EB),
+selectedIndex: _selectedTab,
+onDestinationSelected: _onTabSelected,
+destinations: const [
+NavigationDestination(
+icon: Icon(Icons.home_outlined),
+selectedIcon: Icon(Icons.home_rounded),
+label: 'Home',
 ),
-(
-Icons.smart_display_outlined,
-Icons.smart_display_rounded,
-'OJS',
+NavigationDestination(
+icon: Icon(Icons.play_circle_outline_rounded),
+selectedIcon: Icon(Icons.play_circle_rounded),
+label: 'OJS',
 ),
-(
-Icons.add_box_outlined,
-Icons.add_box_rounded,
-'Create',
+NavigationDestination(
+icon: Icon(Icons.add_box_outlined),
+selectedIcon: Icon(Icons.add_box_rounded),
+label: 'Create',
 ),
-(
-Icons.shopping_bag_outlined,
-Icons.shopping_bag_rounded,
-'Shop',
+NavigationDestination(
+icon: Icon(Icons.shopping_bag_outlined),
+selectedIcon: Icon(Icons.shopping_bag_rounded),
+label: 'Shop',
 ),
-(
-Icons.person_outline_rounded,
-Icons.person_rounded,
-'You',
+NavigationDestination(
+icon: Icon(Icons.person_outline_rounded),
+selectedIcon: Icon(Icons.person_rounded),
+label: 'You',
 ),
-];
-
-return Container(
-  height: 56,
-  decoration: BoxDecoration(
-    color: isDark ? Colors.black : Colors.white,
-    border: Border(
-      top: BorderSide(
-        color: isDark
-            ? Colors.white10
-            : const Color(0xFFF3F4F6),
-        width: 1,
-      ),
-    ),
-  ),
-  child: Row(
-    mainAxisAlignment:
-        MainAxisAlignment.spaceAround,
-    children: List.generate(items.length, (index) {
-      final bool isSelected =
-          _selectedTab == index;
-
-      final item = items[index];
-
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _onTabSelected(index),
-        child: SizedBox(
-          width: 60,
-          child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            children: [
-              Icon(
-                isSelected ? item.$2 : item.$1,
-                size: 26,
-                color: isSelected
-                    ? (isDark
-                        ? Colors.white
-                        : const Color(0xFF111827))
-                    : (isDark
-                        ? Colors.white38
-                        : const Color(0xFF9CA3AF)),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                item.$3,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: isSelected
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                  color: isSelected
-                      ? (isDark
-                          ? Colors.white
-                          : const Color(0xFF111827))
-                      : (isDark
-                          ? Colors.white38
-                          : const Color(0xFF9CA3AF)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }),
-  ),
+],
 );
-
 }
 }
