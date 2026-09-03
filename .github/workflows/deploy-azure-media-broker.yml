@@ -32,6 +32,7 @@ jobs:
         run: |
           python -m py_compile azure_media_broker/function_app.py
           test -f azure_media_broker/requirements.txt
+          test -f azure_media_broker/host.json
 
       # Authenticate to Azure using GitHub OIDC and the existing user-assigned managed identity.
       - name: Login to Azure via OIDC
