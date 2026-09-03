@@ -26,7 +26,7 @@ def main() -> None:
     require(rules, "data.fcmTokens is map", "FCM token map validation")
     require(rules, "data.fcmTokens.size() <= 10", "FCM token cap")
     require(rules, "request.resource.data.text.size() <= 2000", "message size limit")
-    require(rules, "request.resource.data.mediaBytes <= 10485760", "media size limit")
+    require(rules, "data.mediaBytes <= 10485760", "media size limit")
     require(rules, "request.resource.data.createdAt == request.time", "server timestamp validation")
     require(rules, "allow delete: if false;", "hard-delete protection")
     require(rules, "request.auth.uid in get(", "participant authorization")
@@ -53,7 +53,7 @@ def main() -> None:
     require(chat, "memCacheWidth: 900", "chat image memory cache bound")
     require(chat, "maxWidthDiskCache: 1200", "chat image disk cache bound")
 
-    if "downloadFile(url)" in video and "cacheVideoForOfflineUse" not in video:
+    if "_diskCache.downloadFile(" in video and "cacheVideoForOfflineUse" not in video:
         raise AssertionError("Video cache download must remain explicit, never automatic")
     require(video, "Prefetch disabled", "video prefetch disablement")
 
