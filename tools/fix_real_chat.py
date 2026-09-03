@@ -2,42 +2,39 @@ from pathlib import Path
 import re
 
 
-def read(path: str) -> str:
+def text(path):
     return Path(path).read_text(encoding='utf-8')
 
 
-def write(path: str, text: str) -> None:
-    Path(path).write_text(text, encoding='utf-8')
+def save(path, value):
+    Path(path).write_text(value, encoding='utf-8')
 
 
-def replace_once(path: str, old: str, new: str, label: str) -> None:
-    text = read(path)
-    if old not in text:
+def replace_once(path, old, new, label):
+    value = text(path)
+    if old not in value:
         raise SystemExit(f'{label}: expected block missing; refusing to modify.')
-    write(path, text.replace(old, new, 1))
+    save(path, value.replace(old, new, 1))
 
 
-def ensure_import(path: str, anchor: str, import_line: str, label: str) -> None:
-    text = read(path)
-    if import_line in text:
+def ensure_import(path, anchor, import_line, label):
+    value = text(path)
+    if import_line in value:
         return
-    if anchor not in text:
+    if anchor not in value:
         raise SystemExit(f'{label}: import anchor missing; refusing to modify.')
-    write(path, text.replace(anchor, anchor + import_line, 1))
+    save(path, value.replace(anchor, anchor + import_line, 1))
 
 
-# Real first-chat creation: do not read a missing conversation document.
-# Firestore's participant read rule denies a get when the document does not exist.
-messaging_path = 'lib/services/messaging_service.dart'
-text = read(messaging_path)
-pattern = re.compile(
-    r"  Future<String> openConversation\(OjasProfile otherUser\) async \{.*?\n  \}\n\n  Future<void> sendTextMessage",
-    re.S,
-)
-match = pattern.search(text)
+# First chat: query existing participant conversations (allowed by rules), then
+# create with set only when the deterministic conversation is not already present.
+path = 'lib/services/messaging_service.dart'
+value = text(path)
+pattern = re.compile(r"  Future<String> openConversation\(OjasProfile otherUser\) async \{.*?\n  \}\n\n  Future<void> sendTextMessage", re.S)
+match = pattern.search(value)
 if not match:
-    raise SystemExit('real conversation creation method missing; refusing to modify.')
-new_method = '''  Future<String> openConversation(OjasProfile otherUser) async {
+    raise SystemExit('openConversation block missing; refusing to modify.')
+replacement = '''  Future<String> openConversation(OjasProfile otherUser) async {
     final uid = currentUid;
     if (uid == null) {
       throw const MessagingException('Please sign in again.');
@@ -49,7 +46,19 @@ new_method = '''  Future<String> openConversation(OjasProfile otherUser) async {
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
-    final data = {
+
+    final existing = await _conversations
+        .where('participants', arrayContains: uid)
+        .limit(50)
+        .get();
+
+    for (final document in existing.docs) {
+      if (document.id == conversationId) {
+        return conversationId;
+      }
+    }
+
+    await reference.set({
       'participants': [uid, otherUser.uid],
       'participantProfiles': {
         uid: _profileMap(currentProfile),
@@ -62,275 +71,89 @@ new_method = '''  Future<String> openConversation(OjasProfile otherUser) async {
       'typingBy': {uid: false, otherUser.uid: false},
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
-    };
-
-    try {
-      await reference.create(data);
-    } on FirebaseException catch (error) {
-      if (error.code != 'already-exists') {
-        rethrow;
-      }
-    }
+    });
 
     return conversationId;
   }
 
   Future<void> sendTextMessage'''
-text = text[:match.start()] + new_method + text[match.end():]
-write(messaging_path, text)
+value = value[:match.start()] + replacement + value[match.end():]
+save(path, value)
 
-# Keep empty conversations out of the list until a real message exists.
+# Never surface a zero-message conversation as an active chat.
 replace_once(
-    messaging_path,
-    '''      return conversations;
-    });
-  }
-
-  Stream<OjasConversation> watchConversation''',
-    '''      return conversations
-          .where((conversation) => conversation.lastMessage.trim().isNotEmpty)
-          .toList(growable: false);
-    });
-  }
-
-  Stream<OjasConversation> watchConversation''',
+    path,
+    '''      return conversations;\n    });\n  }\n\n  Stream<OjasConversation> watchConversation''',
+    '''      return conversations\n          .where((conversation) => conversation.lastMessage.trim().isNotEmpty)\n          .toList(growable: false);\n    });\n  }\n\n  Stream<OjasConversation> watchConversation''',
     'empty conversation filter',
 )
 
-# Older conversations can lack the newer participantProfiles snapshot.
-messages_path = 'lib/screens/messages_screen.dart'
+# Existing conversations from older clients may not have participantProfiles.
+messages = 'lib/screens/messages_screen.dart'
 ensure_import(
-    messages_path,
+    messages,
     "import '../services/messaging_service.dart';\n",
     "import '../services/profile_service.dart';\n",
-    'Messages profile service import',
+    'Messages ProfileService import',
 )
 replace_once(
-    messages_path,
-    '''    final profileData =
-        conversation.profileFor(otherUid);
-
-    final profile =
-        OjasProfile.fromMap(
-      profileData,
-      uid: otherUid,
-    );
-
-    await Navigator.of(context).push(
-''',
-    '''    final profileData = conversation.profileFor(otherUid);
-
-    OjasProfile profile;
-    if (profileData.isEmpty) {
-      final fetched = await ProfileService.instance.getProfile(otherUid);
-      profile = fetched ??
-          OjasProfile.empty(
-            uid: otherUid,
-            displayName: 'OJAS User',
-            photoUrl: 'avatar_1',
-          );
-    } else {
-      profile = OjasProfile.fromMap(
-        profileData,
-        uid: otherUid,
-      );
-      if (profile.ojasId.isEmpty) {
-        final fetched = await ProfileService.instance.getProfile(otherUid);
-        if (fetched != null) {
-          profile = fetched;
-        }
-      }
-    }
-
-    await Navigator.of(context).push(
-''',
-    'Messages old conversation profile fallback',
+    messages,
+    '''    final profileData =\n        conversation.profileFor(otherUid);\n\n    final profile =\n        OjasProfile.fromMap(\n      profileData,\n      uid: otherUid,\n    );\n\n    await Navigator.of(context).push(\n''',
+    '''    final profileData = conversation.profileFor(otherUid);\n\n    OjasProfile profile;\n    if (profileData.isEmpty) {\n      final fetched = await ProfileService.instance.getProfile(otherUid);\n      profile = fetched ?? OjasProfile.empty(\n        uid: otherUid,\n        displayName: 'OJAS User',\n        photoUrl: 'avatar_1',\n      );\n    } else {\n      profile = OjasProfile.fromMap(\n        profileData,\n        uid: otherUid,\n      );\n      if (profile.ojasId.isEmpty) {\n        final fetched = await ProfileService.instance.getProfile(otherUid);\n        if (fetched != null) {\n          profile = fetched;\n        }\n      }\n    }\n\n    await Navigator.of(context).push(\n''',
+    'Messages old-conversation profile fallback',
 )
 replace_once(
-    messages_path,
+    messages,
     "              'Your messages live here',",
     "              'Find your Mitra',",
     'Messages empty-state title',
 )
 
-# Notification tap compatibility with older conversation documents.
-router_path = 'lib/screens/notification_chat_router.dart'
+# Notification taps also work with old conversation documents.
+router = 'lib/screens/notification_chat_router.dart'
 ensure_import(
-    router_path,
+    router,
     "import '../services/notification_service.dart';\n",
     "import '../services/profile_service.dart';\n",
-    'Notification router profile service import',
+    'Notification ProfileService import',
 )
 replace_once(
-    router_path,
-    '''      final profiles = data['participantProfiles'];
-      if (profiles is! Map) {
-        throw StateError('Conversation profile data is unavailable.');
-      }
-
-      final rawProfile = profiles[widget.openData.senderId];
-      if (rawProfile is! Map) {
-        throw StateError('The sender profile is unavailable.');
-      }
-
-      final profile = OjasProfile.fromMap(
-        Map<String, dynamic>.from(rawProfile),
-        uid: widget.openData.senderId,
-      );
-''',
-    '''      final profiles = data['participantProfiles'];
-      OjasProfile? profile;
-
-      if (profiles is Map) {
-        final rawProfile = profiles[widget.openData.senderId];
-        if (rawProfile is Map) {
-          profile = OjasProfile.fromMap(
-            Map<String, dynamic>.from(rawProfile),
-            uid: widget.openData.senderId,
-          );
-        }
-      }
-
-      profile ??= await ProfileService.instance.getProfile(
-        widget.openData.senderId,
-      );
-
-      if (profile == null) {
-        throw StateError('The sender profile is unavailable.');
-      }
-''',
-    'Notification old conversation profile fallback',
+    router,
+    '''      final profiles = data['participantProfiles'];\n      if (profiles is! Map) {\n        throw StateError('Conversation profile data is unavailable.');\n      }\n\n      final rawProfile = profiles[widget.openData.senderId];\n      if (rawProfile is! Map) {\n        throw StateError('The sender profile is unavailable.');\n      }\n\n      final profile = OjasProfile.fromMap(\n        Map<String, dynamic>.from(rawProfile),\n        uid: widget.openData.senderId,\n      );\n''',
+    '''      final profiles = data['participantProfiles'];\n      OjasProfile? profile;\n\n      if (profiles is Map) {\n        final rawProfile = profiles[widget.openData.senderId];\n        if (rawProfile is Map) {\n          profile = OjasProfile.fromMap(\n            Map<String, dynamic>.from(rawProfile),\n            uid: widget.openData.senderId,\n          );\n        }\n      }\n\n      profile ??= await ProfileService.instance.getProfile(\n        widget.openData.senderId,\n      );\n\n      if (profile == null) {\n        throw StateError('The sender profile is unavailable.');\n      }\n''',
+    'Notification old-conversation profile fallback',
 )
 
-# Make You use a real PageView so top tabs and horizontal swipes share one state.
-you_path = 'lib/screens/you_hub_screen.dart'
+# You: replace the fragile hand-swiped IndexedStack with PageView.
+you = 'lib/screens/you_hub_screen.dart'
 replace_once(
-    you_path,
-    '''  final _accountStore = _LocalAccountStore();
-
-  int _selectedTab = 0;
-''',
-    '''  final _accountStore = _LocalAccountStore();
-  late final PageController _pageController;
-
-  int _selectedTab = 0;
-''',
+    you,
+    '''  final _accountStore = _LocalAccountStore();\n\n  int _selectedTab = 0;\n''',
+    '''  final _accountStore = _LocalAccountStore();\n  late final PageController _pageController;\n\n  int _selectedTab = 0;\n''',
     'You PageController field',
 )
 replace_once(
-    you_path,
-    '''  @override
-  void initState() {
-    super.initState();
-    _loadAccounts();
-  }
-''',
-    '''  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: 0);
-    _loadAccounts();
-  }
-''',
+    you,
+    '''  @override\n  void initState() {\n    super.initState();\n    _loadAccounts();\n  }\n''',
+    '''  @override\n  void initState() {\n    super.initState();\n    _pageController = PageController(initialPage: 0);\n    _loadAccounts();\n  }\n''',
     'You PageController init',
 )
 replace_once(
-    you_path,
-    '''  void _changeTab(int index) {
-    if (_selectedTab == index) {
-      return;
-    }
-
-    HapticFeedback.selectionClick();
-
-    setState(() {
-      _selectedTab = index;
-    });
-  }
-''',
-    '''  void _changeTab(int index) {
-    if (_selectedTab == index) {
-      return;
-    }
-
-    HapticFeedback.selectionClick();
-    setState(() {
-      _selectedTab = index;
-    });
-
-    if (_pageController.hasClients) {
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-    }
-  }
-
-  void _onPageChanged(int index) {
-    if (_selectedTab == index) {
-      return;
-    }
-
-    HapticFeedback.selectionClick();
-    setState(() {
-      _selectedTab = index;
-    });
-  }
-''',
+    you,
+    '''  void _changeTab(int index) {\n    if (_selectedTab == index) {\n      return;\n    }\n\n    HapticFeedback.selectionClick();\n\n    setState(() {\n      _selectedTab = index;\n    });\n  }\n''',
+    '''  void _changeTab(int index) {\n    if (_selectedTab == index) {\n      return;\n    }\n\n    HapticFeedback.selectionClick();\n    setState(() {\n      _selectedTab = index;\n    });\n\n    if (_pageController.hasClients) {\n      _pageController.animateToPage(\n        index,\n        duration: const Duration(milliseconds: 220),\n        curve: Curves.easeOutCubic,\n      );\n    }\n  }\n\n  void _onPageChanged(int index) {\n    if (_selectedTab == index) {\n      return;\n    }\n\n    HapticFeedback.selectionClick();\n    setState(() {\n      _selectedTab = index;\n    });\n  }\n''',
     'You tab handler',
 )
 replace_once(
-    you_path,
-    '''  @override
-  Widget build(BuildContext context) {
-''',
-    '''  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-''',
+    you,
+    '''  @override\n  Widget build(BuildContext context) {\n''',
+    '''  @override\n  void dispose() {\n    _pageController.dispose();\n    super.dispose();\n  }\n\n  @override\n  Widget build(BuildContext context) {\n''',
     'You PageController dispose',
 )
 replace_once(
-    you_path,
-    '''                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragEnd: (details) {
-                          final velocity =
-                              details.primaryVelocity ?? 0;
-                          if (velocity < -220 &&
-                              _selectedTab == 0) {
-                            _changeTab(1);
-                          } else if (velocity > 220 &&
-                              _selectedTab == 1) {
-                            _changeTab(0);
-                          }
-                        },
-                        child: IndexedStack(
-                          index: _selectedTab,
-                          children: [
-                            const MessagesScreen(
-                              showAppBar: false,
-                            ),
-                            _ProfilePage(
-''',
-    '''                    Expanded(
-                      child: PageView(
-                        controller: _pageController,
-                        onPageChanged: _onPageChanged,
-                        physics: const PageScrollPhysics(),
-                        children: [
-                          const MessagesScreen(
-                            showAppBar: false,
-                          ),
-                          _ProfilePage(
-''',
+    you,
+    '''                    Expanded(\n                      child: GestureDetector(\n                        behavior: HitTestBehavior.opaque,\n                        onHorizontalDragEnd: (details) {\n                          final velocity =\n                              details.primaryVelocity ?? 0;\n                          if (velocity < -220 &&\n                              _selectedTab == 0) {\n                            _changeTab(1);\n                          } else if (velocity > 220 &&\n                              _selectedTab == 1) {\n                            _changeTab(0);\n                          }\n                        },\n                        child: IndexedStack(\n                          index: _selectedTab,\n                          children: [\n                            const MessagesScreen(\n                              showAppBar: false,\n                            ),\n                            _ProfilePage(\n''',
+    '''                    Expanded(\n                      child: PageView(\n                        controller: _pageController,\n                        onPageChanged: _onPageChanged,\n                        physics: const PageScrollPhysics(),\n                        children: [\n                          const MessagesScreen(\n                            showAppBar: false,\n                          ),\n                          _ProfilePage(\n''',
     'You PageView',
 )
 
