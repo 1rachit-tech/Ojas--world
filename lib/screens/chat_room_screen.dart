@@ -8,7 +8,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
-import '../models/ojas_profile.dart';
 import '../services/media_message_service.dart';
 import '../services/message_delivery_service.dart';
 import '../services/message_memory_window.dart';
@@ -284,6 +283,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       conversationId: widget.conversationId,
       messageCreatedAt: newestIncoming,
     ));
+
+    // The conversation is visibly open, so newly received messages are read as
+    // soon as they arrive. This keeps the sender's Seen state in sync with the
+    // receiver's live conversation view.
+    _markRead();
   }
 
   Future<void> _sendMessage() async {
@@ -907,33 +911,42 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summary = message.reactionSummary;
     final time = _ChatTime.format(message.createdAt);
+    final summary = message.reactionSummary;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             GestureDetector(
               onLongPress: onLongPress,
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
+                constraints: const BoxConstraints(maxWidth: 320),
                 child: Container(
-                  padding: message.isImage && message.hasMedia
-                      ? const EdgeInsets.fromLTRB(5, 5, 5, 8)
-                      : const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                  padding: EdgeInsets.fromLTRB(
+                    message.isImage ? 4 : 13,
+                    message.isImage ? 4 : 9,
+                    message.isImage ? 4 : 13,
+                    message.isImage ? 4 : 7,
+                  ),
                   decoration: BoxDecoration(
                     color: isMe ? const Color(0xFF111827) : Colors.white,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(18),
                       topRight: const Radius.circular(18),
-                      bottomLeft: Radius.circular(isMe ? 18 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 18),
+                      bottomLeft: Radius.circular(isMe ? 18 : 5),
+                      bottomRight: Radius.circular(isMe ? 5 : 18),
                     ),
-                    border: isMe ? null : Border.all(color: const Color(0xFFEAEAEA)),
+                    boxShadow: const [
+                      BoxShadow(
+                        blurRadius: 10,
+                        offset: Offset(0, 3),
+                        color: Color(0x12000000),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -944,74 +957,60 @@ class _MessageBubble extends StatelessWidget {
                           isMe: isMe,
                           otherUserName: otherUserName,
                         ),
-                      if (message.isDeleted)
-                        Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Text(
-                            'This message was deleted.',
-                            style: TextStyle(
-                              color: isMe ? Colors.white70 : const Color(0xFF6B7280),
-                              fontSize: 15,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        )
-                      else ...[
-                        if (message.isImage && message.hasMedia)
-                          _ChatImage(
-                            imageUrl: message.mediaUrl!,
-                            aspectRatio: message.mediaAspectRatio,
-                          ),
-                        if (message.text.trim().isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              message.isImage ? 8 : 0,
-                              message.isImage ? 8 : 0,
-                              message.isImage ? 8 : 0,
-                              0,
-                            ),
-                            child: Text(
-                              message.text,
-                              style: TextStyle(
-                                color: isMe ? Colors.white : const Color(0xFF111827),
-                                fontSize: 15,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                      ],
-                      if (time.isNotEmpty || sending)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (time.isNotEmpty)
-                                Text(
-                                  time,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: isMe ? Colors.white70 : const Color(0xFF9CA3AF),
-                                  ),
-                                ),
-                              if (isMe) ...[
-                                if (time.isNotEmpty) const SizedBox(width: 4),
-                                if (sending)
-                                  const SizedBox(
-                                    width: 13,
-                                    height: 13,
-                                    child: CircularProgressIndicator(strokeWidth: 1.7, color: Colors.white70),
-                                  )
-                                else
-                                  Icon(
-                                    seen || delivered ? Icons.done_all_rounded : Icons.done_rounded,
-                                    size: 15,
-                                    color: seen ? const Color(0xFF60A5FA) : Colors.white70,
-                                  ),
-                              ],
-                            ],
+                      if (message.isImage && message.hasMedia)
+                        _ChatImage(
+                          imageUrl: message.mediaUrl!,
+                          aspectRatio: message.mediaAspectRatio,
+                        ),
+                      if (!message.isImage && message.text.trim().isNotEmpty)
+                        Text(
+                          message.isDeleted ? 'This message was deleted.' : message.text,
+                          style: TextStyle(
+                            color: isMe ? Colors.white : const Color(0xFF111827),
+                            fontSize: 15,
+                            height: 1.35,
+                            fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
                           ),
                         ),
+                      if (message.isImage && message.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          message.text,
+                          style: TextStyle(
+                            color: isMe ? Colors.white : const Color(0xFF111827),
+                            fontSize: 14,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            time,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isMe ? Colors.white70 : const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                          if (isMe) ...[
+                            if (time.isNotEmpty) const SizedBox(width: 4),
+                            if (sending)
+                              const SizedBox(
+                                width: 13,
+                                height: 13,
+                                child: CircularProgressIndicator(strokeWidth: 1.7, color: Colors.white70),
+                              )
+                            else
+                              Icon(
+                                seen || delivered ? Icons.done_all_rounded : Icons.done_rounded,
+                                size: 15,
+                                color: seen ? const Color(0xFF60A5FA) : Colors.white70,
+                              ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
