@@ -84,6 +84,19 @@ service cloud.firestore {
           );
     }
 
+    function mediaFieldsUnchanged() {
+      return (
+        (!('mediaUrl' in resource.data) && !('mediaUrl' in request.resource.data))
+        || (
+          request.resource.data.mediaUrl == resource.data.mediaUrl
+          && request.resource.data.mediaStoragePath == resource.data.mediaStoragePath
+          && request.resource.data.mediaWidth == resource.data.mediaWidth
+          && request.resource.data.mediaHeight == resource.data.mediaHeight
+          && request.resource.data.mediaBytes == resource.data.mediaBytes
+        )
+      );
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
@@ -147,9 +160,11 @@ service cloud.firestore {
           && request.resource.data.lastMessage.size() <= 2000
           && request.resource.data.lastMessageSenderId is string
           && validConversationMaps(request.resource.data)
-          && request.resource.data.lastMessageSenderId == resource.data.lastMessageSenderId
-              || request.resource.data.lastMessageSenderId in request.resource.data.participants
-              || request.resource.data.lastMessageSenderId == '';
+          && (
+            request.resource.data.lastMessageSenderId == resource.data.lastMessageSenderId
+            || request.resource.data.lastMessageSenderId in request.resource.data.participants
+            || request.resource.data.lastMessageSenderId == ''
+          );
 
       allow delete: if false;
 
@@ -186,11 +201,7 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 2000
             && validReactionMap(request.resource.data.reactions)
             && request.resource.data.createdAt == resource.data.createdAt
-            && request.resource.data.mediaUrl == resource.data.mediaUrl
-            && request.resource.data.mediaStoragePath == resource.data.mediaStoragePath
-            && request.resource.data.mediaWidth == resource.data.mediaWidth
-            && request.resource.data.mediaHeight == resource.data.mediaHeight
-            && request.resource.data.mediaBytes == resource.data.mediaBytes
+            && mediaFieldsUnchanged()
             && (
               (
                 request.auth.uid != resource.data.senderId
