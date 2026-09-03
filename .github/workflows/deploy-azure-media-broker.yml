@@ -1,0 +1,89 @@
+name: Deploy Azure Media Broker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'azure_media_broker/**'
+      - '.github/workflows/deploy-azure-media-broker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate broker source
+        run: |
+          set -euo pipefail
+          python -m py_compile azure_media_broker/function_app.py
+          test -f azure_media_broker/requirements.txt
+          test -f azure_media_broker/host.json
+          test -f azure_media_broker/function_app.py
+
+      - name: Login to Azure via OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 31e8b31a-02e0-49b3-85ca-a6b9ea27cc6a
+          tenant-id: 0d1e31fd-6b7e-432a-b12b-bdbbb3ce1159
+          subscription-id: 6d21da10-c262-4f29-993b-dffc04e34d43
+
+      - name: Inspect and align Flex runtime
+        shell: bash
+        env:
+          FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
+        run: |
+          set -euo pipefail
+          APP_ID="$(az resource list --name "$FUNCTION_APP_NAME" --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)"
+          test -n "$APP_ID"
+
+          RUNTIME_NAME="$(az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.runtime.name' -o tsv)"
+          RUNTIME_VERSION="$(az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.runtime.version' -o tsv)"
+          echo "Detected Flex runtime: ${RUNTIME_NAME:-<empty>} ${RUNTIME_VERSION:-<empty>}"
+
+          if [ "$RUNTIME_NAME" != "python" ] || [ "$RUNTIME_VERSION" != "3.11" ]; then
+            echo "Updating Flex Consumption runtime to python 3.11..."
+            az resource update --ids "$APP_ID" \
+              --set properties.functionAppConfig.runtime.name=python \
+                    properties.functionAppConfig.runtime.version=3.11 >/dev/null
+          fi
+
+          echo "Final Flex runtime:"
+          az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.runtime' -o json
+
+      - name: Create deployment package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f /tmp/ojas-media-broker.zip
+          (
+            cd azure_media_broker
+            zip -r -q /tmp/ojas-media-broker.zip .
+          )
+          unzip -l /tmp/ojas-media-broker.zip
+          unzip -p /tmp/ojas-media-broker.zip host.json >/dev/null
+          unzip -p /tmp/ojas-media-broker.zip function_app.py >/dev/null
+
+      - name: Deploy broker with Azure CLI OneDeploy
+        shell: bash
+        env:
+          FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
+        run: |
+          set -euo pipefail
+          az functionapp deployment source config-zip \
+            --resource-group ojas-rg \
+            --name "$FUNCTION_APP_NAME" \
+            --src /tmp/ojas-media-broker.zip \
+            --build-remote true

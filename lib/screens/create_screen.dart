@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'video_editor_screen.dart';
 import '../widgets/sound_picker_sheet.dart';
@@ -20,6 +21,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   CameraController? _cameraController;
   int _selectedCameraIndex = 0;
   bool _isCameraReady = false;
+  bool _hasCameraPermissionError = false;
 
   int _selectedMode = 0; // 0 = VIDEO, 1 = PHOTO, 2 = STORY
   FlashMode _flashMode = FlashMode.off;
@@ -38,13 +40,25 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   String _selectedResolution = '1080p 60fps';
   bool _autoSaveToGallery = false;
 
-  // Active Filter from 50 Filter List
-  OjasFilter _activeFilter = kAllOjasFilters[0];
+  // Active Filter from kAllOjasFilters List
+  late OjasFilter _activeFilter;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // 🚀 FIXED: Added ALL required parameters (including category & previewColor)
+    _activeFilter = kAllOjasFilters.isNotEmpty
+        ? kAllOjasFilters[0]
+        : const OjasFilter(
+            id: 0,
+            name: 'Normal',
+            category: 'Popular',
+            icon: Icons.auto_awesome,
+            previewColor: Colors.white24, // Fixed: previewColor added
+          );
+          
     _initCameras();
   }
 
@@ -71,24 +85,30 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       _cameras = await availableCameras();
       if (_cameras.isNotEmpty) {
         await _initCameraIndex(0);
+      } else {
+        if (mounted) setState(() => _hasCameraPermissionError = true);
       }
     } catch (e) {
       debugPrint('Camera init error: $e');
+      if (mounted) setState(() => _hasCameraPermissionError = true);
     }
   }
 
   Future<void> _initCameraIndex(int index) async {
     if (_cameras.isEmpty) return;
-    setState(() => _isCameraReady = false);
+    if (mounted) setState(() => _isCameraReady = false);
+
+    // पुराने कंट्रोलर को मेमोरी लीक से बचाने के लिए डिस्पोज़ करें
+    await _cameraController?.dispose();
 
     ResolutionPreset preset = ResolutionPreset.veryHigh;
     if (_selectedResolution == '720p 30fps') {
       preset = ResolutionPreset.high;
     } else {
-      preset = ResolutionPreset.veryHigh; // 1080p Max
+      preset = ResolutionPreset.veryHigh;
     }
 
-    _cameraController = CameraController(
+    final newController = CameraController(
       _cameras[index],
       preset,
       enableAudio: true,
@@ -96,18 +116,20 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
-    try {
-      await _cameraController!.initialize();
+    _cameraController = newController;
 
-      if (_cameraController!.value.isInitialized) {
+    try {
+      await newController.initialize();
+
+      if (newController.value.isInitialized) {
         try {
-          await _cameraController!.setFocusMode(FocusMode.auto);
+          await newController.setFocusMode(FocusMode.auto);
         } catch (_) {}
         try {
-          await _cameraController!.setExposureMode(ExposureMode.auto);
+          await newController.setExposureMode(ExposureMode.auto);
         } catch (_) {}
         try {
-          await _cameraController!.setFlashMode(_flashMode);
+          await newController.setFlashMode(_flashMode);
         } catch (_) {}
       }
 
@@ -115,21 +137,25 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
         setState(() {
           _selectedCameraIndex = index;
           _isCameraReady = true;
+          _hasCameraPermissionError = false;
         });
       }
     } catch (e) {
       debugPrint('Error initializing camera: $e');
+      if (mounted) setState(() => _hasCameraPermissionError = true);
     }
   }
 
   void _flipCamera() {
     if (_cameras.length < 2) return;
+    HapticFeedback.selectionClick();
     final nextIndex = (_selectedCameraIndex + 1) % _cameras.length;
     _initCameraIndex(nextIndex);
   }
 
   void _toggleFlash() async {
-    if (_cameraController == null) return;
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+    HapticFeedback.selectionClick();
     FlashMode nextMode;
     if (_flashMode == FlashMode.off) {
       nextMode = FlashMode.torch;
@@ -145,6 +171,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _onCaptureTap() {
+    HapticFeedback.mediumImpact();
     if (_timerSeconds > 0 && !_isRecording) {
       _startTimerCountdown();
     } else {
@@ -223,6 +250,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   Future<void> _pickFromGallery() async {
+    HapticFeedback.selectionClick();
     final picker = ImagePicker();
     final XFile? media = await picker.pickMedia();
     if (media != null && mounted) {
@@ -237,6 +265,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _showSoundSheet() {
+    HapticFeedback.selectionClick();
     AudioTrimmerSheet.show(
       context,
       soundTitle: _selectedSound == 'Original Sound' ? 'OJAS Audio Track' : _selectedSound,
@@ -252,6 +281,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _openFilterStore() {
+    HapticFeedback.selectionClick();
     FilterStoreSheet.show(
       context,
       selectedFilterId: _activeFilter.id,
@@ -260,6 +290,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _openCameraSettings() {
+    HapticFeedback.selectionClick();
     CameraSettingsSheet.show(
       context,
       isGridEnabled: _isGridEnabled,
@@ -277,6 +308,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _cycleSpeed() {
+    HapticFeedback.selectionClick();
     setState(() {
       if (_currentSpeed == 0.5) {
         _currentSpeed = 1.0;
@@ -291,6 +323,7 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   }
 
   void _cycleTimer() {
+    HapticFeedback.selectionClick();
     setState(() {
       if (_timerSeconds == 0) {
         _timerSeconds = 3;
@@ -330,9 +363,34 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Crystal-Clear HD Camera Preview
+          // 1. Crystal-Clear HD Camera Preview / Error Fallback
           if (_isCameraReady && _cameraController != null && _cameraController!.value.isInitialized)
             _buildCleanCameraPreview()
+          else if (_hasCameraPermissionError)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.videocam_off_rounded, color: Colors.white54, size: 54),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Camera Unavailable or Permission Required',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF5B942), foregroundColor: Colors.black),
+                      onPressed: _pickFromGallery,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Upload Video from Gallery', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             const Center(child: CircularProgressIndicator(color: Color(0xFFF5B942))),
 
@@ -534,7 +592,10 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
                       final filter = kAllOjasFilters[index];
                       final isSelected = _activeFilter.id == filter.id;
                       return GestureDetector(
-                        onTap: () => setState(() => _activeFilter = filter),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _activeFilter = filter);
+                        },
                         child: Container(
                           margin: const EdgeInsets.symmetric(horizontal: 6),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -679,7 +740,10 @@ class _CreateScreenState extends State<CreateScreen> with WidgetsBindingObserver
   Widget _buildModeButton(String title, int modeIndex) {
     final isSelected = _selectedMode == modeIndex;
     return GestureDetector(
-      onTap: () => setState(() => _selectedMode = modeIndex),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _selectedMode = modeIndex);
+      },
       child: Column(
         children: [
           Text(

@@ -7,6 +7,7 @@ import '../services/video_engine_service.dart';
 import '../screens/fullscreen_landscape_player.dart';
 import '../screens/sound_detail_screen.dart';
 import '../widgets/super_thanks_modal.dart';
+import '../widgets/ojas_shop_sheet.dart'; // 🚀 Zero-Cost Affiliate E-Commerce
 
 class OjsVideoPage extends StatefulWidget {
   final OjsVideo video;
@@ -114,6 +115,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
 
   void _togglePlayPause() {
     if (_controller == null || !_isInit) return;
+    HapticFeedback.selectionClick();
     setState(() {
       if (_controller!.value.isPlaying) {
         _controller!.pause();
@@ -126,6 +128,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   }
 
   void _handleDoubleTap() {
+    HapticFeedback.mediumImpact();
     if (!widget.isLiked) {
       widget.onLike();
     }
@@ -152,6 +155,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   }
 
   void _openSoundHub() {
+    HapticFeedback.selectionClick();
     SoundDetailScreen.open(
       context,
       soundTitle: 'Original Audio - ${widget.video.creator}',
@@ -335,7 +339,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                         Positioned(
                           bottom: -6,
                           child: GestureDetector(
-                            onTap: widget.onFollow,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              widget.onFollow();
+                            },
                             child: Container(
                               padding: const EdgeInsets.all(2),
                               decoration: const BoxDecoration(
@@ -350,11 +357,40 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 14),
 
+                  // 🛍️ OJAS Shop Button
+                  _buildActionButton(
+                    icon: Icons.shopping_bag_rounded,
+                    label: 'Shop',
+                    color: const Color(0xFFF5B942),
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      OjasShopSheet.show(
+                        context,
+                        products: [
+                          {
+                            'name': 'Studio Recording Setup',
+                            'price': '1,499',
+                            'url': 'https://amazon.in',
+                          },
+                          {
+                            'name': 'Creator Merch & Apparel',
+                            'price': '699',
+                            'url': 'https://amazon.in',
+                          }
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
                   _buildActionButton(
                     icon: widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                     label: '${widget.video.likes}',
                     color: widget.isLiked ? const Color(0xFFEF4444) : Colors.white,
-                    onTap: widget.onLike,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      widget.onLike();
+                    },
                   ),
                   const SizedBox(height: 12),
 
@@ -362,7 +398,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     icon: Icons.mode_comment_rounded,
                     label: '${widget.video.comments}',
                     color: Colors.white,
-                    onTap: widget.onComment,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      widget.onComment();
+                    },
                   ),
                   const SizedBox(height: 12),
 
@@ -371,6 +410,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     label: 'Thanks',
                     color: const Color(0xFFF59E0B),
                     onTap: () {
+                      HapticFeedback.lightImpact();
                       SuperThanksModal.show(context, creatorName: widget.video.creator);
                     },
                   ),
@@ -381,6 +421,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     label: 'Save',
                     color: _isSavedLocal ? const Color(0xFFF59E0B) : Colors.white,
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       setState(() => _isSavedLocal = !_isSavedLocal);
                       if (widget.onSave != null) {
                         widget.onSave!();
@@ -400,7 +441,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     icon: Icons.reply_rounded,
                     label: 'Share',
                     color: Colors.white,
-                    onTap: widget.onShare,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      widget.onShare();
+                    },
                   ),
                   const SizedBox(height: 12),
 
@@ -559,6 +603,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   }) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

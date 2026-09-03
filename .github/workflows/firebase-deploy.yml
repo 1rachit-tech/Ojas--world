@@ -1,0 +1,63 @@
+name: Deploy Firebase Firestore Rules
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/firebase-deploy.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-rules-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy-firestore-rules:
+    name: Deploy Firestore Rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Firebase configuration files
+        run: |
+          test -f firebase.json
+          test -f firestore.rules
+          test -f .firebaserc
+
+      - name: Verify target Firebase project
+        run: |
+          grep -q '"ojas-e8161"' .firebaserc
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Verify Firebase CLI
+        run: firebase --version
+
+      - name: Deploy Firestore security rules
+        run: |
+          firebase deploy \
+            --only firestore:rules \
+            --project ojas-e8161 \
+            --non-interactive

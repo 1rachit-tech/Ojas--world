@@ -2,30 +2,49 @@ name: Build Web App
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - "firestore.rules"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-deploy.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: Build production web app
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
+          cache: true
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Web
-        # वेब के लिए बिल्ड कमांड
+      - name: Build release web app
         run: flutter build web --release
 
-      - name: Upload Web Build
+      - name: Upload web build
         uses: actions/upload-artifact@v4
         with:
           name: OJAS-Web-Build
           path: build/web
+          if-no-files-found: error
+          retention-days: 7

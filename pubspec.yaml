@@ -1,5 +1,5 @@
 name: ojas_app
-description: "A modern video creator and social platform."
+description: "OJAS - A modern high-performance creator and social platform."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -11,43 +11,84 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # System & Cupertino Icons
+  # ============================================================
+  # SYSTEM UI
+  # ============================================================
+
   cupertino_icons: ^1.0.8
-  
-  # Firebase Infrastructure (Auth, Firestore, Cloud Storage)
+
+  # ============================================================
+  # FIREBASE CORE INFRASTRUCTURE
+  # ============================================================
+
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.1
   cloud_firestore: ^6.9.0
   firebase_storage: ^13.0.0
-  
-  # Google Sign-In Integration
+
+  # ============================================================
+  # AUTHENTICATION
+  # ============================================================
+
   google_sign_in: ^7.2.0
   google_sign_in_web: ^1.1.3
-  
-  # Ultra-Fast Video Engine, 1080p Camera & Media
+
+  # ============================================================
+  # VIDEO ENGINE
+  # ============================================================
+
   video_player: ^2.10.0
   camera: ^0.11.2+1
   image_picker: ^1.1.2
+
+  # ============================================================
+  # IMAGE & MEDIA OPTIMIZATION
+  # ============================================================
+
   cached_network_image: ^3.4.1
-  flutter_cache_manager: ^3.4.1 # Ultra-Light SSD Disk Caching (Saves 80% Server Bandwidth)
-  
-  # End-to-End Encryption & Security
-  crypto: ^3.0.6 # E2EE Cryptography Engine for DMs & Calls
-  
-  # Device Hardware Permissions, Paths & Local Key-Value Storage
-  permission_handler: ^12.0.1
+  flutter_cache_manager: ^3.4.1
+  flutter_image_compress: ^2.4.0
+
+  # ============================================================
+  # FILE & DEVICE STORAGE
+  # ============================================================
+
   path_provider: ^2.1.5
   shared_preferences: ^2.2.3
-  
-  # Social Media Essentials: Sharing, Web Links & Formats
+
+  # ============================================================
+  # SECURITY & CRYPTOGRAPHY
+  # ============================================================
+
+  crypto: ^3.0.6
+  http: ^1.5.0
+
+  # ============================================================
+  # DEVICE PERMISSIONS
+  # ============================================================
+
+  permission_handler: ^12.0.1
+
+  # ============================================================
+  # SOCIAL FEATURES
+  # ============================================================
+
   share_plus: ^10.1.2
   url_launcher: ^6.3.1
+
+  # ============================================================
+  # UTILITIES
+  # ============================================================
+
   intl: ^0.20.2
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^5.0.0
 
 flutter:
+
   uses-material-design: true
