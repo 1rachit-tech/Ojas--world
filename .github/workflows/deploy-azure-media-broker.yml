@@ -36,6 +36,7 @@ jobs:
           test -f azure_media_broker/requirements.txt
           test -f azure_media_broker/host.json
           test -f azure_media_broker/function_app.py
+          ! grep -q "timer_trigger" azure_media_broker/function_app.py
 
       - name: Login to Azure via OIDC
         uses: azure/login@v3
@@ -65,7 +66,6 @@ jobs:
                     properties.functionAppConfig.runtime.version=3.11 >/dev/null
           fi
 
-          echo "Applying low-cost Flex policy directly to the Function App resource..."
           az resource update --ids "$APP_ID" \
             --set properties.functionAppConfig.scaleAndConcurrency.instanceMemoryMB=512 \
                   properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount=5 \
@@ -75,6 +75,20 @@ jobs:
           az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.runtime' -o json
           echo "Final Flex scale policy:"
           az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.scaleAndConcurrency' -o json
+
+      - name: Configure Firebase Admin credential from GitHub secret
+        shell: bash
+        env:
+          FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          test -n "$FUNCTION_APP_NAME"
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          az functionapp config appsettings set \
+            --resource-group ojas-rg \
+            --name "$FUNCTION_APP_NAME" \
+            --settings "FIREBASE_SERVICE_ACCOUNT_JSON=$FIREBASE_SERVICE_ACCOUNT_JSON" >/dev/null
 
       - name: Create deployment package
         shell: bash
@@ -101,3 +115,34 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --src /tmp/ojas-media-broker.zip \
             --build-remote true
+
+      - name: Verify live broker health and cost policy
+        shell: bash
+        env:
+          FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
+        run: |
+          set -euo pipefail
+          HOST="$(az functionapp show --resource-group ojas-rg --name "$FUNCTION_APP_NAME" --query defaultHostName -o tsv)"
+          test -n "$HOST"
+          curl --fail --silent --show-error --max-time 30 \
+            "https://$HOST/api/health" | tee /tmp/ojas-media-health.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('/tmp/ojas-media-health.json').read_text())
+          required = {
+              'ready': True,
+              'firebaseAdminReady': True,
+              'storageConfigured': True,
+              'containerConfigured': True,
+              'idleNotificationPolling': False,
+              'mode': 'usage-driven',
+              'maxUploadBytes': 10 * 1024 * 1024,
+          }
+          for key, expected in required.items():
+              actual = data.get(key)
+              if actual != expected:
+                  raise SystemExit(f'Health policy mismatch for {key}: {actual!r} != {expected!r}')
+          print('Live Azure media broker health and cost policy verified.')
+          PY
