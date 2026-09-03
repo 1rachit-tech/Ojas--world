@@ -10,11 +10,13 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +33,14 @@ jobs:
           python -m py_compile azure_media_broker/function_app.py
           test -f azure_media_broker/requirements.txt
 
+      # Authenticate to Azure using GitHub OIDC and the existing user-assigned managed identity.
+      - name: Login to Azure via OIDC
+        uses: azure/login@v3
+        with:
+          client-id: 31e8b31a-02e0-49b3-85ca-a6b9ea27cc6a
+          tenant-id: 0d1e31fd-6b7e-432a-b12b-bdbbb3ce1159
+          subscription-id: 6d21da10-c262-4f29-993b-dffc04e34d43
+
       # Flex Consumption deployment: remote build is required.
       - name: Deploy broker
         uses: Azure/functions-action@v1
@@ -39,4 +49,3 @@ jobs:
           package: azure_media_broker
           sku: flexconsumption
           remote-build: true
-          publish-profile: ${{ secrets.AZURE_MEDIA_FUNCTION_PUBLISH_PROFILE }}
