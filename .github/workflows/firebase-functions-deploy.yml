@@ -1,10 +1,21 @@
 name: Deploy Firebase Functions
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/firebase-functions-deploy.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: firebase-functions-production
+  cancel-in-progress: false
 
 jobs:
   deploy-functions:
@@ -21,7 +32,7 @@ jobs:
 
       - name: Install function dependencies
         working-directory: functions
-        run: npm install
+        run: npm ci
 
       - name: Build functions
         working-directory: functions
