@@ -20,6 +20,26 @@ import 'widgets/ojas_smart_video_player.dart';
 import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
+import 'screens/notification_chat_router.dart';
+
+final GlobalKey<NavigatorState> ojasNavigatorKey = GlobalKey<NavigatorState>();
+String? _lastOpenedMessageId;
+
+Future<void> _openNotificationChat(NotificationOpenData data) async {
+  if (_lastOpenedMessageId == data.messageId) {
+    return;
+  }
+  _lastOpenedMessageId = data.messageId;
+  final navigator = ojasNavigatorKey.currentState;
+  if (navigator == null) {
+    return;
+  }
+  navigator.push(
+    MaterialPageRoute(
+      builder: (_) => NotificationChatRouter(openData: data),
+    ),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +53,14 @@ Future<void> main() async {
   } catch (_) {}
 
   runApp(const OjasApp());
+
+  NotificationService.instance.onNotificationOpened.listen(_openNotificationChat);
+  final pendingOpen = NotificationService.instance.consumePendingOpen();
+  if (pendingOpen != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openNotificationChat(pendingOpen);
+    });
+  }
 }
 
 class OjasApp extends StatelessWidget {
@@ -41,6 +69,7 @@ class OjasApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: ojasNavigatorKey,
       title: 'OJAS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
