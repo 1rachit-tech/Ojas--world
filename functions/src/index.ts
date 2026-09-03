@@ -9,6 +9,7 @@ initializeApp();
 setGlobalOptions({
   region: 'asia-south1',
   maxInstances: 3,
+  minInstances: 0,
 });
 
 interface ConversationData {
@@ -21,7 +22,12 @@ interface MessageData {
   conversationId?: unknown;
   text?: unknown;
   type?: unknown;
+  isDeleted?: unknown;
 }
+
+const RATE_WINDOW_MS = 60_000;
+const MAX_MESSAGES_PER_INSTANCE_PER_MINUTE = 30;
+const senderMessageTimes = new Map<string, number[]>();
 
 function profileName(
   conversation: ConversationData,
@@ -33,7 +39,7 @@ function profileName(
     if (value && typeof value === 'object') {
       const displayName = (value as Record<string, unknown>)['displayName'];
       if (typeof displayName === 'string' && displayName.trim().length > 0) {
-        return displayName.trim();
+        return displayName.trim().slice(0, 80);
       }
     }
   }
@@ -44,7 +50,7 @@ function receiverIdFor(
   participants: unknown,
   senderId: string,
 ): string | null {
-  if (!Array.isArray(participants)) {
+  if (!Array.isArray(participants) || participants.length !== 2) {
     return null;
   }
 
@@ -55,6 +61,47 @@ function receiverIdFor(
   }
 
   return null;
+}
+
+function isRateLimited(senderId: string): boolean {
+  const now = Date.now();
+  const recent = (senderMessageTimes.get(senderId) ?? [])
+    .filter((timestamp) => now - timestamp < RATE_WINDOW_MS);
+
+  if (recent.length >= MAX_MESSAGES_PER_INSTANCE_PER_MINUTE) {
+    senderMessageTimes.set(senderId, recent);
+    return true;
+  }
+
+  recent.push(now);
+  senderMessageTimes.set(senderId, recent);
+  return false;
+}
+
+async function softDeleteSpamMessage(
+  messagePath: string,
+): Promise<void> {
+  await getFirestore().doc(messagePath).update({
+    text: 'This message was deleted.',
+    isDeleted: true,
+    reactions: {},
+  });
+}
+
+function tokenListFromUserData(data: Record<string, unknown>): string[] {
+  const rawTokens = data['fcmTokens'];
+
+  if (rawTokens && typeof rawTokens === 'object' && !Array.isArray(rawTokens)) {
+    return Object.keys(rawTokens).filter((token) => token.trim().length > 0);
+  }
+
+  if (Array.isArray(rawTokens)) {
+    return rawTokens.filter((token): token is string =>
+      typeof token === 'string' && token.trim().length > 0,
+    );
+  }
+
+  return [];
 }
 
 export const sendMessagePush = onDocumentCreated(
@@ -70,11 +117,17 @@ export const sendMessagePush = onDocumentCreated(
       ? message.senderId
       : '';
 
-    if (!senderId) {
+    if (!senderId || message.isDeleted === true) {
       return;
     }
 
-    const conversationSnapshot = await getFirestore()
+    if (isRateLimited(senderId)) {
+      await softDeleteSpamMessage(snapshot.ref.path);
+      return;
+    }
+
+    const firestore = getFirestore();
+    const conversationSnapshot = await firestore
       .doc(`conversations/${event.params.conversationId}`)
       .get();
 
@@ -89,7 +142,7 @@ export const sendMessagePush = onDocumentCreated(
       return;
     }
 
-    const receiverSnapshot = await getFirestore()
+    const receiverSnapshot = await firestore
       .doc(`users/${receiverId}`)
       .get();
 
@@ -98,12 +151,7 @@ export const sendMessagePush = onDocumentCreated(
     }
 
     const receiverData = receiverSnapshot.data() ?? {};
-    const rawTokens = receiverData['fcmTokens'];
-    const tokens = Array.isArray(rawTokens)
-      ? rawTokens.filter((token): token is string =>
-          typeof token === 'string' && token.trim().length > 0,
-        )
-      : [];
+    const tokens = tokenListFromUserData(receiverData);
 
     if (tokens.length === 0) {
       return;
@@ -120,7 +168,7 @@ export const sendMessagePush = onDocumentCreated(
       tokens,
       notification: {
         title: senderName,
-        body,
+        body: body.slice(0, 300),
       },
       data: {
         type: 'message',
@@ -155,12 +203,24 @@ export const sendMessagePush = onDocumentCreated(
       }
     });
 
-    if (invalidTokens.length > 0) {
-      await getFirestore().doc(`users/${receiverId}`).update({
-        fcmTokens: invalidTokens.length === tokens.length
-          ? []
-          : tokens.filter((token) => !invalidTokens.includes(token)),
-      });
+    if (invalidTokens.length === 0) {
+      return;
     }
+
+    const userRef = firestore.doc(`users/${receiverId}`);
+    const current = (await userRef.get()).data() ?? {};
+    const raw = current['fcmTokens'];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const updates: Record<string, null> = {};
+      for (const token of invalidTokens) {
+        updates[`fcmTokens.${token}`] = null;
+      }
+      await userRef.update(updates);
+      return;
+    }
+
+    await userRef.update({
+      fcmTokens: tokens.filter((token) => !invalidTokens.includes(token)),
+    });
   },
 );
