@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Real Mitra compatibility verification trigger; no runtime behavior change.
 import '../models/ojas_profile.dart';
 import '../services/notification_service.dart';
 import 'chat_room_screen.dart';
