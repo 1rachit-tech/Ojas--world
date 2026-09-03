@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import 'azure_blob_media_upload_service.dart';
+
 class MediaMessageResult {
   const MediaMessageResult({
     required this.downloadUrl,
@@ -20,10 +22,8 @@ class MediaMessageResult {
 
   final String downloadUrl;
   final String storagePath;
-
   final int width;
   final int height;
-
   final int originalBytes;
   final int compressedBytes;
 }
@@ -31,31 +31,29 @@ class MediaMessageResult {
 class MediaMessageService {
   MediaMessageService._();
 
-  static final MediaMessageService instance =
-      MediaMessageService._();
+  static final MediaMessageService instance = MediaMessageService._();
 
-  final ImagePicker _imagePicker =
-      ImagePicker();
+  final ImagePicker _imagePicker = ImagePicker();
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final Uuid _uuid = const Uuid();
 
-  final FirebaseStorage _storage =
-      FirebaseStorage.instance;
+  /// Optional trusted endpoint that verifies the signed-in user and returns
+  /// a short-lived Azure Blob upload URL. Leave empty during migration to keep
+  /// the existing provider active and avoid breaking current app builds.
+  static const String _azureBrokerUrl = String.fromEnvironment(
+    'OJAS_AZURE_MEDIA_BROKER_URL',
+    defaultValue: '',
+  );
 
-  final FirebaseAuth _auth =
-      FirebaseAuth.instance;
+  bool get isAzureUploadEnabled => _azureBrokerUrl.trim().isNotEmpty;
 
-  final Uuid _uuid =
-      const Uuid();
-
-  static const int maxImageBytes =
-      10 * 1024 * 1024;
-
+  static const int maxImageBytes = 10 * 1024 * 1024;
   static const int maxWidth = 1440;
-
   static const int maxHeight = 1440;
-
   static const int imageQuality = 82;
 
-  Future<XFile?> pickImageFromGallery() async {
+  Future<XFile?> pickImageFromGallery() {
     return _imagePicker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 100,
@@ -63,7 +61,7 @@ class MediaMessageService {
     );
   }
 
-  Future<XFile?> pickImageFromCamera() async {
+  Future<XFile?> pickImageFromCamera() {
     return _imagePicker.pickImage(
       source: ImageSource.camera,
       imageQuality: 100,
@@ -75,31 +73,21 @@ class MediaMessageService {
     required String conversationId,
     required XFile sourceFile,
   }) async {
-    final uid =
-        _auth.currentUser?.uid;
-
+    final uid = _auth.currentUser?.uid;
     if (uid == null) {
-      throw const MediaMessageException(
-        'Please sign in again.',
-      );
+      throw const MediaMessageException('Please sign in again.');
     }
 
-    final source =
-        File(sourceFile.path);
-
+    final source = File(sourceFile.path);
     if (!await source.exists()) {
       throw const MediaMessageException(
         'Selected image could not be found.',
       );
     }
 
-    final originalBytes =
-        await source.length();
-
+    final originalBytes = await source.length();
     if (originalBytes <= 0) {
-      throw const MediaMessageException(
-        'Selected image is empty.',
-      );
+      throw const MediaMessageException('Selected image is empty.');
     }
 
     if (originalBytes > maxImageBytes) {
@@ -108,60 +96,32 @@ class MediaMessageService {
       );
     }
 
-    final compressedFile =
-        await _compressImage(source);
+    final compressedFile = await _compressImage(source);
 
     try {
-      final compressedBytes =
-          await compressedFile.length();
-
-      final imageId =
-          _uuid.v4();
-
-      final storagePath =
+      final compressedBytes = await compressedFile.length();
+      final dimensions = await _readImageDimensions(compressedFile);
+      final imageId = _uuid.v4();
+      final legacyStoragePath =
           'chat_media/$conversationId/images/$imageId.jpg';
 
-      final reference =
-          _storage.ref().child(storagePath);
+      if (isAzureUploadEnabled) {
+        return _uploadToAzure(
+          conversationId: conversationId,
+          compressedFile: compressedFile,
+          imageId: imageId,
+          dimensions: dimensions,
+          originalBytes: originalBytes,
+          compressedBytes: compressedBytes,
+        );
+      }
 
-      final metadata =
-          SettableMetadata(
-        contentType: 'image/jpeg',
-        cacheControl:
-            'public,max-age=2592000',
-        customMetadata: {
-          'conversationId':
-              conversationId,
-          'uploadedBy': uid,
-          'originalBytes':
-              originalBytes.toString(),
-          'compressedBytes':
-              compressedBytes.toString(),
-        },
-      );
-
-      final uploadTask =
-          reference.putFile(
-        compressedFile,
-        metadata,
-      );
-
-      final snapshot =
-          await uploadTask;
-
-      final downloadUrl =
-          await snapshot.ref.getDownloadURL();
-
-      final dimensions =
-          await _readImageDimensions(
-        compressedFile,
-      );
-
-      return MediaMessageResult(
-        downloadUrl: downloadUrl,
-        storagePath: storagePath,
-        width: dimensions.width,
-        height: dimensions.height,
+      return _uploadToCurrentProvider(
+        compressedFile: compressedFile,
+        uid: uid,
+        conversationId: conversationId,
+        storagePath: legacyStoragePath,
+        dimensions: dimensions,
         originalBytes: originalBytes,
         compressedBytes: compressedBytes,
       );
@@ -174,18 +134,96 @@ class MediaMessageService {
     }
   }
 
-  Future<File> _compressImage(
-    File source,
-  ) async {
-    final tempDirectory =
-        await getTemporaryDirectory();
+  Future<MediaMessageResult> _uploadToAzure({
+    required String conversationId,
+    required File compressedFile,
+    required String imageId,
+    required _ImageDimensions dimensions,
+    required int originalBytes,
+    required int compressedBytes,
+  }) async {
+    try {
+      final uploader = AzureBlobMediaUploadService(
+        brokerUrl: _azureBrokerUrl,
+        auth: _auth,
+      );
 
-    final targetPath =
-        '${tempDirectory.path}/${_uuid.v4()}.jpg';
+      final target = await uploader.requestUploadTarget(
+        conversationId: conversationId,
+        blobName: '$imageId.jpg',
+        contentLength: compressedBytes,
+        contentType: 'image/jpeg',
+      );
 
-    final result =
-        await FlutterImageCompress
-            .compressAndGetFile(
+      final bytes = await compressedFile.readAsBytes();
+
+      await uploader.uploadBytes(
+        target: target,
+        bytes: bytes,
+        contentType: 'image/jpeg',
+      );
+
+      return MediaMessageResult(
+        downloadUrl: target.downloadUrl,
+        storagePath: target.storagePath,
+        width: dimensions.width,
+        height: dimensions.height,
+        originalBytes: originalBytes,
+        compressedBytes: compressedBytes,
+      );
+    } on AzureMediaUploadException catch (error) {
+      throw MediaMessageException(error.message);
+    } catch (_) {
+      throw const MediaMessageException(
+        'Image upload failed. Please try again.',
+      );
+    }
+  }
+
+  Future<MediaMessageResult> _uploadToCurrentProvider({
+    required File compressedFile,
+    required String uid,
+    required String conversationId,
+    required String storagePath,
+    required _ImageDimensions dimensions,
+    required int originalBytes,
+    required int compressedBytes,
+  }) async {
+    final reference = _storage.ref().child(storagePath);
+
+    final metadata = SettableMetadata(
+      contentType: 'image/jpeg',
+      cacheControl: 'public,max-age=2592000',
+      customMetadata: {
+        'conversationId': conversationId,
+        'uploadedBy': uid,
+        'originalBytes': originalBytes.toString(),
+        'compressedBytes': compressedBytes.toString(),
+      },
+    );
+
+    final snapshot = await reference.putFile(
+      compressedFile,
+      metadata,
+    );
+
+    final downloadUrl = await snapshot.ref.getDownloadURL();
+
+    return MediaMessageResult(
+      downloadUrl: downloadUrl,
+      storagePath: storagePath,
+      width: dimensions.width,
+      height: dimensions.height,
+      originalBytes: originalBytes,
+      compressedBytes: compressedBytes,
+    );
+  }
+
+  Future<File> _compressImage(File source) async {
+    final tempDirectory = await getTemporaryDirectory();
+    final targetPath = '${tempDirectory.path}/$imageId.jpg';
+
+    final result = await FlutterImageCompress.compressAndGetFile(
       source.path,
       targetPath,
       format: CompressFormat.jpeg,
@@ -197,23 +235,15 @@ class MediaMessageService {
     );
 
     if (result == null) {
-      throw const MediaMessageException(
-        'Image compression failed.',
-      );
+      throw const MediaMessageException('Image compression failed.');
     }
 
     return File(result.path);
   }
 
-  Future<_ImageDimensions>
-      _readImageDimensions(
-    File file,
-  ) async {
-    final bytes =
-        await file.readAsBytes();
-
-    final image =
-        await decodeImageFromList(bytes);
+  Future<_ImageDimensions> _readImageDimensions(File file) async {
+    final bytes = await file.readAsBytes();
+    final image = await decodeImageFromList(bytes);
 
     return _ImageDimensions(
       width: image.width,
@@ -232,11 +262,8 @@ class _ImageDimensions {
   final int height;
 }
 
-class MediaMessageException
-    implements Exception {
-  const MediaMessageException(
-    this.message,
-  );
+class MediaMessageException implements Exception {
+  const MediaMessageException(this.message);
 
   final String message;
 
