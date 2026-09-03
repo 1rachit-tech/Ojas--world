@@ -221,7 +221,7 @@ class MediaMessageService {
 
   Future<File> _compressImage(File source) async {
     final tempDirectory = await getTemporaryDirectory();
-    final targetPath = '${tempDirectory.path}/$imageId.jpg';
+    final targetPath = '${tempDirectory.path}/${_uuid.v4()}.jpg';
 
     final result = await FlutterImageCompress.compressAndGetFile(
       source.path,
