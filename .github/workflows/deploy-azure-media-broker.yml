@@ -19,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +60,6 @@ jobs:
           echo "Detected Flex runtime: ${RUNTIME_NAME:-<empty>} ${RUNTIME_VERSION:-<empty>}"
 
           if [ "$RUNTIME_NAME" != "python" ] || [ "$RUNTIME_VERSION" != "3.11" ]; then
-            echo "Updating Flex Consumption runtime to python 3.11..."
             az resource update --ids "$APP_ID" \
               --set properties.functionAppConfig.runtime.name=python \
                     properties.functionAppConfig.runtime.version=3.11 >/dev/null
@@ -85,6 +84,7 @@ jobs:
           set -euo pipefail
           test -n "$FUNCTION_APP_NAME"
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" | python -c 'import json,sys; data=json.load(sys.stdin); assert data.get("project_id"); assert data.get("private_key"); assert data.get("client_email"); print("Firebase service-account JSON shape verified for project:", data["project_id"])'
           az functionapp config appsettings set \
             --resource-group ojas-rg \
             --name "$FUNCTION_APP_NAME" \
@@ -124,8 +124,9 @@ jobs:
           set -euo pipefail
           HOST="$(az functionapp show --resource-group ojas-rg --name "$FUNCTION_APP_NAME" --query defaultHostName -o tsv)"
           test -n "$HOST"
-          curl --fail --silent --show-error --max-time 30 \
-            "https://$HOST/api/health" | tee /tmp/ojas-media-health.json
+          HTTP_CODE="$(curl --silent --show-error --max-time 30 -o /tmp/ojas-media-health.json -w '%{http_code}' "https://$HOST/api/health")"
+          echo "Azure broker health HTTP status: $HTTP_CODE"
+          cat /tmp/ojas-media-health.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -144,5 +145,7 @@ jobs:
               actual = data.get(key)
               if actual != expected:
                   raise SystemExit(f'Health policy mismatch for {key}: {actual!r} != {expected!r}')
+          if HTTP_CODE != '200':
+              raise SystemExit(f'Unexpected HTTP status: {HTTP_CODE}')
           print('Live Azure media broker health and cost policy verified.')
           PY
