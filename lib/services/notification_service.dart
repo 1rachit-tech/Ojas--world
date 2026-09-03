@@ -41,6 +41,8 @@ class NotificationService {
 
   Stream<NotificationOpenData> get onNotificationOpened => _openStream.stream;
 
+  NotificationOpenData? _pendingOpen;
+
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   StreamSubscription<RemoteMessage>? _openedSubscription;
   StreamSubscription<String>? _tokenSubscription;
@@ -49,6 +51,12 @@ class NotificationService {
   String? _registeredUid;
   String? _currentToken;
   bool _initialized = false;
+
+  NotificationOpenData? consumePendingOpen() {
+    final pending = _pendingOpen;
+    _pendingOpen = null;
+    return pending;
+  }
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -104,13 +112,13 @@ class NotificationService {
       return;
     }
 
-    _openStream.add(
-      NotificationOpenData(
-        conversationId: conversationId,
-        messageId: messageId,
-        senderId: senderId,
-      ),
+    final openData = NotificationOpenData(
+      conversationId: conversationId,
+      messageId: messageId,
+      senderId: senderId,
     );
+    _pendingOpen = openData;
+    _openStream.add(openData);
   }
 
   Future<void> _handleAuthChanged(User? user) async {
@@ -250,6 +258,7 @@ class NotificationService {
     await _tokenSubscription?.cancel();
     await _notificationStream.close();
     await _openStream.close();
+    _pendingOpen = null;
     _initialized = false;
   }
 }
