@@ -25,7 +25,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Apply minimal guarded application fixes
+      - name: Apply guarded fixes
         shell: python
         run: |
           from pathlib import Path
@@ -34,14 +34,13 @@ jobs:
               p = Path(path)
               text = p.read_text(encoding='utf-8')
               if old not in text:
-                  raise SystemExit(f'{label}: expected source block missing; refusing to modify.')
+                  raise SystemExit(f'{label}: expected block missing; refusing to modify.')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          # 1) First-time conversation creation must not call get() on a missing
-          # document because the Firestore read rule requires an existing member.
-          messaging = Path('lib/services/messaging_service.dart')
-          text = messaging.read_text(encoding='utf-8')
-          old_open = '''  Future<String> openConversation(OjasProfile otherUser) async {
+          # Real first-chat creation: create without reading a missing document.
+          replace_once(
+              'lib/services/messaging_service.dart',
+              '''  Future<String> openConversation(OjasProfile otherUser) async {
     final uid = currentUid;
     if (uid == null) {
       throw const MessagingException('Please sign in again.');
@@ -74,8 +73,8 @@ jobs:
 
     return conversationId;
   }
-'''
-          new_open = '''  Future<String> openConversation(OjasProfile otherUser) async {
+''',
+              '''  Future<String> openConversation(OjasProfile otherUser) async {
     final uid = currentUid;
     if (uid == null) {
       throw const MessagingException('Please sign in again.');
@@ -87,7 +86,6 @@ jobs:
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
-
     final data = {
       'participants': [uid, otherUser.uid],
       'participantProfiles': {
@@ -113,8 +111,9 @@ jobs:
 
     return conversationId;
   }
-'''
-          replace_once('lib/services/messaging_service.dart', old_open, new_open, 'real conversation creation')
+''',
+              'real conversation creation',
+          )
           replace_once(
               'lib/services/messaging_service.dart',
               '''      return conversations;
@@ -129,17 +128,20 @@ jobs:
   }
 
   Stream<OjasConversation> watchConversation''',
-              'empty conversation filter')
+              'empty conversation filter',
+          )
 
-          # 2) Old conversation documents may lack participantProfiles.
+          # Compatibility with older conversation documents.
           messages = Path('lib/screens/messages_screen.dart')
           text = messages.read_text(encoding='utf-8')
-          anchor = "import '../services/messaging_service.dart';\n"
           if "import '../services/profile_service.dart';\n" not in text:
+              anchor = "import '../services/messaging_service.dart';\n"
               if anchor not in text:
                   raise SystemExit('Messages import anchor missing; refusing to modify.')
               text = text.replace(anchor, anchor + "import '../services/profile_service.dart';\n", 1)
-          old_profile = '''    final profileData =
+          replace_once(
+              'lib/screens/messages_screen.dart',
+              '''    final profileData =
         conversation.profileFor(otherUid);
 
     final profile =
@@ -149,8 +151,8 @@ jobs:
     );
 
     await Navigator.of(context).push(
-'''
-          new_profile = '''    final profileData = conversation.profileFor(otherUid);
+''',
+              '''    final profileData = conversation.profileFor(otherUid);
 
     OjasProfile profile;
     if (profileData.isEmpty) {
@@ -175,45 +177,26 @@ jobs:
     }
 
     await Navigator.of(context).push(
-'''
-          if old_profile not in text:
-              raise SystemExit('Messages profile opening block missing; refusing to modify.')
-          text = text.replace(old_profile, new_profile, 1)
-          old_empty = '''            const Text(
-              'Your messages live here',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
-              ),
-            ),
-'''
-          new_empty = '''            const Text(
-              'Find your Mitra',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
-                letterSpacing: -0.25,
-              ),
-            ),
-'''
-          if old_empty not in text:
-              raise SystemExit('Messages empty-state title missing; refusing to modify.')
-          text = text.replace(old_empty, new_empty, 1)
-          messages.write_text(text, encoding='utf-8')
+''',
+              'old conversation profile fallback',
+          )
+          replace_once(
+              'lib/screens/messages_screen.dart',
+              "              'Your messages live here',",
+              "              'Find your Mitra',",
+              'empty-state title',
+          )
 
-          # 3) Notification-open fallback for old conversations.
           router = Path('lib/screens/notification_chat_router.dart')
           text = router.read_text(encoding='utf-8')
           anchor = "import '../services/notification_service.dart';\n"
           if "import '../services/profile_service.dart';\n" not in text:
               if anchor not in text:
-                  raise SystemExit('Notification import anchor missing; refusing to modify.')
+                  raise SystemExit('Notification router import anchor missing; refusing to modify.')
               text = text.replace(anchor, anchor + "import '../services/profile_service.dart';\n", 1)
-          old_router = '''      final profiles = data['participantProfiles'];
+          replace_once(
+              'lib/screens/notification_chat_router.dart',
+              '''      final profiles = data['participantProfiles'];
       if (profiles is! Map) {
         throw StateError('Conversation profile data is unavailable.');
       }
@@ -227,8 +210,8 @@ jobs:
         Map<String, dynamic>.from(rawProfile),
         uid: widget.openData.senderId,
       );
-'''
-          new_router = '''      final profiles = data['participantProfiles'];
+''',
+              '''      final profiles = data['participantProfiles'];
       OjasProfile? profile;
 
       if (profiles is Map) {
@@ -248,13 +231,12 @@ jobs:
       if (profile == null) {
         throw StateError('The sender profile is unavailable.');
       }
-'''
-          if old_router not in text:
-              raise SystemExit('Notification router compatibility block missing; refusing to modify.')
-          text = text.replace(old_router, new_router, 1)
+''',
+              'notification old conversation fallback',
+          )
           router.write_text(text, encoding='utf-8')
 
-          # 4) Remove simulation-only notification helper from production code.
+          # Remove simulation-only production helper when present.
           notification = Path('lib/services/notification_service.dart')
           text = notification.read_text(encoding='utf-8')
           old_sim = '''  void simulateIncomingNotification({
@@ -269,34 +251,40 @@ jobs:
           if old_sim in text:
               notification.write_text(text.replace(old_sim, '', 1), encoding='utf-8')
 
-          # 5) Use PageView for reliable Messages <-> Profile swipe navigation.
-          you = Path('lib/screens/you_hub_screen.dart')
-          text = you.read_text(encoding='utf-8')
-          state_old = '''  final _accountStore = _LocalAccountStore();
+          # Reliable swipe navigation with the same state used by the top tabs.
+          replace_once(
+              'lib/screens/you_hub_screen.dart',
+              '''  final _accountStore = _LocalAccountStore();
 
   int _selectedTab = 0;
-'''
-          state_new = '''  final _accountStore = _LocalAccountStore();
+''',
+              '''  final _accountStore = _LocalAccountStore();
   late final PageController _pageController;
 
   int _selectedTab = 0;
-'''
-          replace_once('lib/screens/you_hub_screen.dart', state_old, state_new, 'You page controller field')
-          init_old = '''  @override
+''',
+              'You controller field',
+          )
+          replace_once(
+              'lib/screens/you_hub_screen.dart',
+              '''  @override
   void initState() {
     super.initState();
     _loadAccounts();
   }
-'''
-          init_new = '''  @override
+''',
+              '''  @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 0);
     _loadAccounts();
   }
-'''
-          replace_once('lib/screens/you_hub_screen.dart', init_old, init_new, 'You page controller init')
-          change_old = '''  void _changeTab(int index) {
+''',
+              'You controller init',
+          )
+          replace_once(
+              'lib/screens/you_hub_screen.dart',
+              '''  void _changeTab(int index) {
     if (_selectedTab == index) {
       return;
     }
@@ -307,8 +295,8 @@ jobs:
       _selectedTab = index;
     });
   }
-'''
-          change_new = '''  void _changeTab(int index) {
+''',
+              '''  void _changeTab(int index) {
     if (_selectedTab == index) {
       return;
     }
@@ -337,12 +325,15 @@ jobs:
       _selectedTab = index;
     });
   }
-'''
-          replace_once('lib/screens/you_hub_screen.dart', change_old, change_new, 'You tab navigation')
-          build_old = '''  @override
+''',
+              'You tab handlers',
+          )
+          replace_once(
+              'lib/screens/you_hub_screen.dart',
+              '''  @override
   Widget build(BuildContext context) {
-'''
-          build_new = '''  @override
+''',
+              '''  @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
@@ -350,9 +341,12 @@ jobs:
 
   @override
   Widget build(BuildContext context) {
-'''
-          replace_once('lib/screens/you_hub_screen.dart', build_old, build_new, 'You page controller dispose')
-          stack_old = '''                    Expanded(
+''',
+              'You controller dispose',
+          )
+          replace_once(
+              'lib/screens/you_hub_screen.dart',
+              '''                    Expanded(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onHorizontalDragEnd: (details) {
@@ -373,21 +367,24 @@ jobs:
                               showAppBar: false,
                             ),
                             _ProfilePage(
-'''
-          stack_new = '''                    Expanded(
+''',
+              '''                    Expanded(
                       child: PageView(
                         controller: _pageController,
                         onPageChanged: _onPageChanged,
+                        physics: const PageScrollPhysics(),
                         children: [
                           const MessagesScreen(
                             showAppBar: false,
                           ),
                           _ProfilePage(
-'''
-          replace_once('lib/screens/you_hub_screen.dart', stack_old, stack_new, 'You PageView stack')
-          print('guarded real messaging and You navigation source changes prepared')
+''',
+              'You PageView',
+          )
 
-      - name: Verify and build
+          print('guarded source fixes applied')
+
+      - name: Verify and build release APK
         run: |
           flutter pub get
           dart format lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
@@ -402,5 +399,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
           git diff --cached --quiet && exit 0
-          git commit -m "fix: stabilize real Mitra messaging and You navigation"
+          git commit -m "fix: make real Mitra messaging and You navigation reliable"
           git push origin HEAD:main
+# verified-source-repair-trigger-v2
