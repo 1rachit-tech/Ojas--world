@@ -20,6 +20,8 @@ def main() -> None:
     chat = read("lib/screens/chat_room_screen.dart")
     video = read("lib/services/video_engine_service.dart")
     notifications = read("lib/services/notification_service.dart")
+    notification_router = read("lib/screens/notification_chat_router.dart")
+    main_app = read("lib/main.dart")
     database = read("database.rules.json")
 
     require(rules, "allow read, write: if false;", "Firestore default deny")
@@ -35,6 +37,8 @@ def main() -> None:
     require(functions, "maxInstances: 3", "function max instance cap")
     require(functions, "MAX_MESSAGES_PER_INSTANCE_PER_MINUTE = 30", "push abuse guard")
     require(functions, "sendEachForMulticast", "FCM delivery")
+    require(functions, "receiverIdFor", "receiver authorization")
+    require(functions, "conversationSnapshot.exists", "conversation existence check")
 
     require(azure, "auth.verify_id_token", "Azure Firebase identity verification")
     require(azure, "maxUploadBytes", "Azure upload limit")
@@ -53,13 +57,22 @@ def main() -> None:
     require(chat, "memCacheWidth: 900", "chat image memory cache bound")
     require(chat, "maxWidthDiskCache: 1200", "chat image disk cache bound")
 
-    if "_diskCache.downloadFile(" in video and "cacheVideoForOfflineUse" not in video:
-        raise AssertionError("Video cache download must remain explicit, never automatic")
-    require(video, "Prefetch disabled", "video prefetch disablement")
+    require(video, "Intentionally does not download upcoming files", "video prefetch disablement")
+    require(video, "cacheVideoForOfflineUse", "explicit offline cache only")
+    if "prefetchNextVideos" not in video:
+        raise AssertionError("Video prefetch guard must remain explicit in the engine")
 
     require(notifications, "fcmTokens", "FCM token registration")
+    require(notifications, "onMessageOpenedApp", "background notification tap handling")
+    require(notifications, "getInitialMessage", "terminated notification tap handling")
+    require(notifications, "consumePendingOpen", "pending notification open preservation")
     if "arrayUnion" in notifications or "arrayRemove" in notifications:
         raise AssertionError("FCM tokens must remain a bounded map, not a growing array")
+
+    require(notification_router, "ChatRoomScreen", "notification chat routing")
+    require(notification_router, "participant", "notification participant authorization")
+    require(main_app, "ojasNavigatorKey", "global notification navigation")
+    require(main_app, "NotificationChatRouter", "notification route integration")
 
     require(database, '".read": false', "Realtime Database default read deny")
     require(database, '".write": false', "Realtime Database default write deny")
