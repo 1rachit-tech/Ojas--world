@@ -218,8 +218,6 @@ jobs:
           if old_sim in text:
               notification.write_text(text.replace(old_sim, '', 1), encoding='utf-8')
 
-          you = Path('lib/screens/you_hub_screen.dart')
-          text = you.read_text(encoding='utf-8')
           replace_once('lib/screens/you_hub_screen.dart',
               '''  final _accountStore = _LocalAccountStore();
 
@@ -362,3 +360,4 @@ jobs:
           git add lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart .github/workflows/repair-real-messages.yml
           git commit -m "fix: enable real Mitra messaging and You swipe navigation"
           git push origin HEAD:main
+# trigger: verified real Mitra source repair
