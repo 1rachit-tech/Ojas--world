@@ -113,8 +113,8 @@ export const sendMessagePush = onDocumentCreated(
     const messageType = message.type === 'image' ? 'image' : 'text';
     const text = typeof message.text === 'string' ? message.text.trim() : '';
     const body = messageType === 'image'
-      ? (text.isNotEmpty ? `📷 ${text}` : '📷 Photo')
-      : (text.isNotEmpty ? text : 'New message');
+      ? (text.length > 0 ? `📷 ${text}` : '📷 Photo')
+      : (text.length > 0 ? text : 'New message');
 
     const response = await getMessaging().sendEachForMulticast({
       tokens,
@@ -131,7 +131,6 @@ export const sendMessagePush = onDocumentCreated(
       android: {
         priority: 'high',
         notification: {
-          channelId: 'ojas_messages',
           sound: 'default',
         },
       },
