@@ -289,6 +289,9 @@ class MessagingService {
             uid: 0,
             otherUser.uid: 0,
           },
+          'lastReadAtBy': {
+            uid: FieldValue.serverTimestamp(),
+          },
           'createdAt':
               FieldValue.serverTimestamp(),
           'lastMessageAt':
@@ -392,6 +395,7 @@ class MessagingService {
         'lastMessageAt':
             FieldValue.serverTimestamp(),
         'unreadCounts.$uid': 0,
+        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
         'unreadCounts.$receiverId':
             FieldValue.increment(1),
       },
@@ -632,6 +636,7 @@ class MessagingService {
     ).set(
       {
         'unreadCounts.$uid': 0,
+        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
