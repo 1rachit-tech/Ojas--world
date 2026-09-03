@@ -101,6 +101,44 @@ class MessagingService {
         .map(OjasConversation.fromFirestore);
   }
 
+  Stream<bool> watchTyping(
+    String conversationId,
+    String userId,
+  ) {
+    return conversationReference(conversationId)
+        .snapshots()
+        .map(
+      (snapshot) {
+        final data = snapshot.data();
+        final rawTypingBy = data?['typingBy'];
+
+        if (rawTypingBy is! Map) {
+          return false;
+        }
+
+        return rawTypingBy[userId] == true;
+      },
+    );
+  }
+
+  Future<void> setTyping({
+    required String conversationId,
+    required bool isTyping,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null) {
+      return;
+    }
+
+    await conversationReference(conversationId).set(
+      {
+        'typingBy.$uid': isTyping,
+      },
+      SetOptions(merge: true),
+    );
+  }
+
   Stream<int> watchTotalUnreadCount() {
     final uid = currentUid;
 
@@ -301,6 +339,10 @@ class MessagingService {
           'lastReadAtBy': {
             uid: FieldValue.serverTimestamp(),
           },
+          'typingBy': {
+            uid: false,
+            otherUser.uid: false,
+          },
           'createdAt':
               FieldValue.serverTimestamp(),
           'lastMessageAt':
@@ -405,6 +447,7 @@ class MessagingService {
             FieldValue.serverTimestamp(),
         'unreadCounts.$uid': 0,
         'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
+        'typingBy.$uid': false,
         'unreadCounts.$receiverId':
             FieldValue.increment(1),
       },
@@ -521,6 +564,7 @@ class MessagingService {
         'unreadCounts.$uid': 0,
         'unreadCounts.$receiverId':
             FieldValue.increment(1),
+        'typingBy.$uid': false,
       },
       SetOptions(merge: true),
     );
