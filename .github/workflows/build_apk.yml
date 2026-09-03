@@ -39,6 +39,7 @@ jobs:
           python3 tools/fix_real_chat.py
           grep -q "import '../services/profile_service.dart';" lib/screens/messages_screen.dart || sed -i "/import '..\/services\/messaging_service.dart';/a import '../services/profile_service.dart';" lib/screens/messages_screen.dart
           grep -q "import '../services/profile_service.dart';" lib/screens/notification_chat_router.dart || sed -i "/import '..\/services\/notification_service.dart';/a import '../services/profile_service.dart';" lib/screens/notification_chat_router.dart
+          sed -i 's/otherUser: profile,/otherUser: profile!,/' lib/screens/notification_chat_router.dart
       - name: Install dependencies
         run: flutter pub get
       - name: Format and build release APK
@@ -57,7 +58,58 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git checkout HEAD~2 -- .github/workflows/build_apk.yml
+          cat > .github/workflows/build_apk.yml <<'EOF'
+          name: Build Android APK
+
+          on:
+            push:
+              branches: ["main"]
+              paths-ignore:
+                - "docs/**"
+                - "**.md"
+                - "firestore.rules"
+                - "firebase.json"
+                - ".firebaserc"
+                - ".github/workflows/firebase-deploy.yml"
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: android-apk-${{ github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            build:
+              name: Build Android release APK
+              runs-on: ubuntu-latest
+              timeout-minutes: 30
+
+              steps:
+                - name: Checkout code
+                  uses: actions/checkout@v4
+
+                - name: Set up Flutter
+                  uses: subosito/flutter-action@v2
+                  with:
+                    channel: stable
+                    cache: true
+
+                - name: Install dependencies
+                  run: flutter pub get
+
+                - name: Build release APK
+                  run: flutter build apk --release
+
+                - name: Upload release APK
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: OJAS-Release-APK
+                    path: build/app/outputs/flutter-apk/app-release.apk
+                    if-no-files-found: error
+                    retention-days: 7
+          EOF
           rm -f tools/fix_real_chat.py .github/workflows/repair-real-messages.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
