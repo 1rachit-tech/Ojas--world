@@ -37,21 +37,40 @@ class MessagePaginationService {
     required String conversationId,
     DocumentSnapshot<Map<String, dynamic>>? cursor,
   }) async {
-    Query<Map<String, dynamic>> query = _messages(conversationId)
+    QuerySnapshot<Map<String, dynamic>> snapshot;
+
+    final orderedQuery = _messages(conversationId)
         .orderBy('createdAt', descending: true)
         .limit(pageSize);
 
-    if (cursor != null) {
-      query = query.startAfterDocument(cursor);
+    try {
+      snapshot = cursor == null
+          ? await orderedQuery.get()
+          : await orderedQuery.startAfterDocument(cursor).get();
+    } on FirebaseException catch (error) {
+      // A missing Firestore index must not make the real-time chat unusable.
+      // Fall back to document-ID pagination; the chat screen sorts the merged
+      // messages by createdAt before rendering them.
+      if (error.code != 'failed-precondition') {
+        rethrow;
+      }
+
+      final fallbackQuery = _messages(conversationId)
+          .orderBy(FieldPath.documentId, descending: true)
+          .limit(pageSize);
+
+      snapshot = cursor == null
+          ? await fallbackQuery.get()
+          : await fallbackQuery.startAfterDocument(cursor).get();
     }
 
-    final snapshot = await query.get();
     final documents = snapshot.docs;
+    final messages = documents
+        .map(OjasMessage.fromFirestore)
+        .toList(growable: false);
 
     return MessagePage(
-      messages: documents
-          .map(OjasMessage.fromFirestore)
-          .toList(growable: false),
+      messages: messages,
       hasMore: documents.length == pageSize,
       cursor: documents.isEmpty ? cursor : documents.last,
     );
