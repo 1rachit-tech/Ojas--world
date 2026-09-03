@@ -32,12 +32,22 @@ service cloud.firestore {
       return reactions is map && reactions.size() <= 2;
     }
 
+    function validFcmTokens(data) {
+      return !('fcmTokens' in data)
+          || (
+            data.fcmTokens is list
+            && data.fcmTokens.size() <= 10
+          );
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
-          && request.resource.data.uid == userId;
+          && request.resource.data.uid == userId
+          && validFcmTokens(request.resource.data);
       allow update: if isOwner(userId)
-          && request.resource.data.uid == userId;
+          && request.resource.data.uid == userId
+          && validFcmTokens(request.resource.data);
       allow delete: if false;
     }
 
@@ -94,6 +104,7 @@ service cloud.firestore {
           && (
             request.resource.data.lastMessageSenderId == resource.data.lastMessageSenderId
             || request.resource.data.lastMessageSenderId in request.resource.data.participants
+            || request.resource.data.lastMessageSenderId == ''
           );
 
       allow delete: if false;
