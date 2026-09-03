@@ -1,0 +1,29 @@
+name: Post-fix build verification
+
+on:
+  push:
+    paths:
+      - .github/workflows/verify-you-tab-build.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Remove temporary verification workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/verify-you-tab-build.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .github/workflows/verify-you-tab-build.yml
+          git commit -m "chore: remove temporary build trigger"
+          git push origin HEAD:main
