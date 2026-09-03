@@ -8,6 +8,7 @@ class OjasMessage {
     required this.text,
     required this.type,
     required this.isDeleted,
+    this.status = 'sent',
     this.createdAt,
     this.reactions = const {},
     this.replyToMessageId,
@@ -26,6 +27,7 @@ class OjasMessage {
   final String text;
   final String type;
   final bool isDeleted;
+  final String status;
   final Timestamp? createdAt;
 
   final Map<String, String> reactions;
@@ -120,6 +122,7 @@ class OjasMessage {
       ),
       isDeleted:
           data['isDeleted'] == true,
+      status: _status(data['status']),
       createdAt:
           data['createdAt'] as Timestamp?,
       reactions: _reactionMap(
@@ -167,6 +170,7 @@ class OjasMessage {
       'text': text,
       'type': type,
       'isDeleted': isDeleted,
+      'status': status,
       'reactions': reactions,
       'replyToMessageId':
           replyToMessageId,
@@ -220,6 +224,14 @@ class OjasMessage {
     }
 
     return fallback;
+  }
+
+  static String _status(dynamic value) {
+    if (value == 'delivered' || value == 'seen') {
+      return value as String;
+    }
+
+    return 'sent';
   }
 
   static String? _nullableString(

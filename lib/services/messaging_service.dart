@@ -303,6 +303,7 @@ class MessagingService extends WidgetsBindingObserver {
       'text': cleanText,
       'type': 'text',
       'isDeleted': false,
+      'status': 'sent',
       'reactions': <String, String>{},
       'createdAt': FieldValue.serverTimestamp(),
     };
@@ -332,6 +333,8 @@ class MessagingService extends WidgetsBindingObserver {
     }, SetOptions(merge: true));
 
     await batch.commit();
+
+    await message.update({'status': 'delivered'});
   }
 
   Future<void> sendImageMessage({
@@ -378,6 +381,7 @@ class MessagingService extends WidgetsBindingObserver {
       'text': cleanCaption,
       'type': 'image',
       'isDeleted': false,
+      'status': 'sent',
       'reactions': <String, String>{},
       'mediaUrl': imageUrl,
       'mediaStoragePath': storagePath,
@@ -411,6 +415,8 @@ class MessagingService extends WidgetsBindingObserver {
     }, SetOptions(merge: true));
 
     await batch.commit();
+
+    await message.update({'status': 'delivered'});
   }
 
   Future<void> toggleReaction({
@@ -482,6 +488,40 @@ class MessagingService extends WidgetsBindingObserver {
       'unreadCounts.$uid': 0,
       'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  Future<void> markMessagesSeen({
+    required String conversationId,
+    required Iterable<OjasMessage> messages,
+  }) async {
+    final uid = currentUid;
+
+    if (uid == null) {
+      return;
+    }
+
+    final unseenMessages = messages.where(
+      (message) =>
+          message.senderId != uid &&
+          message.status != 'seen',
+    );
+
+    final batch = _firestore.batch();
+
+    for (final message in unseenMessages) {
+      batch.update(
+        messageCollection(conversationId).doc(message.id),
+        {'status': 'seen'},
+      );
+    }
+
+    batch.set(
+      conversationReference(conversationId),
+      {'unreadCounts.$uid': 0},
+      SetOptions(merge: true),
+    );
+
+    await batch.commit();
   }
 
   Future<void> deleteMessage({

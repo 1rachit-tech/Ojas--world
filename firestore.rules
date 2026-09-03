@@ -172,6 +172,12 @@ service cloud.firestore {
             && request.resource.data.type is string
             && validMessageType(request.resource.data.type)
             && request.resource.data.isDeleted == false
+            && request.resource.data.status is string
+            && (
+              request.resource.data.status == 'sent'
+              || request.resource.data.status == 'delivered'
+              || request.resource.data.status == 'seen'
+            )
             && validReactionMap(request.resource.data.reactions)
             && request.resource.data.createdAt == request.time
             && validImageMessage(request.resource.data)
@@ -211,6 +217,24 @@ service cloud.firestore {
                 )
               )
             );
+
+        allow update: if signedIn()
+            && request.auth.uid in get(
+              /databases/$(database)/documents/conversations/$(conversationId)
+            ).data.participants
+            && request.resource.data.senderId == resource.data.senderId
+            && request.resource.data.conversationId == resource.data.conversationId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status == 'delivered';
+
+        allow update: if signedIn()
+            && request.auth.uid in get(
+              /databases/$(database)/documents/conversations/$(conversationId)
+            ).data.participants
+            && request.resource.data.senderId == resource.data.senderId
+            && request.resource.data.conversationId == resource.data.conversationId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+            && request.resource.data.status == 'seen';
 
         allow delete: if false;
       }
