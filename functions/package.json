@@ -1,0 +1,21 @@
+{
+  "name": "ojas-functions",
+  "description": "OJAS Firebase backend functions for secure server-side push notifications.",
+  "private": true,
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf lib",
+    "deploy": "firebase deploy --only functions --project ojas-e8161 --non-interactive"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
