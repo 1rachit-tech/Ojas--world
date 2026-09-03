@@ -92,6 +92,15 @@ class MessagingService {
     );
   }
 
+  Stream<OjasConversation> watchConversation(
+    String conversationId,
+  ) {
+    return conversationReference(conversationId)
+        .snapshots()
+        .where((snapshot) => snapshot.exists)
+        .map(OjasConversation.fromFirestore);
+  }
+
   Stream<int> watchTotalUnreadCount() {
     final uid = currentUid;
 
