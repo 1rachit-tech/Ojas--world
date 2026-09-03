@@ -241,19 +241,7 @@ class MessagingService extends WidgetsBindingObserver {
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
-
-    final existing = await _conversations
-        .where('participants', arrayContains: uid)
-        .limit(50)
-        .get();
-
-    for (final document in existing.docs) {
-      if (document.id == conversationId) {
-        return conversationId;
-      }
-    }
-
-    await reference.set({
+    final data = <String, dynamic>{
       'participants': [uid, otherUser.uid],
       'participantProfiles': {
         uid: _profileMap(currentProfile),
@@ -266,7 +254,15 @@ class MessagingService extends WidgetsBindingObserver {
       'typingBy': {uid: false, otherUser.uid: false},
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
-    });
+    };
+
+    try {
+      await reference.create(data);
+    } on FirebaseException catch (error) {
+      if (error.code != 'already-exists') {
+        rethrow;
+      }
+    }
 
     return conversationId;
   }
