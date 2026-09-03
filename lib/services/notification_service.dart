@@ -86,9 +86,9 @@ class NotificationService {
       return;
     }
 
-    _currentToken = token;
+    _currentToken = token.trim();
     _registeredUid = user.uid;
-    await _saveToken(token);
+    await _saveToken(_currentToken!);
   }
 
   Future<void> _saveToken(String token) async {
@@ -100,15 +100,43 @@ class NotificationService {
 
     _currentToken = cleanToken;
     _registeredUid = uid;
+    final userRef = _firestore.collection('users').doc(uid);
 
-    await _firestore.collection('users').doc(uid).set(
-      {
-        'uid': uid,
-        'fcmTokens.$cleanToken': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final tokenMap = <String, dynamic>{};
+      final rawTokens = data['fcmTokens'];
+
+      if (rawTokens is Map) {
+        rawTokens.forEach((key, value) {
+          if (key is String && key.trim().isNotEmpty) {
+            tokenMap[key] = value == true;
+          }
+        });
+      } else if (rawTokens is List) {
+        for (final value in rawTokens) {
+          if (value is String && value.trim().isNotEmpty) {
+            tokenMap[value.trim()] = true;
+          }
+        }
+      }
+
+      tokenMap[cleanToken] = true;
+      while (tokenMap.length > 10) {
+        tokenMap.remove(tokenMap.keys.first);
+      }
+
+      transaction.set(
+        userRef,
+        {
+          'uid': uid,
+          'fcmTokens': tokenMap,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
   }
 
   Future<void> _removeToken(String uid, String token) async {
@@ -117,12 +145,36 @@ class NotificationService {
       return;
     }
 
-    await _firestore.collection('users').doc(uid).set(
-      {
-        'fcmTokens.$cleanToken': FieldValue.delete(),
-      },
-      SetOptions(merge: true),
-    );
+    final userRef = _firestore.collection('users').doc(uid);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      final data = snapshot.data();
+      if (data == null) {
+        return;
+      }
+
+      final cleaned = <String, dynamic>{};
+      final rawTokens = data['fcmTokens'];
+      if (rawTokens is Map) {
+        rawTokens.forEach((key, value) {
+          if (key is String && key.trim().isNotEmpty && key != cleanToken) {
+            cleaned[key] = value == true;
+          }
+        });
+      } else if (rawTokens is List) {
+        for (final value in rawTokens) {
+          if (value is String && value.trim().isNotEmpty && value != cleanToken) {
+            cleaned[value.trim()] = true;
+          }
+        }
+      }
+
+      transaction.set(
+        userRef,
+        {'fcmTokens': cleaned},
+        SetOptions(merge: true),
+      );
+    });
   }
 
   void simulateIncomingNotification({
