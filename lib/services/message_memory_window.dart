@@ -6,7 +6,7 @@ class MessageMemoryWindow {
     int maxItems,
   ) {
     if (maxItems <= 0) {
-      return const <Never>[] as List<T>;
+      return List<T>.empty(growable: false);
     }
 
     final list = messages.toList(growable: false);
@@ -14,8 +14,6 @@ class MessageMemoryWindow {
       return List<T>.unmodifiable(list);
     }
 
-    return List<T>.unmodifiable(
-      list.take(maxItems),
-    );
+    return List<T>.unmodifiable(list.take(maxItems));
   }
 }
