@@ -11,31 +11,22 @@ class OjasConversation {
     this.lastReadAtBy = const <String, Timestamp>{},
     this.typingBy = const <String, bool>{},
     this.presenceBy = const <String, Map<String, dynamic>>{},
+    this.deliveredAtBy = const <String, Timestamp>{},
     this.createdAt,
     this.lastMessageAt,
   });
 
   final String id;
-
   final List<String> participantIds;
-
-  final Map<String, Map<String, dynamic>>
-      participantProfiles;
-
+  final Map<String, Map<String, dynamic>> participantProfiles;
   final String lastMessage;
-
   final String lastMessageSenderId;
-
   final Map<String, int> unreadCounts;
-
   final Map<String, Timestamp> lastReadAtBy;
-
   final Map<String, bool> typingBy;
-
   final Map<String, Map<String, dynamic>> presenceBy;
-
+  final Map<String, Timestamp> deliveredAtBy;
   final Timestamp? createdAt;
-
   final Timestamp? lastMessageAt;
 
   String otherUserId(String currentUid) {
@@ -44,26 +35,18 @@ class OjasConversation {
         return uid;
       }
     }
-
     return '';
   }
 
-  Map<String, dynamic> profileFor(
-    String uid,
-  ) {
-    return participantProfiles[uid] ??
-        <String, dynamic>{};
+  Map<String, dynamic> profileFor(String uid) {
+    return participantProfiles[uid] ?? <String, dynamic>{};
   }
 
-  int unreadCountFor(
-    String uid,
-  ) {
+  int unreadCountFor(String uid) {
     return unreadCounts[uid] ?? 0;
   }
 
-  Timestamp? lastReadAtFor(
-    String uid,
-  ) {
+  Timestamp? lastReadAtFor(String uid) {
     return lastReadAtBy[uid];
   }
 
@@ -80,141 +63,106 @@ class OjasConversation {
     return value is Timestamp ? value : null;
   }
 
+  Timestamp? deliveredAtFor(String uid) {
+    return deliveredAtBy[uid];
+  }
+
   factory OjasConversation.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) {
-    final data =
-        document.data() ?? <String, dynamic>{};
+    final data = document.data() ?? <String, dynamic>{};
 
-    final participants =
-        data['participants'];
+    final participants = data['participants'];
+    final participantIds = participants is List
+        ? participants.whereType<String>().toList()
+        : <String>[];
 
-    final participantIds =
-        participants is List
-            ? participants
-                .whereType<String>()
-                .toList()
-            : <String>[];
-
-    final profiles =
-        <String, Map<String, dynamic>>{};
-
-    final rawProfiles =
-        data['participantProfiles'];
-
+    final profiles = <String, Map<String, dynamic>>{};
+    final rawProfiles = data['participantProfiles'];
     if (rawProfiles is Map) {
-      rawProfiles.forEach(
-        (key, value) {
-          if (key is String &&
-              value is Map<String, dynamic>) {
-            profiles[key] = value;
-          } else if (key is String &&
-              value is Map) {
-            profiles[key] =
-                Map<String, dynamic>.from(value);
-          }
-        },
-      );
+      rawProfiles.forEach((key, value) {
+        if (key is String && value is Map<String, dynamic>) {
+          profiles[key] = value;
+        } else if (key is String && value is Map) {
+          profiles[key] = Map<String, dynamic>.from(value);
+        }
+      });
     }
 
-    final unread =
-        <String, int>{};
-
-    final lastReadAt =
-        <String, Timestamp>{};
-
-    final rawLastReadAt =
-        data['lastReadAtBy'];
-
-    if (rawLastReadAt is Map) {
-      rawLastReadAt.forEach(
-        (key, value) {
-          if (key is String && value is Timestamp) {
-            lastReadAt[key] = value;
-          }
-        },
-      );
-    }
-
-    final typingBy =
-        <String, bool>{};
-
-    final rawTypingBy =
-        data['typingBy'];
-
-    if (rawTypingBy is Map) {
-      rawTypingBy.forEach(
-        (key, value) {
-          if (key is String && value is bool) {
-            typingBy[key] = value;
-          }
-        },
-      );
-    }
-
-    final presenceBy =
-        <String, Map<String, dynamic>>{};
-
-    final rawPresenceBy =
-        data['presenceBy'];
-
-    if (rawPresenceBy is Map) {
-      rawPresenceBy.forEach(
-        (key, value) {
-          if (key is String && value is Map) {
-            presenceBy[key] =
-                Map<String, dynamic>.from(value);
-          }
-        },
-      );
-    }
-
-    final rawUnread =
-        data['unreadCounts'];
-
+    final unread = <String, int>{};
+    final rawUnread = data['unreadCounts'];
     if (rawUnread is Map) {
-      rawUnread.forEach(
-        (key, value) {
-          if (key is String) {
-            if (value is int) {
-              unread[key] = value;
-            } else if (value is num) {
-              unread[key] = value.toInt();
-            }
+      rawUnread.forEach((key, value) {
+        if (key is String) {
+          if (value is int) {
+            unread[key] = value;
+          } else if (value is num) {
+            unread[key] = value.toInt();
           }
-        },
-      );
+        }
+      });
+    }
+
+    final lastReadAt = <String, Timestamp>{};
+    final rawLastReadAt = data['lastReadAtBy'];
+    if (rawLastReadAt is Map) {
+      rawLastReadAt.forEach((key, value) {
+        if (key is String && value is Timestamp) {
+          lastReadAt[key] = value;
+        }
+      });
+    }
+
+    final typingBy = <String, bool>{};
+    final rawTypingBy = data['typingBy'];
+    if (rawTypingBy is Map) {
+      rawTypingBy.forEach((key, value) {
+        if (key is String && value is bool) {
+          typingBy[key] = value;
+        }
+      });
+    }
+
+    final presenceBy = <String, Map<String, dynamic>>{};
+    final rawPresenceBy = data['presenceBy'];
+    if (rawPresenceBy is Map) {
+      rawPresenceBy.forEach((key, value) {
+        if (key is String && value is Map) {
+          presenceBy[key] = Map<String, dynamic>.from(value);
+        }
+      });
+    }
+
+    final deliveredAtBy = <String, Timestamp>{};
+    final rawDeliveredAtBy = data['deliveredAtBy'];
+    if (rawDeliveredAtBy is Map) {
+      rawDeliveredAtBy.forEach((key, value) {
+        if (key is String && value is Timestamp) {
+          deliveredAtBy[key] = value;
+        }
+      });
     }
 
     return OjasConversation(
       id: document.id,
       participantIds: participantIds,
       participantProfiles: profiles,
-      lastMessage: _string(
-        data['lastMessage'],
-      ),
-      lastMessageSenderId: _string(
-        data['lastMessageSenderId'],
-      ),
+      lastMessage: _string(data['lastMessage']),
+      lastMessageSenderId: _string(data['lastMessageSenderId']),
       unreadCounts: unread,
       lastReadAtBy: lastReadAt,
       typingBy: typingBy,
       presenceBy: presenceBy,
+      deliveredAtBy: deliveredAtBy,
       createdAt: data['createdAt'] as Timestamp?,
-      lastMessageAt:
-          data['lastMessageAt'] as Timestamp?,
+      lastMessageAt: data['lastMessageAt'] as Timestamp?,
     );
   }
 
-  static String _string(
-    dynamic value, {
-    String fallback = '',
-  }) {
-    if (value is String &&
-        value.trim().isNotEmpty) {
+  static String _string(dynamic value, {String fallback = ''}) {
+    if (value is String && value.trim().isNotEmpty) {
       return value.trim();
     }
-
     return fallback;
   }
 }
