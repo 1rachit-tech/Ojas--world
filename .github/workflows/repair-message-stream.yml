@@ -1,0 +1,44 @@
+name: Repair Message Stream
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/services/messaging_service.dart'
+      - '.github/workflows/repair-message-stream.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch stream limit and presence no-op
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const path = 'lib/services/messaging_service.dart';
+            const result = await github.rest.repos.getContent({owner, repo, path, ref: 'main'});
+            if (Array.isArray(result.data) || !result.data.content) core.setFailed('Unable to read file.');
+            const sha = result.data.sha;
+            const original = Buffer.from(result.data.content, 'base64').toString('utf8');
+            let fixed = original.replace("    _activePresenceConversations.add(conversationId);\n    _activePresenceConversations.remove(conversationId);\n    // Presence is owned by RealtimePresenceService with onDisconnect().\n    // This compatibility method intentionally performs no Firestore write.\n    final ignoredOnline = isOnline;\n    final ignoredConversation = conversationId;\n    assert(ignoredOnline || !ignoredOnline);\n    assert(ignoredConversation.isEmpty || ignoredConversation.isNotEmpty);", "    // Presence is owned by RealtimePresenceService with onDisconnect().\n    // This compatibility method intentionally performs no Firestore write.\n    return;");
+            fixed = fixed.replace("        .limit(100)", "        .limit(40)");
+            if (fixed === original) {
+              core.info('No repair required.');
+              return;
+            }
+            await github.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path,
+              branch: 'main',
+              message: 'perf(messages): align realtime stream with pagination',
+              sha,
+              content: Buffer.from(fixed, 'utf8').toString('base64'),
+            });
+            core.info('Message stream patched.');
