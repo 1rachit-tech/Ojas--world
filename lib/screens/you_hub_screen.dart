@@ -11,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 
 import 'login_screen.dart';
+import 'messages_screen.dart';
 import 'profile_setup_screen.dart';
 import 'settings_screen.dart';
 import 'signup_screen.dart';
@@ -625,18 +626,6 @@ class _YouHubScreenState extends State<YouHubScreen> {
             final profile =
                 profileSnapshot.data;
 
-            if (profile != null &&
-                !_accountsLoading) {
-              WidgetsBinding.instance
-                  .addPostFrameCallback(
-                (_) {
-                  if (mounted) {
-                    _refreshAccounts(profile);
-                  }
-                },
-              );
-            }
-
             return Scaffold(
               backgroundColor:
                   Colors.white,
@@ -651,21 +640,8 @@ class _YouHubScreenState extends State<YouHubScreen> {
                       child: IndexedStack(
                         index: _selectedTab,
                         children: [
-                          _MessagesPage(
-                            onCompose: () {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Real messaging will be connected in the next messaging phase.',
-                                  ),
-                                  behavior:
-                                      SnackBarBehavior
-                                          .floating,
-                                ),
-                              );
-                            },
+                          const MessagesScreen(
+                            showAppBar: false,
                           ),
                           _ProfilePage(
                             profile: profile,
@@ -936,98 +912,6 @@ class _TopTab extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _MessagesPage extends StatelessWidget {
-  const _MessagesPage({
-    required this.onCompose,
-  });
-
-  final VoidCallback onCompose;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        22,
-        16,
-        22,
-        32,
-      ),
-      children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Messages',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight:
-                      FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'New message',
-              onPressed: onCompose,
-              icon: const Icon(
-                Icons.edit_outlined,
-                size: 27,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 22),
-        Container(
-          height: 56,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F6F8),
-            borderRadius:
-                BorderRadius.circular(18),
-          ),
-          child: const TextField(
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              prefixIcon: Icon(
-                Icons.search_rounded,
-              ),
-              hintText:
-                  'Search conversations',
-              hintStyle: TextStyle(
-                color: Color(0xFF9CA3AF),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 60),
-        const Icon(
-          Icons.forum_outlined,
-          size: 58,
-          color: Color(0xFFD1D5DB),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'Your conversations will appear here',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF374151),
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Start connecting with creators and people on OJAS.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Color(0xFF9CA3AF),
-            height: 1.4,
-          ),
-        ),
-      ],
     );
   }
 }

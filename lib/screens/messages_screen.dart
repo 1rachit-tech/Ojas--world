@@ -9,7 +9,12 @@ import '../services/messaging_service.dart';
 import 'chat_room_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
-  const MessagesScreen({super.key});
+  const MessagesScreen({
+    super.key,
+    this.showAppBar = true,
+  });
+
+  final bool showAppBar;
 
   @override
   State<MessagesScreen> createState() =>
@@ -216,7 +221,8 @@ class _MessagesScreenState
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
+      appBar: widget.showAppBar
+          ? AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -240,8 +246,13 @@ class _MessagesScreenState
           ),
           const SizedBox(width: 8),
         ],
-      ),
-      body: StreamBuilder<List<OjasConversation>>(
+      )
+          : null,
+      body: Column(
+        children: [
+          if (!widget.showAppBar) _buildEmbeddedHeader(),
+          Expanded(
+            child: StreamBuilder<List<OjasConversation>>(
         stream:
             _messagingService.watchConversations(),
         builder: (
@@ -297,7 +308,38 @@ class _MessagesScreenState
               );
             },
           );
-        },
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmbeddedHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 10, 4),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Messages',
+              style: TextStyle(
+                color: Color(0xFF111827),
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'New message',
+            onPressed: _startNewMessage,
+            icon: const Icon(
+              Icons.edit_outlined,
+              color: Color(0xFF111827),
+            ),
+          ),
+        ],
       ),
     );
   }
