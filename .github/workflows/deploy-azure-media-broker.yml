@@ -40,12 +40,13 @@ jobs:
           tenant-id: 0d1e31fd-6b7e-432a-b12b-bdbbb3ce1159
           subscription-id: 6d21da10-c262-4f29-993b-dffc04e34d43
 
-      - name: Inspect and align Flex runtime
+      - name: Inspect and align Flex runtime and cost limits
         shell: bash
         env:
           FUNCTION_APP_NAME: ${{ secrets.AZURE_MEDIA_FUNCTION_APP_NAME }}
         run: |
           set -euo pipefail
+          test -n "$FUNCTION_APP_NAME"
           APP_ID="$(az resource list --name "$FUNCTION_APP_NAME" --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)"
           test -n "$APP_ID"
 
@@ -60,8 +61,25 @@ jobs:
                     properties.functionAppConfig.runtime.version=3.11 >/dev/null
           fi
 
+          echo "Enforcing On-Demand mode (zero always-ready instances)..."
+          az functionapp scale config always-ready delete \
+            --resource-group ojas-rg \
+            --name "$FUNCTION_APP_NAME" \
+            --setting-names http function:relay_pending_message_notifications function:upload_target >/dev/null 2>&1 || true
+
+          echo "Enforcing low-cost resource limits: 512 MB/instance, max 5 on-demand instances..."
+          az functionapp scale config set \
+            --resource-group ojas-rg \
+            --name "$FUNCTION_APP_NAME" \
+            --instance-memory 512 \
+            --maximum-instance-count 5
+
           echo "Final Flex runtime:"
           az resource show --ids "$APP_ID" --query 'properties.functionAppConfig.runtime' -o json
+          echo "Final scale configuration:"
+          az functionapp scale config show \
+            --resource-group ojas-rg \
+            --name "$FUNCTION_APP_NAME" -o json
 
       - name: Create deployment package
         shell: bash
