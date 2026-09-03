@@ -25,16 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Azure Functions Core Tools
-        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
-
       - name: Validate broker source
         run: |
           python -m py_compile azure_media_broker/function_app.py
           test -f azure_media_broker/requirements.txt
           test -f azure_media_broker/host.json
 
-      # Authenticate to Azure using GitHub OIDC and the existing user-assigned managed identity.
       - name: Login to Azure via OIDC
         uses: azure/login@v3
         with:
@@ -42,7 +38,6 @@ jobs:
           tenant-id: 0d1e31fd-6b7e-432a-b12b-bdbbb3ce1159
           subscription-id: 6d21da10-c262-4f29-993b-dffc04e34d43
 
-      # Flex Consumption deployment: remote build is required.
       - name: Deploy broker
         uses: Azure/functions-action@v1
         with:
@@ -50,3 +45,4 @@ jobs:
           package: azure_media_broker
           sku: flexconsumption
           remote-build: true
+          respect-funcignore: true
