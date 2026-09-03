@@ -110,14 +110,9 @@ class MessagingService extends WidgetsBindingObserver {
     required String conversationId,
     required bool isOnline,
   }) async {
-    _activePresenceConversations.add(conversationId);
-    _activePresenceConversations.remove(conversationId);
     // Presence is owned by RealtimePresenceService with onDisconnect().
     // This compatibility method intentionally performs no Firestore write.
-    final ignoredOnline = isOnline;
-    final ignoredConversation = conversationId;
-    assert(ignoredOnline || !ignoredOnline);
-    assert(ignoredConversation.isEmpty || ignoredConversation.isNotEmpty);
+    return;
   }
 
   @override
@@ -143,7 +138,7 @@ class MessagingService extends WidgetsBindingObserver {
   Stream<List<OjasMessage>> watchMessages(String conversationId) {
     return messageCollection(conversationId)
         .orderBy('createdAt', descending: true)
-        .limit(100)
+        .limit(40)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map(OjasMessage.fromFirestore)
