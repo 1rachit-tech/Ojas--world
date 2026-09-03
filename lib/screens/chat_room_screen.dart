@@ -11,6 +11,7 @@ import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
 import '../services/media_message_service.dart';
 import '../services/message_delivery_service.dart';
+import '../services/message_memory_window.dart';
 import '../services/message_pagination_service.dart';
 import '../services/messaging_service.dart';
 import '../services/realtime_presence_service.dart';
@@ -37,8 +38,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final MessageDeliveryService _deliveryService = MessageDeliveryService.instance;
   final MessagePaginationService _paginationService =
       MessagePaginationService.instance;
-  final RealtimePresenceService _presenceService =
-      RealtimePresenceService.instance;
+  final RealtimePresenceService _presenceService = RealtimePresenceService.instance;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
@@ -121,7 +121,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       setState(() {
         _loadedMessages
           ..clear()
-          ..addAll(page.messages.take(_maxInMemoryMessages));
+          ..addAll(
+            MessageMemoryWindow.takeNewest(
+              page.messages,
+              _maxInMemoryMessages,
+            ),
+          );
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
         _paginationInitialized = true;
@@ -158,22 +163,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         return;
       }
 
-      final existingIds = _loadedMessages
-          .map((message) => message.id)
-          .toSet();
-
+      final existingIds = _loadedMessages.map((message) => message.id).toSet();
       final additions = page.messages.where(
         (message) => !existingIds.contains(message.id),
       );
 
       setState(() {
-        _loadedMessages.addAll(additions);
-        if (_loadedMessages.length > _maxInMemoryMessages) {
-          _loadedMessages.removeRange(
-            _maxInMemoryMessages,
-            _loadedMessages.length,
+        _loadedMessages
+          ..addAll(additions)
+          ..clear()
+          ..addAll(
+            MessageMemoryWindow.takeNewest(
+              _loadedMessages,
+              _maxInMemoryMessages,
+            ),
           );
-        }
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
       });
@@ -190,11 +194,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   List<OjasMessage> _mergeMessages(List<OjasMessage> liveMessages) {
     final byId = <String, OjasMessage>{};
-
     for (final message in _loadedMessages) {
       byId[message.id] = message;
     }
-
     for (final message in liveMessages) {
       byId[message.id] = message;
     }
@@ -203,7 +205,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     messages.sort((a, b) {
       final aTime = a.createdAt;
       final bTime = b.createdAt;
-
       if (aTime == null && bTime == null) {
         return 0;
       }
@@ -213,15 +214,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       if (bTime == null) {
         return 1;
       }
-
       return bTime.compareTo(aTime);
     });
 
-    if (messages.length <= _maxInMemoryMessages) {
-      return messages;
-    }
-
-    return messages.take(_maxInMemoryMessages).toList(growable: false);
+    return MessageMemoryWindow.takeNewest(
+      messages,
+      _maxInMemoryMessages,
+    );
   }
 
   void _onTextChanged() {
@@ -247,7 +246,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (_isTyping == value) {
       return;
     }
-
     _isTyping = value;
     unawaited(_messagingService.setTyping(
       conversationId: widget.conversationId,
@@ -269,7 +267,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       if (message.senderId == currentUid || message.createdAt == null) {
         continue;
       }
-
       final createdAt = message.createdAt!;
       if (newestIncoming == null || createdAt.compareTo(newestIncoming) > 0) {
         newestIncoming = createdAt;
@@ -279,7 +276,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (newestIncoming == null) {
       return;
     }
-
     if (_lastDeliveredAt != null &&
         newestIncoming.compareTo(_lastDeliveredAt!) <= 0) {
       return;
@@ -300,7 +296,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final text = _messageController.text.trim();
     _typingTimer?.cancel();
     _setTyping(false);
-
     setState(() => _isSending = true);
 
     try {
@@ -310,7 +305,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         text: text,
         replyTo: _replyingTo,
       );
-
       _messageController.clear();
       if (mounted) {
         setState(() => _replyingTo = null);
@@ -340,7 +334,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       final image = source == ImageSource.camera
           ? await _mediaMessageService.pickImageFromCamera()
           : await _mediaMessageService.pickImageFromGallery();
-
       if (image == null) {
         return;
       }
@@ -350,7 +343,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       }
 
       HapticFeedback.selectionClick();
-
       final result = await _mediaMessageService.uploadChatImage(
         conversationId: widget.conversationId,
         sourceFile: image,
@@ -389,10 +381,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (message.isDeleted) {
       return;
     }
-
     HapticFeedback.selectionClick();
     setState(() => _replyingTo = message);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _messageFocusNode.requestFocus();
@@ -425,16 +415,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       backgroundColor: Colors.white,
       builder: (context) => SafeArea(
         child: ListTile(
-          leading: const Icon(
-            Icons.delete_outline_rounded,
-            color: Colors.red,
-          ),
+          leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
           title: const Text(
             'Delete message',
-            style: TextStyle(
-              color: Colors.red,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
           ),
           onTap: () => Navigator.pop(context, true),
         ),
@@ -490,14 +474,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               Wrap(
                 spacing: 10,
                 children: [
-                  for (final emoji in const [
-                    '❤️',
-                    '👍',
-                    '😂',
-                    '😮',
-                    '😢',
-                    '🔥',
-                  ])
+                  for (final emoji in const ['❤️', '👍', '😂', '😮', '😢', '🔥'])
                     GestureDetector(
                       onTap: () {
                         Navigator.pop(sheetContext);
@@ -511,10 +488,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           color: const Color(0xFFF5F6F8),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Text(
-                          emoji,
-                          style: const TextStyle(fontSize: 23),
-                        ),
+                        child: Text(emoji, style: const TextStyle(fontSize: 23)),
                       ),
                     ),
                 ],
@@ -539,14 +513,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
               if (isMe)
                 ListTile(
-                  leading: const Icon(
-                    Icons.delete_outline_rounded,
-                    color: Colors.red,
-                  ),
-                  title: const Text(
-                    'Delete',
-                    style: TextStyle(color: Colors.red),
-                  ),
+                  leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                  title: const Text('Delete', style: TextStyle(color: Colors.red)),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _deleteMessage(message);
@@ -597,10 +565,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -646,29 +611,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: StreamBuilder<OjasConversation>(
-                stream: _messagingService.watchConversation(
-                  widget.conversationId,
-                ),
+                stream: _messagingService.watchConversation(widget.conversationId),
                 builder: (context, conversationSnapshot) {
                   final conversation = conversationSnapshot.data;
                   return StreamBuilder<RealtimePresenceState>(
                     stream: _presenceService.watch(widget.otherUser.uid),
                     builder: (context, presenceSnapshot) {
                       final presence = presenceSnapshot.data;
-                      final typing = conversation?.isTyping(
-                            widget.otherUser.uid,
-                          ) ??
-                          false;
+                      final typing = conversation?.isTyping(widget.otherUser.uid) ?? false;
                       final online = presence?.online ??
-                          (conversation?.isOnline(
-                                widget.otherUser.uid,
-                              ) ??
-                              false);
+                          (conversation?.isOnline(widget.otherUser.uid) ?? false);
                       final lastActiveAt = presence?.lastChanged != null
                           ? Timestamp.fromDate(presence!.lastChanged!)
-                          : conversation?.lastActiveAtFor(
-                              widget.otherUser.uid,
-                            );
+                          : conversation?.lastActiveAtFor(widget.otherUser.uid);
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -720,22 +675,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           children: [
             Expanded(
               child: StreamBuilder<OjasConversation>(
-                stream: _messagingService.watchConversation(
-                  widget.conversationId,
-                ),
+                stream: _messagingService.watchConversation(widget.conversationId),
                 builder: (context, conversationSnapshot) {
                   final conversation = conversationSnapshot.data;
-                  final otherReadAt = conversation?.lastReadAtFor(
-                    widget.otherUser.uid,
-                  );
-                  final deliveredAt = conversation?.deliveredAtFor(
-                    widget.otherUser.uid,
-                  );
+                  final otherReadAt = conversation?.lastReadAtFor(widget.otherUser.uid);
+                  final deliveredAt = conversation?.deliveredAtFor(widget.otherUser.uid);
 
                   return StreamBuilder<List<OjasMessage>>(
-                    stream: _messagingService.watchMessages(
-                      widget.conversationId,
-                    ),
+                    stream: _messagingService.watchMessages(widget.conversationId),
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return const _MessageLoadError();
@@ -750,7 +697,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       final messages = _mergeMessages(
                         snapshot.data ?? const <OjasMessage>[],
                       );
-
                       _markDelivered(messages, currentUid);
 
                       if (messages.isEmpty && _paginationInitialized) {
@@ -772,9 +718,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                     ? const SizedBox(
                                         width: 20,
                                         height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                                        child: CircularProgressIndicator(strokeWidth: 2),
                                       )
                                     : Text(
                                         'Scroll for older messages',
@@ -788,22 +732,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           }
 
                           final message = messages[index];
-                          final isMe = currentUid != null &&
-                              message.isSentBy(currentUid);
+                          final isMe = currentUid != null && message.isSentBy(currentUid);
                           final createdAt = message.createdAt;
                           final seen = isMe &&
                               otherReadAt != null &&
                               createdAt != null &&
-                              !createdAt.toDate().isAfter(
-                                otherReadAt.toDate(),
-                              );
+                              !createdAt.toDate().isAfter(otherReadAt.toDate());
                           final delivered = isMe &&
                               !seen &&
                               deliveredAt != null &&
                               createdAt != null &&
-                              !createdAt.toDate().isAfter(
-                                deliveredAt.toDate(),
-                              );
+                              !createdAt.toDate().isAfter(deliveredAt.toDate());
                           final sending = isMe && createdAt == null;
 
                           return _MessageBubble(
@@ -815,8 +754,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             currentUid: currentUid ?? '',
                             otherUserName: widget.otherUser.displayName,
                             onLongPress: () => _showMessageActions(message),
-                            onReactionTap: (emoji) =>
-                                _reactToMessage(message, emoji),
+                            onReactionTap: (emoji) => _reactToMessage(message, emoji),
                           );
                         },
                       );
@@ -847,10 +785,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         children: [
           Expanded(
             child: Container(
-              constraints: const BoxConstraints(
-                minHeight: 48,
-                maxHeight: 120,
-              ),
+              constraints: const BoxConstraints(minHeight: 48, maxHeight: 120),
               decoration: BoxDecoration(
                 color: const Color(0xFFF4F5F7),
                 borderRadius: BorderRadius.circular(24),
@@ -867,10 +802,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   hintText: 'Message...',
                   counterText: '',
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 13,
-                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 13),
                 ),
                 onSubmitted: (_) => _sendMessage(),
               ),
@@ -886,18 +818,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: IconButton(
-                    onPressed: _isSending || _isUploadingMedia
-                        ? null
-                        : _sendMessage,
+                    onPressed: _isSending || _isUploadingMedia ? null : _sendMessage,
                     color: Colors.white,
                     icon: _isSending
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.send_rounded),
                   ),
@@ -949,11 +876,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (difference == 0) {
       return 'Last seen $time';
     }
-
     if (difference == 1) {
       return 'Last seen yesterday $time';
     }
-
     return 'Last seen ${date.day} ${_monthName(date.month)} $time';
   }
 
@@ -961,31 +886,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (timestamp == null) {
       return '';
     }
-
     final date = timestamp.toDate();
-    final hour = date.hour > 12
-        ? date.hour - 12
-        : (date.hour == 0 ? 12 : date.hour);
+    final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
     final minute = date.minute.toString().padLeft(2, '0');
     final period = date.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
   }
 
   static String _monthName(int month) {
-    const months = <String>[
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+    const months = <String>['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return months[(month - 1).clamp(0, 11)];
   }
 }
@@ -1023,15 +932,12 @@ class _MessageBubble extends StatelessWidget {
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             GestureDetector(
               onLongPress: onLongPress,
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.76,
-                ),
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
                 child: Container(
                   padding: message.isImage && message.hasMedia
                       ? const EdgeInsets.fromLTRB(5, 5, 5, 8)
@@ -1044,9 +950,7 @@ class _MessageBubble extends StatelessWidget {
                       bottomLeft: Radius.circular(isMe ? 18 : 4),
                       bottomRight: Radius.circular(isMe ? 4 : 18),
                     ),
-                    border: isMe
-                        ? null
-                        : Border.all(color: const Color(0xFFEAEAEA)),
+                    border: isMe ? null : Border.all(color: const Color(0xFFEAEAEA)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1063,9 +967,7 @@ class _MessageBubble extends StatelessWidget {
                           child: Text(
                             'This message was deleted.',
                             style: TextStyle(
-                              color: isMe
-                                  ? Colors.white70
-                                  : const Color(0xFF6B7280),
+                              color: isMe ? Colors.white70 : const Color(0xFF6B7280),
                               fontSize: 15,
                               fontStyle: FontStyle.italic,
                             ),
@@ -1088,9 +990,7 @@ class _MessageBubble extends StatelessWidget {
                             child: Text(
                               message.text,
                               style: TextStyle(
-                                color: isMe
-                                    ? Colors.white
-                                    : const Color(0xFF111827),
+                                color: isMe ? Colors.white : const Color(0xFF111827),
                                 fontSize: 15,
                                 height: 1.35,
                               ),
@@ -1108,9 +1008,7 @@ class _MessageBubble extends StatelessWidget {
                                   time,
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: isMe
-                                        ? Colors.white70
-                                        : const Color(0xFF9CA3AF),
+                                    color: isMe ? Colors.white70 : const Color(0xFF9CA3AF),
                                   ),
                                 ),
                               if (isMe) ...[
@@ -1119,20 +1017,13 @@ class _MessageBubble extends StatelessWidget {
                                   const SizedBox(
                                     width: 13,
                                     height: 13,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.7,
-                                      color: Colors.white70,
-                                    ),
+                                    child: CircularProgressIndicator(strokeWidth: 1.7, color: Colors.white70),
                                   )
                                 else
                                   Icon(
-                                    seen || delivered
-                                        ? Icons.done_all_rounded
-                                        : Icons.done_rounded,
+                                    seen || delivered ? Icons.done_all_rounded : Icons.done_rounded,
                                     size: 15,
-                                    color: seen
-                                        ? const Color(0xFF60A5FA)
-                                        : Colors.white70,
+                                    color: seen ? const Color(0xFF60A5FA) : Colors.white70,
                                   ),
                               ],
                             ],
@@ -1154,25 +1045,15 @@ class _MessageBubble extends StatelessWidget {
                     return GestureDetector(
                       onTap: () => onReactionTap(entry.key),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                         decoration: BoxDecoration(
-                          color: mine
-                              ? const Color(0xFFE8EAED)
-                              : Colors.white,
+                          color: mine ? const Color(0xFFE8EAED) : Colors.white,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: mine
-                                ? const Color(0xFF9CA3AF)
-                                : const Color(0xFFE5E7EB),
+                            color: mine ? const Color(0xFF9CA3AF) : const Color(0xFFE5E7EB),
                           ),
                         ),
-                        child: Text(
-                          '${entry.key} ${entry.value}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
+                        child: Text('${entry.key} ${entry.value}', style: const TextStyle(fontSize: 12)),
                       ),
                     );
                   }).toList(),
@@ -1187,14 +1068,9 @@ class _MessageBubble extends StatelessWidget {
 
 class _ChatTime {
   static String format(Timestamp? timestamp) {
-    if (timestamp == null) {
-      return '';
-    }
-
+    if (timestamp == null) return '';
     final date = timestamp.toDate();
-    final hour = date.hour > 12
-        ? date.hour - 12
-        : (date.hour == 0 ? 12 : date.hour);
+    final hour = date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
     final minute = date.minute.toString().padLeft(2, '0');
     final period = date.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
@@ -1202,12 +1078,7 @@ class _ChatTime {
 }
 
 class _ReplyBubble extends StatelessWidget {
-  const _ReplyBubble({
-    required this.message,
-    required this.isMe,
-    required this.otherUserName,
-  });
-
+  const _ReplyBubble({required this.message, required this.isMe, required this.otherUserName});
   final OjasMessage message;
   final bool isMe;
   final String otherUserName;
@@ -1215,9 +1086,7 @@ class _ReplyBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentUid = MessagingService.instance.currentUid;
-    final senderName = message.replyToSenderId == currentUid
-        ? 'You'
-        : otherUserName;
+    final senderName = message.replyToSenderId == currentUid ? 'You' : otherUserName;
     final replyText = message.replyToText ?? 'Original message unavailable';
 
     return Container(
@@ -1225,9 +1094,7 @@ class _ReplyBubble extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(9, 7, 9, 7),
       decoration: BoxDecoration(
-        color: isMe
-            ? Colors.white.withValues(alpha: 0.12)
-            : const Color(0xFFF5F6F8),
+        color: isMe ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFF5F6F8),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -1273,12 +1140,7 @@ class _ReplyBubble extends StatelessWidget {
 }
 
 class _ReplyComposer extends StatelessWidget {
-  const _ReplyComposer({
-    required this.message,
-    required this.otherUserName,
-    required this.onCancel,
-  });
-
+  const _ReplyComposer({required this.message, required this.otherUserName, required this.onCancel});
   final OjasMessage message;
   final String otherUserName;
   final VoidCallback onCancel;
@@ -1315,29 +1177,19 @@ class _ReplyComposer extends StatelessWidget {
                 children: [
                   Text(
                     'Replying to $senderName',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
-                    ),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF111827)),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     preview.trim().isEmpty ? 'Message' : preview,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
-                    ),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                   ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: onCancel,
-              icon: const Icon(Icons.close_rounded, size: 20),
-            ),
+            IconButton(onPressed: onCancel, icon: const Icon(Icons.close_rounded, size: 20)),
           ],
         ),
       ),
@@ -1346,11 +1198,7 @@ class _ReplyComposer extends StatelessWidget {
 }
 
 class _ChatImage extends StatelessWidget {
-  const _ChatImage({
-    required this.imageUrl,
-    required this.aspectRatio,
-  });
-
+  const _ChatImage({required this.imageUrl, required this.aspectRatio});
   final String imageUrl;
   final double aspectRatio;
 
@@ -1359,9 +1207,7 @@ class _ChatImage extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => _FullScreenImage(imageUrl: imageUrl),
-          ),
+          MaterialPageRoute(builder: (_) => _FullScreenImage(imageUrl: imageUrl)),
         );
       },
       child: ClipRRect(
@@ -1376,18 +1222,12 @@ class _ChatImage extends StatelessWidget {
             maxHeightDiskCache: 1440,
             placeholder: (context, url) => Container(
               color: const Color(0xFFF1F3F5),
-              child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
             errorWidget: (context, url, error) => Container(
               color: const Color(0xFFF1F3F5),
               child: const Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  size: 32,
-                  color: Color(0xFF9CA3AF),
-                ),
+                child: Icon(Icons.broken_image_outlined, size: 32, color: Color(0xFF9CA3AF)),
               ),
             ),
           ),
@@ -1399,7 +1239,6 @@ class _ChatImage extends StatelessWidget {
 
 class _FullScreenImage extends StatelessWidget {
   const _FullScreenImage({required this.imageUrl});
-
   final String imageUrl;
 
   @override
@@ -1418,13 +1257,8 @@ class _FullScreenImage extends StatelessWidget {
                 memCacheWidth: 1600,
                 maxWidthDiskCache: 1920,
                 maxHeightDiskCache: 1920,
-                placeholder: (context, url) =>
-                    const CircularProgressIndicator(color: Colors.white),
-                errorWidget: (context, url, error) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white,
-                  size: 48,
-                ),
+                placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
+                errorWidget: (context, url, error) => const Icon(Icons.broken_image_outlined, color: Colors.white, size: 48),
               ),
             ),
           ),
@@ -1433,10 +1267,7 @@ class _FullScreenImage extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: IconButton(
                 onPressed: () => Navigator.pop(context),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.black54,
-                  foregroundColor: Colors.white,
-                ),
+                style: IconButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white),
                 icon: const Icon(Icons.close_rounded),
               ),
             ),
@@ -1449,7 +1280,6 @@ class _FullScreenImage extends StatelessWidget {
 
 class _EmptyConversation extends StatelessWidget {
   const _EmptyConversation();
-
   @override
   Widget build(BuildContext context) {
     return const Center(
@@ -1458,25 +1288,11 @@ class _EmptyConversation extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.chat_bubble_outline_rounded,
-              size: 48,
-              color: Color(0xFF6B7280),
-            ),
+            Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Color(0xFF6B7280)),
             SizedBox(height: 14),
-            Text(
-              'Start the conversation',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            Text('Start the conversation', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             SizedBox(height: 6),
-            Text(
-              'Send a message to say hello.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
+            Text('Send a message to say hello.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6B7280))),
           ],
         ),
       ),
@@ -1486,7 +1302,6 @@ class _EmptyConversation extends StatelessWidget {
 
 class _MessageLoadError extends StatelessWidget {
   const _MessageLoadError();
-
   @override
   Widget build(BuildContext context) {
     return const Center(
@@ -1495,21 +1310,11 @@ class _MessageLoadError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 42,
-              color: Color(0xFF9CA3AF),
-            ),
+            Icon(Icons.error_outline_rounded, size: 42, color: Color(0xFF9CA3AF)),
             SizedBox(height: 12),
-            Text(
-              'Unable to load messages',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
+            Text('Unable to load messages', style: TextStyle(fontWeight: FontWeight.w700)),
             SizedBox(height: 6),
-            Text(
-              'Please try again.',
-              style: TextStyle(color: Color(0xFF6B7280)),
-            ),
+            Text('Please try again.', style: TextStyle(color: Color(0xFF6B7280))),
           ],
         ),
       ),
