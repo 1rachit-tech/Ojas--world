@@ -327,7 +327,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                         _buildOjsTab(),
                         const CreateScreen(),
                         const OjasShopScreen(),
-                        _buildProfileTab(),
+                        const YouHubScreen(),
                       ],
                     ),
                   ),
