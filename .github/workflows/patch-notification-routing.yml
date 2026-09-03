@@ -2,6 +2,10 @@ name: Patch Notification Routing
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-notification-routing.yml'
 
 permissions:
   contents: write
@@ -36,10 +40,6 @@ jobs:
             fixed = fixed.replace(
               "  runApp(const OjasApp());",
               "  runApp(const OjasApp());\n\n  NotificationService.instance.onNotificationOpened.listen(_openNotificationChat);\n  final pendingOpen = NotificationService.instance.consumePendingOpen();\n  if (pendingOpen != null) {\n    WidgetsBinding.instance.addPostFrameCallback((_) {\n      _openNotificationChat(pendingOpen);\n    });\n  }",
-            );
-            fixed = fixed.replace(
-              "      navigatorKey: ojasNavigatorKey,\n",
-              "      navigatorKey: ojasNavigatorKey,\n",
             );
             const materialNeedle = "    return MaterialApp(\n      title: 'OJAS',";
             if (!fixed.includes('navigatorKey: ojasNavigatorKey')) {
