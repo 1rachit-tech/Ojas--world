@@ -10,6 +10,18 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('FCM background message: ${message.messageId}');
 }
 
+class NotificationOpenData {
+  const NotificationOpenData({
+    required this.conversationId,
+    required this.messageId,
+    required this.senderId,
+  });
+
+  final String conversationId;
+  final String messageId;
+  final String senderId;
+}
+
 class NotificationService {
   NotificationService._();
 
@@ -21,18 +33,30 @@ class NotificationService {
 
   final StreamController<RemoteMessage> _notificationStream =
       StreamController<RemoteMessage>.broadcast();
+  final StreamController<NotificationOpenData> _openStream =
+      StreamController<NotificationOpenData>.broadcast();
 
   Stream<RemoteMessage> get onNotificationReceived =>
       _notificationStream.stream;
 
+  Stream<NotificationOpenData> get onNotificationOpened => _openStream.stream;
+
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  StreamSubscription<RemoteMessage>? _openedSubscription;
   StreamSubscription<String>? _tokenSubscription;
   StreamSubscription<User?>? _authSubscription;
 
   String? _registeredUid;
   String? _currentToken;
+  bool _initialized = false;
 
   Future<void> initialize() async {
+    if (_initialized) {
+      return;
+    }
+
+    _initialized = true;
+
     try {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
@@ -46,13 +70,47 @@ class NotificationService {
       }
 
       _authSubscription ??= _auth.authStateChanges().listen(_handleAuthChanged);
-      await _registerCurrentToken();
       _foregroundSubscription ??=
           FirebaseMessaging.onMessage.listen(_notificationStream.add);
+      _openedSubscription ??=
+          FirebaseMessaging.onMessageOpenedApp.listen(_handleOpenedMessage);
       _tokenSubscription ??= _messaging.onTokenRefresh.listen(_saveToken);
+
+      await _registerCurrentToken();
+
+      final initialMessage = await _messaging.getInitialMessage();
+      if (initialMessage != null) {
+        _handleOpenedMessage(initialMessage);
+      }
     } catch (error) {
       debugPrint('FCM initialization failed: $error');
     }
+  }
+
+  void _handleOpenedMessage(RemoteMessage message) {
+    final data = message.data;
+    final conversationId = data['conversationId'];
+    final messageId = data['messageId'];
+    final senderId = data['senderId'];
+    final type = data['type'];
+
+    if (type != 'message' ||
+        conversationId is! String ||
+        messageId is! String ||
+        senderId is! String ||
+        conversationId.isEmpty ||
+        messageId.isEmpty ||
+        senderId.isEmpty) {
+      return;
+    }
+
+    _openStream.add(
+      NotificationOpenData(
+        conversationId: conversationId,
+        messageId: messageId,
+        senderId: senderId,
+      ),
+    );
   }
 
   Future<void> _handleAuthChanged(User? user) async {
@@ -188,7 +246,10 @@ class NotificationService {
   Future<void> dispose() async {
     await _authSubscription?.cancel();
     await _foregroundSubscription?.cancel();
+    await _openedSubscription?.cancel();
     await _tokenSubscription?.cancel();
     await _notificationStream.close();
+    await _openStream.close();
+    _initialized = false;
   }
 }
