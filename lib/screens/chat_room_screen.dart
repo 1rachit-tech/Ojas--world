@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
 import '../services/media_message_service.dart';
@@ -843,7 +844,14 @@ class _ChatRoomScreenState
         child: Column(
           children: [
             Expanded(
-              child: StreamBuilder<List<OjasMessage>>(
+              child: StreamBuilder<OjasConversation>(
+          stream: _messagingService.watchConversation(
+            widget.conversationId,
+          ),
+          builder: (context, conversationSnapshot) {
+            final conversation = conversationSnapshot.data;
+
+            return StreamBuilder<List<OjasMessage>>(
                 stream:
                     _messagingService.watchMessages(
                   widget.conversationId,
@@ -905,7 +913,12 @@ class _ChatRoomScreenState
                     return const _EmptyConversation();
                   }
 
-                  return ListView.builder(
+                  final otherReadAt =
+                  conversation?.lastReadAtFor(
+                widget.otherUser.uid,
+              );
+
+              return ListView.builder(
                     controller:
                         _scrollController,
                     reverse: true,
@@ -943,7 +956,13 @@ class _ChatRoomScreenState
                             message,
                           );
                         },
-                        onReactionTap: (emoji) {
+                        seen: isMe &&
+                          otherReadAt != null &&
+                          message.createdAt != null &&
+                          !message.createdAt!.toDate().isAfter(
+                                otherReadAt.toDate(),
+                              ),
+                      onReactionTap: (emoji) {
                           _reactToMessage(
                             message,
                             emoji,
@@ -1273,6 +1292,7 @@ class _MessageBubble extends StatelessWidget {
     required this.currentUid,
     required this.otherUserName,
     required this.onLongPress,
+    required this.seen,
     required this.onReactionTap,
   });
 
@@ -1282,6 +1302,8 @@ class _MessageBubble extends StatelessWidget {
   final String otherUserName;
 
   final VoidCallback onLongPress;
+
+  final bool seen;
 
   final ValueChanged<String> onReactionTap;
 
@@ -1452,7 +1474,10 @@ class _MessageBubble extends StatelessWidget {
                               top: 5,
                               right: 6,
                             ),
-                            child: Text(
+                            child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
                               time,
                               style: TextStyle(
                                 fontSize: 10,
@@ -1764,7 +1789,9 @@ class _ChatImage extends StatelessWidget {
                 ),
               );
             },
-          ),
+          );
+          },
+        ),
         ),
       ),
     );
