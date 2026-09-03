@@ -1,0 +1,406 @@
+name: Verify and fix real messaging
+
+on:
+  push:
+    paths:
+      - .github/workflows/fix-real-messaging.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Apply minimal guarded application fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'{label}: expected source block missing; refusing to modify.')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # 1) First-time conversation creation must not call get() on a missing
+          # document because the Firestore read rule requires an existing member.
+          messaging = Path('lib/services/messaging_service.dart')
+          text = messaging.read_text(encoding='utf-8')
+          old_open = '''  Future<String> openConversation(OjasProfile otherUser) async {
+    final uid = currentUid;
+    if (uid == null) {
+      throw const MessagingException('Please sign in again.');
+    }
+    if (otherUser.uid == uid) {
+      throw const MessagingException('You cannot message yourself.');
+    }
+
+    final currentProfile = await _getCurrentProfile(uid);
+    final conversationId = conversationIdFor(uid, otherUser.uid);
+    final reference = conversationReference(conversationId);
+    final snapshot = await reference.get();
+
+    if (!snapshot.exists) {
+      await reference.set({
+        'participants': [uid, otherUser.uid],
+        'participantProfiles': {
+          uid: _profileMap(currentProfile),
+          otherUser.uid: _profileMap(otherUser),
+        },
+        'lastMessage': '',
+        'lastMessageSenderId': '',
+        'unreadCounts': {uid: 0, otherUser.uid: 0},
+        'lastReadAtBy': {uid: FieldValue.serverTimestamp()},
+        'typingBy': {uid: false, otherUser.uid: false},
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastMessageAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    return conversationId;
+  }
+'''
+          new_open = '''  Future<String> openConversation(OjasProfile otherUser) async {
+    final uid = currentUid;
+    if (uid == null) {
+      throw const MessagingException('Please sign in again.');
+    }
+    if (otherUser.uid.isEmpty || otherUser.uid == uid) {
+      throw const MessagingException('Invalid OJAS user.');
+    }
+
+    final currentProfile = await _getCurrentProfile(uid);
+    final conversationId = conversationIdFor(uid, otherUser.uid);
+    final reference = conversationReference(conversationId);
+
+    final data = {
+      'participants': [uid, otherUser.uid],
+      'participantProfiles': {
+        uid: _profileMap(currentProfile),
+        otherUser.uid: _profileMap(otherUser),
+      },
+      'lastMessage': '',
+      'lastMessageSenderId': '',
+      'unreadCounts': {uid: 0, otherUser.uid: 0},
+      'lastReadAtBy': {uid: FieldValue.serverTimestamp()},
+      'typingBy': {uid: false, otherUser.uid: false},
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await reference.create(data);
+    } on FirebaseException catch (error) {
+      if (error.code != 'already-exists') {
+        rethrow;
+      }
+    }
+
+    return conversationId;
+  }
+'''
+          replace_once('lib/services/messaging_service.dart', old_open, new_open, 'real conversation creation')
+          replace_once(
+              'lib/services/messaging_service.dart',
+              '''      return conversations;
+    });
+  }
+
+  Stream<OjasConversation> watchConversation''',
+              '''      return conversations
+          .where((conversation) => conversation.lastMessage.trim().isNotEmpty)
+          .toList(growable: false);
+    });
+  }
+
+  Stream<OjasConversation> watchConversation''',
+              'empty conversation filter')
+
+          # 2) Old conversation documents may lack participantProfiles.
+          messages = Path('lib/screens/messages_screen.dart')
+          text = messages.read_text(encoding='utf-8')
+          anchor = "import '../services/messaging_service.dart';\n"
+          if "import '../services/profile_service.dart';\n" not in text:
+              if anchor not in text:
+                  raise SystemExit('Messages import anchor missing; refusing to modify.')
+              text = text.replace(anchor, anchor + "import '../services/profile_service.dart';\n", 1)
+          old_profile = '''    final profileData =
+        conversation.profileFor(otherUid);
+
+    final profile =
+        OjasProfile.fromMap(
+      profileData,
+      uid: otherUid,
+    );
+
+    await Navigator.of(context).push(
+'''
+          new_profile = '''    final profileData = conversation.profileFor(otherUid);
+
+    OjasProfile profile;
+    if (profileData.isEmpty) {
+      final fetched = await ProfileService.instance.getProfile(otherUid);
+      profile = fetched ??
+          OjasProfile.empty(
+            uid: otherUid,
+            displayName: 'OJAS User',
+            photoUrl: 'avatar_1',
+          );
+    } else {
+      profile = OjasProfile.fromMap(
+        profileData,
+        uid: otherUid,
+      );
+      if (profile.ojasId.isEmpty) {
+        final fetched = await ProfileService.instance.getProfile(otherUid);
+        if (fetched != null) {
+          profile = fetched;
+        }
+      }
+    }
+
+    await Navigator.of(context).push(
+'''
+          if old_profile not in text:
+              raise SystemExit('Messages profile opening block missing; refusing to modify.')
+          text = text.replace(old_profile, new_profile, 1)
+          old_empty = '''            const Text(
+              'Your messages live here',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF111827),
+              ),
+            ),
+'''
+          new_empty = '''            const Text(
+              'Find your Mitra',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF111827),
+                letterSpacing: -0.25,
+              ),
+            ),
+'''
+          if old_empty not in text:
+              raise SystemExit('Messages empty-state title missing; refusing to modify.')
+          text = text.replace(old_empty, new_empty, 1)
+          messages.write_text(text, encoding='utf-8')
+
+          # 3) Notification-open fallback for old conversations.
+          router = Path('lib/screens/notification_chat_router.dart')
+          text = router.read_text(encoding='utf-8')
+          anchor = "import '../services/notification_service.dart';\n"
+          if "import '../services/profile_service.dart';\n" not in text:
+              if anchor not in text:
+                  raise SystemExit('Notification import anchor missing; refusing to modify.')
+              text = text.replace(anchor, anchor + "import '../services/profile_service.dart';\n", 1)
+          old_router = '''      final profiles = data['participantProfiles'];
+      if (profiles is! Map) {
+        throw StateError('Conversation profile data is unavailable.');
+      }
+
+      final rawProfile = profiles[widget.openData.senderId];
+      if (rawProfile is! Map) {
+        throw StateError('The sender profile is unavailable.');
+      }
+
+      final profile = OjasProfile.fromMap(
+        Map<String, dynamic>.from(rawProfile),
+        uid: widget.openData.senderId,
+      );
+'''
+          new_router = '''      final profiles = data['participantProfiles'];
+      OjasProfile? profile;
+
+      if (profiles is Map) {
+        final rawProfile = profiles[widget.openData.senderId];
+        if (rawProfile is Map) {
+          profile = OjasProfile.fromMap(
+            Map<String, dynamic>.from(rawProfile),
+            uid: widget.openData.senderId,
+          );
+        }
+      }
+
+      profile ??= await ProfileService.instance.getProfile(
+        widget.openData.senderId,
+      );
+
+      if (profile == null) {
+        throw StateError('The sender profile is unavailable.');
+      }
+'''
+          if old_router not in text:
+              raise SystemExit('Notification router compatibility block missing; refusing to modify.')
+          text = text.replace(old_router, new_router, 1)
+          router.write_text(text, encoding='utf-8')
+
+          # 4) Remove simulation-only notification helper from production code.
+          notification = Path('lib/services/notification_service.dart')
+          text = notification.read_text(encoding='utf-8')
+          old_sim = '''  void simulateIncomingNotification({
+    required String title,
+    required String body,
+    required String type,
+  }) {
+    debugPrint('Simulation only: $title / $body / $type');
+  }
+
+'''
+          if old_sim in text:
+              notification.write_text(text.replace(old_sim, '', 1), encoding='utf-8')
+
+          # 5) Use PageView for reliable Messages <-> Profile swipe navigation.
+          you = Path('lib/screens/you_hub_screen.dart')
+          text = you.read_text(encoding='utf-8')
+          state_old = '''  final _accountStore = _LocalAccountStore();
+
+  int _selectedTab = 0;
+'''
+          state_new = '''  final _accountStore = _LocalAccountStore();
+  late final PageController _pageController;
+
+  int _selectedTab = 0;
+'''
+          replace_once('lib/screens/you_hub_screen.dart', state_old, state_new, 'You page controller field')
+          init_old = '''  @override
+  void initState() {
+    super.initState();
+    _loadAccounts();
+  }
+'''
+          init_new = '''  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    _loadAccounts();
+  }
+'''
+          replace_once('lib/screens/you_hub_screen.dart', init_old, init_new, 'You page controller init')
+          change_old = '''  void _changeTab(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _selectedTab = index;
+    });
+  }
+'''
+          change_new = '''  void _changeTab(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTab = index;
+    });
+
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _onPageChanged(int index) {
+    if (_selectedTab == index) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedTab = index;
+    });
+  }
+'''
+          replace_once('lib/screens/you_hub_screen.dart', change_old, change_new, 'You tab navigation')
+          build_old = '''  @override
+  Widget build(BuildContext context) {
+'''
+          build_new = '''  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+'''
+          replace_once('lib/screens/you_hub_screen.dart', build_old, build_new, 'You page controller dispose')
+          stack_old = '''                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragEnd: (details) {
+                          final velocity =
+                              details.primaryVelocity ?? 0;
+                          if (velocity < -220 &&
+                              _selectedTab == 0) {
+                            _changeTab(1);
+                          } else if (velocity > 220 &&
+                              _selectedTab == 1) {
+                            _changeTab(0);
+                          }
+                        },
+                        child: IndexedStack(
+                          index: _selectedTab,
+                          children: [
+                            const MessagesScreen(
+                              showAppBar: false,
+                            ),
+                            _ProfilePage(
+'''
+          stack_new = '''                    Expanded(
+                      child: PageView(
+                        controller: _pageController,
+                        onPageChanged: _onPageChanged,
+                        children: [
+                          const MessagesScreen(
+                            showAppBar: false,
+                          ),
+                          _ProfilePage(
+'''
+          replace_once('lib/screens/you_hub_screen.dart', stack_old, stack_new, 'You PageView stack')
+          print('guarded real messaging and You navigation source changes prepared')
+
+      - name: Verify and build
+        run: |
+          flutter pub get
+          dart format lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
+          git diff --check
+          flutter build apk --release
+
+      - name: Commit application source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/services/messaging_service.dart lib/screens/messages_screen.dart lib/screens/notification_chat_router.dart lib/services/notification_service.dart lib/screens/you_hub_screen.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: stabilize real Mitra messaging and You navigation"
+          git push origin HEAD:main
