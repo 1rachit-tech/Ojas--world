@@ -26,132 +26,37 @@ class MessagingService extends WidgetsBindingObserver {
 
   CollectionReference<Map<String, dynamic>> get _conversations =>
       _firestore.collection('conversations');
-
   CollectionReference<Map<String, dynamic>> get _publicProfiles =>
       _firestore.collection('publicProfiles');
 
   String? get currentUid => _auth.currentUser?.uid;
 
-  bool get isSignedIn => currentUid != null;
+  DocumentReference<Map<String, dynamic>> conversationReference(String id) =>
+      _conversations.doc(id);
+  CollectionReference<Map<String, dynamic>> messageCollection(String id) =>
+      conversationReference(id).collection('messages');
 
-  String conversationIdFor(String uidA, String uidB) {
-    final ids = <String>[uidA, uidB]..sort();
+  String conversationIdFor(String firstUid, String secondUid) {
+    final ids = <String>[firstUid, secondUid]..sort();
     return '${ids[0]}_${ids[1]}';
   }
 
-  DocumentReference<Map<String, dynamic>> conversationReference(
-    String conversationId,
-  ) => _conversations.doc(conversationId);
-
-  CollectionReference<Map<String, dynamic>> messageCollection(
-    String conversationId,
-  ) => conversationReference(conversationId).collection('messages');
-
   Stream<List<OjasConversation>> watchConversations() {
     final uid = currentUid;
-    if (uid == null) {
-      return Stream<List<OjasConversation>>.value(const []);
-    }
-
+    if (uid == null) return Stream.value(const <OjasConversation>[]);
     return _conversations
         .where('participants', arrayContains: uid)
-        .limit(50)
+        .orderBy('lastMessageAt', descending: true)
         .snapshots()
-        .map((snapshot) {
-          final conversations = snapshot.docs
-              .map(OjasConversation.fromFirestore)
-              .toList();
-
-          conversations.sort((a, b) {
-            final aTime = a.lastMessageAt;
-            final bTime = b.lastMessageAt;
-
-            if (aTime == null && bTime == null) {
-              return 0;
-            }
-            if (aTime == null) {
-              return 1;
-            }
-            if (bTime == null) {
-              return -1;
-            }
-            return bTime.compareTo(aTime);
-          });
-
-          return conversations
-              .where(
-                (conversation) => conversation.lastMessage.trim().isNotEmpty,
-              )
-              .toList(growable: false);
-        });
-  }
-
-  Stream<OjasConversation> watchConversation(String conversationId) =>
-      conversationReference(conversationId)
-          .snapshots()
-          .where((snapshot) => snapshot.exists)
-          .map(OjasConversation.fromFirestore);
-
-  Stream<bool> watchTyping(String conversationId, String userId) {
-    return conversationReference(conversationId).snapshots().map((snapshot) {
-      final data = snapshot.data();
-      final rawTypingBy = data?['typingBy'];
-      if (rawTypingBy is! Map) {
-        return false;
-      }
-      return rawTypingBy[userId] == true;
-    });
-  }
-
-  Future<void> setTyping({
-    required String conversationId,
-    required bool isTyping,
-  }) async {
-    final uid = currentUid;
-    if (uid == null) {
-      return;
-    }
-
-    await conversationReference(
-      conversationId,
-    ).set({'typingBy.$uid': isTyping}, SetOptions(merge: true));
-  }
-
-  void registerPresenceConversation(String conversationId) {
-    if (conversationId.trim().isNotEmpty) {
-      _activePresenceConversations.add(conversationId);
-    }
-  }
-
-  void unregisterPresenceConversation(String conversationId) {
-    _activePresenceConversations.remove(conversationId);
-  }
-
-  Future<void> setPresence({
-    required String conversationId,
-    required bool isOnline,
-  }) async {
-    // Presence is owned by RealtimePresenceService with onDisconnect().
-    // This compatibility method intentionally performs no Firestore write.
-    return;
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // RealtimePresenceService owns lifecycle and disconnect state.
+        .map((snapshot) => snapshot.docs.map(OjasConversation.fromFirestore).toList());
   }
 
   Stream<int> watchTotalUnreadCount() {
     final uid = currentUid;
-    if (uid == null) {
-      return Stream<int>.value(0);
-    }
-
+    if (uid == null) return Stream.value(0);
     return watchConversations().map((conversations) {
       var total = 0;
-      for (final conversation in conversations) {
-        total += conversation.unreadCountFor(uid);
-      }
+      for (final conversation in conversations) total += conversation.unreadCountFor(uid);
       return total;
     });
   }
@@ -161,83 +66,33 @@ class MessagingService extends WidgetsBindingObserver {
         .orderBy('createdAt', descending: true)
         .limit(40)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs.map(OjasMessage.fromFirestore).toList(),
-        );
+        .map((snapshot) => snapshot.docs.map(OjasMessage.fromFirestore).toList());
   }
 
   Future<List<OjasProfile>> searchUsers(String query) async {
     final currentUserId = currentUid;
-    if (currentUserId == null) {
-      return [];
-    }
-
+    if (currentUserId == null) return [];
     final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) {
-      return [];
-    }
-
+    if (normalized.isEmpty) return [];
     final results = <String, OjasProfile>{};
-
-    final idQuery = await _publicProfiles
-        .orderBy('ojasId')
-        .startAt([normalized])
-        .endAt(['$normalized\uf8ff'])
-        .limit(20)
-        .get();
-
+    final idQuery = await _publicProfiles.orderBy('ojasId').startAt([normalized]).endAt(['$normalized\uf8ff']).limit(20).get();
     for (final document in idQuery.docs) {
-      if (document.id == currentUserId) {
-        continue;
-      }
-      results[document.id] = OjasProfile.fromMap(
-        document.data(),
-        uid: document.id,
-      );
+      if (document.id != currentUserId) results[document.id] = OjasProfile.fromMap(document.data(), uid: document.id);
     }
-
     final cleanQuery = query.trim();
-    final nameQuery = await _publicProfiles
-        .orderBy('displayName')
-        .startAt([cleanQuery])
-        .endAt(['$cleanQuery\uf8ff'])
-        .limit(20)
-        .get();
-
+    final nameQuery = await _publicProfiles.orderBy('displayName').startAt([cleanQuery]).endAt(['$cleanQuery\uf8ff']).limit(20).get();
     for (final document in nameQuery.docs) {
-      if (document.id == currentUserId) {
-        continue;
-      }
-      results[document.id] = OjasProfile.fromMap(
-        document.data(),
-        uid: document.id,
-      );
+      if (document.id != currentUserId) results[document.id] = OjasProfile.fromMap(document.data(), uid: document.id);
     }
-
     final users = results.values.toList();
-    users.sort((a, b) {
-      final aExact = a.ojasId.toLowerCase() == normalized;
-      final bExact = b.ojasId.toLowerCase() == normalized;
-      if (aExact && !bExact) {
-        return -1;
-      }
-      if (!aExact && bExact) {
-        return 1;
-      }
-      return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-    });
+    users.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
     return users;
   }
 
   Future<String> openConversation(OjasProfile otherUser) async {
     final uid = currentUid;
-    if (uid == null) {
-      throw const MessagingException('Please sign in again.');
-    }
-    if (otherUser.uid.isEmpty || otherUser.uid == uid) {
-      throw const MessagingException('Invalid OJAS user.');
-    }
-
+    if (uid == null) throw const MessagingException('Please sign in again.');
+    if (otherUser.uid.isEmpty || otherUser.uid == uid) throw const MessagingException('Invalid OJAS user.');
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
     final reference = conversationReference(conversationId);
@@ -255,15 +110,10 @@ class MessagingService extends WidgetsBindingObserver {
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessageAt': FieldValue.serverTimestamp(),
     };
-
-    try {
-      await reference.create(data);
-    } on FirebaseException catch (error) {
-      if (error.code != 'already-exists') {
-        rethrow;
-      }
-    }
-
+    await _firestore.runTransaction((transaction) async {
+      final existing = await transaction.get(reference);
+      if (!existing.exists) transaction.set(reference, data);
+    });
     return conversationId;
   }
 
@@ -274,53 +124,32 @@ class MessagingService extends WidgetsBindingObserver {
     OjasMessage? replyTo,
   }) async {
     final uid = currentUid;
-    if (uid == null) {
-      throw const MessagingException('Please sign in again.');
-    }
-
+    if (uid == null) throw const MessagingException('Please sign in again.');
     final cleanText = text.trim();
-    if (cleanText.isEmpty) {
-      return;
-    }
-    if (cleanText.length > 2000) {
-      throw const MessagingException(
-        'Messages can contain up to 2000 characters.',
-      );
-    }
-    if (receiverId.isEmpty) {
-      throw const MessagingException('Invalid conversation.');
-    }
-
+    if (cleanText.isEmpty) return;
+    if (cleanText.length > 2000) throw const MessagingException('Messages can contain up to 2000 characters.');
+    if (receiverId.isEmpty) throw const MessagingException('Invalid conversation.');
     _guardLocalSend(cleanText);
-
     final conversation = conversationReference(conversationId);
     final message = messageCollection(conversationId).doc();
     final batch = _firestore.batch();
-
     final messageData = <String, dynamic>{
       'conversationId': conversationId,
       'senderId': uid,
       'text': cleanText,
       'type': 'text',
       'isDeleted': false,
-      'status': 'sent',
       'reactions': <String, String>{},
       'createdAt': FieldValue.serverTimestamp(),
     };
-
     if (replyTo != null) {
       messageData.addAll({
         'replyToMessageId': replyTo.id,
         'replyToSenderId': replyTo.senderId,
-        'replyToText': replyTo.isDeleted
-            ? 'This message was deleted.'
-            : replyTo.isImage
-            ? 'Photo'
-            : _safeReplyPreview(replyTo.text),
+        'replyToText': replyTo.isDeleted ? 'This message was deleted.' : replyTo.isImage ? 'Photo' : _safeReplyPreview(replyTo.text),
         'replyToType': replyTo.type,
       });
     }
-
     batch.set(message, messageData);
     batch.set(conversation, {
       'lastMessage': cleanText,
@@ -331,10 +160,7 @@ class MessagingService extends WidgetsBindingObserver {
       'typingBy.$uid': false,
       'unreadCounts.$receiverId': FieldValue.increment(1),
     }, SetOptions(merge: true));
-
     await batch.commit();
-
-    await message.update({'status': 'delivered'});
   }
 
   Future<void> sendImageMessage({
@@ -349,277 +175,95 @@ class MessagingService extends WidgetsBindingObserver {
     OjasMessage? replyTo,
   }) async {
     final uid = currentUid;
-    if (uid == null) {
-      throw const MessagingException('Please sign in again.');
-    }
-    if (receiverId.isEmpty) {
-      throw const MessagingException('Invalid conversation.');
-    }
-    if (imageUrl.trim().isEmpty) {
-      throw const MessagingException('Image upload failed.');
-    }
-    if (mediaBytes <= 0 || mediaBytes > 10 * 1024 * 1024) {
-      throw const MessagingException('Image is too large.');
-    }
-
-    final cleanCaption = (caption ?? '').trim();
-    if (cleanCaption.length > 2000) {
-      throw const MessagingException(
-        'Caption can contain up to 2000 characters.',
-      );
-    }
-
-    _guardLocalSend('image:$imageUrl:$storagePath');
-
+    if (uid == null) throw const MessagingException('Please sign in again.');
+    if (receiverId.isEmpty || imageUrl.trim().isEmpty) throw const MessagingException('Invalid conversation.');
+    if (mediaBytes <= 0 || mediaBytes > 10 * 1024 * 1024) throw const MessagingException('Image is too large.');
     final conversation = conversationReference(conversationId);
     final message = messageCollection(conversationId).doc();
     final batch = _firestore.batch();
-
-    final messageData = <String, dynamic>{
+    final cleanCaption = caption?.trim() ?? '';
+    batch.set(message, {
       'conversationId': conversationId,
       'senderId': uid,
       'text': cleanCaption,
       'type': 'image',
-      'isDeleted': false,
-      'status': 'sent',
-      'reactions': <String, String>{},
-      'mediaUrl': imageUrl,
-      'mediaStoragePath': storagePath,
-      'mediaWidth': width,
-      'mediaHeight': height,
+      'imageUrl': imageUrl,
+      'storagePath': storagePath,
+      'width': width,
+      'height': height,
       'mediaBytes': mediaBytes,
+      'isDeleted': false,
+      'reactions': <String, String>{},
       'createdAt': FieldValue.serverTimestamp(),
-    };
-
-    if (replyTo != null) {
-      messageData.addAll({
-        'replyToMessageId': replyTo.id,
-        'replyToSenderId': replyTo.senderId,
-        'replyToText': replyTo.isDeleted
-            ? 'This message was deleted.'
-            : replyTo.isImage
-            ? 'Photo'
-            : _safeReplyPreview(replyTo.text),
-        'replyToType': replyTo.type,
-      });
-    }
-
-    batch.set(message, messageData);
+    });
     batch.set(conversation, {
-      'lastMessage': cleanCaption.isNotEmpty ? cleanCaption : '📷 Photo',
+      'lastMessage': cleanCaption.isEmpty ? 'Photo' : cleanCaption,
       'lastMessageSenderId': uid,
       'lastMessageAt': FieldValue.serverTimestamp(),
       'unreadCounts.$uid': 0,
-      'unreadCounts.$receiverId': FieldValue.increment(1),
+      'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
       'typingBy.$uid': false,
+      'unreadCounts.$receiverId': FieldValue.increment(1),
     }, SetOptions(merge: true));
-
     await batch.commit();
-
-    await message.update({'status': 'delivered'});
   }
 
-  Future<void> toggleReaction({
-    required String conversationId,
-    required String messageId,
-    required String emoji,
-  }) async {
+  Future<void> setTyping({required String conversationId, required bool isTyping}) async {
     final uid = currentUid;
-    if (uid == null) {
-      throw const MessagingException('Please sign in again.');
-    }
-    if (!_allowedReactions.contains(emoji)) {
-      throw const MessagingException('Invalid reaction.');
-    }
-
-    final reference = messageCollection(conversationId).doc(messageId);
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(reference);
-      final data = snapshot.data();
-      if (!snapshot.exists || data == null) {
-        throw const MessagingException('Message no longer exists.');
-      }
-      if (data['isDeleted'] == true) {
-        throw const MessagingException(
-          'Deleted messages cannot be reacted to.',
-        );
-      }
-
-      final reactions = <String, String>{};
-      final rawReactions = data['reactions'];
-      if (rawReactions is Map) {
-        rawReactions.forEach((key, value) {
-          if (key is String && value is String) {
-            reactions[key] = value;
-          }
-        });
-      }
-
-      if (reactions[uid] == emoji) {
-        reactions.remove(uid);
-      } else {
-        reactions[uid] = emoji;
-      }
-
-      transaction.update(reference, {'reactions': reactions});
-    });
-  }
-
-  Future<void> removeReaction({
-    required String conversationId,
-    required String messageId,
-  }) async {
-    final uid = currentUid;
-    if (uid == null) {
-      return;
-    }
-
-    final reference = messageCollection(conversationId).doc(messageId);
-    await reference.update({'reactions.$uid': FieldValue.delete()});
+    if (uid == null) return;
+    await conversationReference(conversationId).set({'typingBy.$uid': isTyping}, SetOptions(merge: true));
   }
 
   Future<void> markConversationRead(String conversationId) async {
     final uid = currentUid;
-    if (uid == null) {
-      return;
-    }
-
+    if (uid == null) return;
     await conversationReference(conversationId).set({
       'unreadCounts.$uid': 0,
       'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
-  Future<void> markMessagesSeen({
-    required String conversationId,
-    required Iterable<OjasMessage> messages,
-  }) async {
-    final uid = currentUid;
-
-    if (uid == null) {
-      return;
-    }
-
-    final unseenMessages = messages.where(
-      (message) =>
-          message.senderId != uid &&
-          message.status != 'seen',
-    );
-
-    final batch = _firestore.batch();
-
-    for (final message in unseenMessages) {
-      batch.update(
-        messageCollection(conversationId).doc(message.id),
-        {'status': 'seen'},
-      );
-    }
-
-    batch.set(
-      conversationReference(conversationId),
-      {'unreadCounts.$uid': 0},
-      SetOptions(merge: true),
-    );
-
-    await batch.commit();
+  void registerPresenceConversation(String conversationId) {
+    if (conversationId.trim().isNotEmpty) _activePresenceConversations.add(conversationId);
   }
-
-  Future<void> deleteMessage({
-    required String conversationId,
-    required String messageId,
-  }) async {
-    final uid = currentUid;
-    if (uid == null) {
-      return;
-    }
-
-    final reference = messageCollection(conversationId).doc(messageId);
-    final snapshot = await reference.get();
-    final data = snapshot.data();
-
-    if (data == null || data['senderId'] != uid) {
-      throw const MessagingException('You can only delete your own messages.');
-    }
-
-    await reference.update({
-      'text': 'This message was deleted.',
-      'isDeleted': true,
-      'reactions': <String, String>{},
-    });
-  }
+  void unregisterPresenceConversation(String conversationId) => _activePresenceConversations.remove(conversationId);
+  Future<void> setPresence({required String conversationId, required bool isOnline}) async {}
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {}
 
   Future<OjasProfile> _getCurrentProfile(String uid) async {
     final snapshot = await _publicProfiles.doc(uid).get();
-    final data = snapshot.data();
-    if (data == null) {
-      final user = _auth.currentUser;
-      return OjasProfile.empty(
-        uid: uid,
-        displayName: user?.displayName ?? 'OJAS User',
-        photoUrl: 'avatar_1',
-      );
-    }
-    return OjasProfile.fromMap(data, uid: uid);
+    if (!snapshot.exists || snapshot.data() == null) throw const MessagingException('Your profile is not ready yet.');
+    return OjasProfile.fromMap(snapshot.data()!, uid: uid);
   }
 
-  Map<String, dynamic> _profileMap(OjasProfile profile) {
-    return {
-      'uid': profile.uid,
-      'ojasId': profile.ojasId,
-      'displayName': profile.displayName,
-      'photoUrl': profile.photoUrl,
-      'isVerified': profile.isVerified,
-    };
-  }
+  Map<String, dynamic> _profileMap(OjasProfile profile) => {
+    'displayName': profile.displayName,
+    'ojasId': profile.ojasId,
+    'photoUrl': profile.photoUrl,
+  };
 
-  void _guardLocalSend(String fingerprint) {
+  String _safeReplyPreview(String value) => value.length <= 120 ? value : '${value.substring(0, 120)}…';
+
+  void _guardLocalSend(String text) {
     final now = DateTime.now();
-    final sinceLast = now.difference(_lastMessageAttempt);
-    if (sinceLast < const Duration(milliseconds: 300)) {
-      throw const MessagingException('Please slow down for a moment.');
-    }
-
-    if (fingerprint == _lastMessageFingerprint &&
-        now.difference(_repeatWindowStarted) <= const Duration(seconds: 30)) {
-      _repeatCount += 1;
-    } else {
+    final fingerprint = text.toLowerCase();
+    if (now.difference(_lastMessageAttempt) > const Duration(seconds: 15)) {
+      _repeatCount = 0;
       _repeatWindowStarted = now;
-      _repeatCount = 1;
-      _lastMessageFingerprint = fingerprint;
     }
-
-    if (_repeatCount > 4) {
-      throw const MessagingException(
-        'Repeated messages are temporarily blocked.',
-      );
-    }
-
+    if (fingerprint == _lastMessageFingerprint) _repeatCount++; else _repeatCount = 0;
+    _lastMessageFingerprint = fingerprint;
     _lastMessageAttempt = now;
-  }
-
-  static const List<String> _allowedReactions = [
-    '❤️',
-    '👍',
-    '😂',
-    '😮',
-    '😢',
-    '🔥',
-  ];
-
-  static String _safeReplyPreview(String text) {
-    final clean = text.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (clean.length <= 140) {
-      return clean;
+    if (_repeatCount >= 8 && now.difference(_repeatWindowStarted) < const Duration(minutes: 1)) {
+      throw const MessagingException('Please slow down and try again shortly.');
     }
-    return '${clean.substring(0, 137)}...';
   }
 }
 
 class MessagingException implements Exception {
   const MessagingException(this.message);
-
   final String message;
-
   @override
   String toString() => message;
 }
