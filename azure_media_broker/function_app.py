@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import azure.functions as func
-from azure.storage.blob import BlobSasPermissions, BlobServiceClient, ContentSettings, generate_blob_sas
+from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 import firebase_admin
 from firebase_admin import auth, credentials
 
