@@ -1,0 +1,15 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "presence": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        "$connectionId": {
+          ".validate": "newData.hasChildren(['online', 'lastChanged']) && newData.child('online').isBoolean() && newData.child('lastChanged').isNumber()"
+        }
+      }
+    }
+  }
+}
