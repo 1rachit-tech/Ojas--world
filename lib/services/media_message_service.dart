@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
@@ -34,7 +33,6 @@ class MediaMessageService {
   static final MediaMessageService instance = MediaMessageService._();
 
   final ImagePicker _imagePicker = ImagePicker();
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final Uuid _uuid = const Uuid();
 
@@ -189,33 +187,8 @@ class MediaMessageService {
     required int originalBytes,
     required int compressedBytes,
   }) async {
-    final reference = _storage.ref().child(storagePath);
-
-    final metadata = SettableMetadata(
-      contentType: 'image/jpeg',
-      cacheControl: 'public,max-age=2592000',
-      customMetadata: {
-        'conversationId': conversationId,
-        'uploadedBy': uid,
-        'originalBytes': originalBytes.toString(),
-        'compressedBytes': compressedBytes.toString(),
-      },
-    );
-
-    final snapshot = await reference.putFile(
-      compressedFile,
-      metadata,
-    );
-
-    final downloadUrl = await snapshot.ref.getDownloadURL();
-
-    return MediaMessageResult(
-      downloadUrl: downloadUrl,
-      storagePath: storagePath,
-      width: dimensions.width,
-      height: dimensions.height,
-      originalBytes: originalBytes,
-      compressedBytes: compressedBytes,
+    throw const MediaMessageException(
+      'Media storage is being initialized. Please try again shortly.',
     );
   }
 
