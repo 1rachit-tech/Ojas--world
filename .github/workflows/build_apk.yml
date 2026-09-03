@@ -35,7 +35,10 @@ jobs:
           channel: stable
           cache: true
       - name: Apply guarded source fixes
-        run: python3 tools/fix_real_chat.py
+        run: |
+          python3 tools/fix_real_chat.py
+          grep -q "import '../services/profile_service.dart';" lib/screens/messages_screen.dart || sed -i "/import '..\/services\/messaging_service.dart';/a import '../services/profile_service.dart';" lib/screens/messages_screen.dart
+          grep -q "import '../services/profile_service.dart';" lib/screens/notification_chat_router.dart || sed -i "/import '..\/services\/notification_service.dart';/a import '../services/profile_service.dart';" lib/screens/notification_chat_router.dart
       - name: Install dependencies
         run: flutter pub get
       - name: Format and build release APK
