@@ -84,19 +84,6 @@ service cloud.firestore {
           );
     }
 
-    function mediaFieldsUnchanged() {
-      return (
-        (!('mediaUrl' in resource.data) && !('mediaUrl' in request.resource.data))
-        || (
-          request.resource.data.mediaUrl == resource.data.mediaUrl
-          && request.resource.data.mediaStoragePath == resource.data.mediaStoragePath
-          && request.resource.data.mediaWidth == resource.data.mediaWidth
-          && request.resource.data.mediaHeight == resource.data.mediaHeight
-          && request.resource.data.mediaBytes == resource.data.mediaBytes
-        )
-      );
-    }
-
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
@@ -201,7 +188,6 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 2000
             && validReactionMap(request.resource.data.reactions)
             && request.resource.data.createdAt == resource.data.createdAt
-            && mediaFieldsUnchanged()
             && (
               (
                 request.auth.uid != resource.data.senderId
@@ -213,6 +199,7 @@ service cloud.firestore {
                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
                   || (
                     request.resource.data.isDeleted == true
+                    && resource.data.isDeleted == false
                     && request.resource.data.text == 'This message was deleted.'
                     && request.resource.data.reactions.size() == 0
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
