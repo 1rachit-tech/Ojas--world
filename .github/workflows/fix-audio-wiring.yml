@@ -1,0 +1,75 @@
+name: Fix audio wiring
+on:
+  push:
+    branches: [main]
+    paths: ['.audio-fix-trigger']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Restore camera screen and patch audio handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout 1663eec6656164569680670f837d64e57e4de2cd -- lib/screens/create_screen.dart
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/screens/create_screen.dart')
+          s = p.read_text()
+          old = 'class CreateScreen extends StatefulWidget {\n  const CreateScreen({super.key});\n\n  @override\n'
+          new = 'class CreateScreen extends StatefulWidget {\n  const CreateScreen({super.key, this.audioTrackId});\n\n  final String? audioTrackId;\n\n  @override\n'
+          if old not in s:
+              raise SystemExit('CreateScreen constructor anchor missing')
+          s = s.replace(old, new, 1)
+          old = '    WidgetsBinding.instance.addObserver(this);\n    \n    // 🚀 FIXED: Added ALL required parameters (including category & previewColor)\n'
+          new = '    WidgetsBinding.instance.addObserver(this);\n    if (widget.audioTrackId?.trim().isNotEmpty == true) {\n      _selectedSound = widget.audioTrackId!.trim();\n    }\n    \n    // 🚀 FIXED: Added ALL required parameters (including category & previewColor)\n'
+          if old not in s:
+              raise SystemExit('CreateScreen init anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          cat > lib/screens/camera_screen.dart <<'DART'
+import 'package:flutter/material.dart';
+
+import 'create_screen.dart';
+
+class CameraScreen extends StatelessWidget {
+  const CameraScreen({super.key, required this.audioId});
+
+  final String audioId;
+
+  @override
+  Widget build(BuildContext context) {
+    return CreateScreen(audioTrackId: audioId);
+  }
+}
+DART
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/screens/audio_reels_screen.dart')
+          s = p.read_text()
+          s = s.replace("import 'create_screen.dart';", "import 'camera_screen.dart';", 1)
+          s = s.replace('builder: (_) => CreateScreen(audioTrackId: widget.audioTrackId),', 'builder: (_) => CameraScreen(audioId: widget.audioTrackId),', 1)
+          p.write_text(s)
+          PY
+          rm -f .github/workflows/audio-routing.yml .audio-routing-trigger .repair-build-trigger
+          git diff --check
+          flutter pub get
+          flutter analyze lib/screens/audio_reels_screen.dart lib/screens/camera_screen.dart lib/screens/create_screen.dart lib/screens/ojs_feed_screen.dart
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/screens/audio_reels_screen.dart lib/screens/camera_screen.dart lib/screens/create_screen.dart .github/workflows/fix-audio-wiring.yml
+          git commit -m 'feat: complete audio reels camera routing'
+          git rm .github/workflows/fix-audio-wiring.yml .audio-fix-trigger
+          git commit -m 'chore: remove one-shot audio repair workflow'
+          flutter build web --release
+          git push origin HEAD:main
