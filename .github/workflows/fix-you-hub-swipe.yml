@@ -1,0 +1,66 @@
+name: Surgical You Hub swipe fix
+
+on:
+  push:
+    branches: ["fix/you-hub-swipe"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply surgical PageView swipe fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/screens/you_hub_screen.dart')
+          s = p.read_text(encoding='utf-8')
+          old = 'class _YouHubScreenState extends State<YouHubScreen> {'
+          new = '''class _YouHubSwipePhysics extends PageScrollPhysics {
+            const _YouHubSwipePhysics({super.parent});
+
+            @override
+            double? get dragStartDistanceMotionThreshold => 4.0;
+
+            @override
+            double get minFlingDistance => 8.0;
+
+            @override
+            _YouHubSwipePhysics applyTo(ScrollPhysics? ancestor) {
+              return _YouHubSwipePhysics(parent: buildParent(ancestor));
+            }
+          }
+
+          class _YouHubScreenState extends State<YouHubScreen> {'''
+          if s.count(old) != 1:
+              raise SystemExit('Expected YouHub state declaration not found exactly once.')
+          if s.count('physics: const PageScrollPhysics(),') != 1:
+              raise SystemExit('Expected PageView physics line not found exactly once.')
+          s = s.replace(old, new, 1)
+          s = s.replace(
+              'physics: const PageScrollPhysics(),',
+              'physics: const _YouHubSwipePhysics(),',
+              1,
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit patch and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/fix-you-hub-swipe.yml
+          git add lib/screens/you_hub_screen.dart
+          git commit -m 'fix(you): make first profile swipe responsive'
+          git push origin HEAD:${{ github.ref_name }}
