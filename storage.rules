@@ -4,43 +4,27 @@ service firebase.storage {
 
   match /b/{bucket}/o {
 
-
-    // ============================================================
-    // COMMON HELPERS
-    // ============================================================
-
     function isSignedIn() {
       return request.auth != null;
     }
 
-
     function isImage() {
-      return request.resource.contentType.matches(
-        'image/.*'
-      );
+      return request.resource.contentType.matches('image/.*');
     }
 
+    function isVideo() {
+      return request.resource.contentType.matches('video/.*');
+    }
 
     function isValidImageSize() {
-      return request.resource.size
-        <= 10 * 1024 * 1024;
+      return request.resource.size <= 10 * 1024 * 1024;
     }
 
-
-    // ============================================================
-    // MESSAGE IMAGES
-    //
-    // Expected structure:
-    //
-    // conversations/
-    //   {conversationId}/
-    //     messages/
-    //       {userId}/
-    //         {fileName}
-    // ============================================================
+    function isValidVideoSize() {
+      return request.resource.size <= 50 * 1024 * 1024;
+    }
 
     match /conversations/{conversationId}/messages/{userId}/{fileName} {
-
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
@@ -54,13 +38,21 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
+    match /chat_media/{userId}/{conversationId}/videos/{fileName} {
+      allow read: if isSignedIn();
 
-    // ============================================================
-    // PROFILE IMAGES
-    // ============================================================
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && isVideo()
+        && isValidVideoSize();
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == userId;
+    }
 
     match /profileImages/{userId}/{fileName} {
-
       allow read: if true;
 
       allow create: if isSignedIn()
@@ -74,13 +66,7 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
-
-    // ============================================================
-    // DEFAULT DENY
-    // ============================================================
-
     match /{allPaths=**} {
-
       allow read, write: if false;
     }
   }
