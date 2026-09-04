@@ -25,7 +25,7 @@ service cloud.firestore {
     }
 
     function validMessageType(type) {
-      return type == 'text' || type == 'image';
+      return type == 'text' || type == 'image' || type == 'video';
     }
 
     function validReactionMap(reactions) {
@@ -65,6 +65,23 @@ service cloud.firestore {
             && data.mediaBytes is int
             && data.mediaBytes > 0
             && data.mediaBytes <= 10485760
+          );
+    }
+
+    function validVideoMessage(data) {
+      return data.type != 'video'
+          || (
+            data.mediaUrl is string
+            && data.mediaUrl.size() > 0
+            && data.mediaUrl.size() <= 2048
+            && data.mediaHash is string
+            && data.mediaHash.size() == 64
+            && data.mediaStoragePath is string
+            && data.mediaStoragePath.size() <= 512
+            && data.mediaBytes is int
+            && data.mediaBytes > 0
+            && data.mediaBytes <= 52428800
+            && data.text == ''
           );
     }
 
@@ -114,6 +131,12 @@ service cloud.firestore {
       allow update: if isOwner(userId)
           && request.resource.data.uid == userId;
       allow delete: if false;
+    }
+
+    match /mediaIndex/{mediaHash} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update, delete: if false;
     }
 
     match /conversations/{conversationId} {
@@ -181,6 +204,7 @@ service cloud.firestore {
             && validReactionMap(request.resource.data.reactions)
             && request.resource.data.createdAt == request.time
             && validImageMessage(request.resource.data)
+            && validVideoMessage(request.resource.data)
             && validReplyFields(request.resource.data);
 
         allow update: if signedIn()
