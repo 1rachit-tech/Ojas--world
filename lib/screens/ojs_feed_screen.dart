@@ -7,6 +7,7 @@ import '../widgets/share_bottom_sheet.dart';
 // 🚀 जोड़े गए 2 आवश्यक इंजन (बैटरी और डेटा बचाने के लिए)
 import '../services/video_engine_service.dart';
 import '../widgets/ojas_scroll_physics.dart';
+import '../widgets/super_thanks_modal.dart';
 
 class CommentItem {
   final String id;
@@ -382,6 +383,21 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   Widget _buildCommentSheet() {
+    final activeVideos = _currentSelectedFeed == 0
+        ? temporaryOjsVideos
+        : temporaryOjsVideos
+            .where((video) => _followedCreators.contains(video.creator))
+            .toList();
+    var activeIndex = _currentSelectedFeed == 0
+        ? _forYouCurrentIndex
+        : _followingCurrentIndex;
+    if (activeVideos.isNotEmpty && activeIndex >= activeVideos.length) {
+      activeIndex = activeVideos.length - 1;
+    }
+    final creatorName = activeVideos.isEmpty
+        ? 'OJAS Creator'
+        : activeVideos[activeIndex].creator;
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF13171D),
@@ -402,7 +418,43 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('${_commentsList.length} comments', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                GestureDetector(onTap: _toggleComments, child: const Icon(Icons.close_rounded, color: Colors.white54)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        SuperThanksModal.show(
+                          context,
+                          creatorName: creatorName,
+                        );
+                      },
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.stars_rounded, color: Color(0xFFF59E0B), size: 18),
+                          SizedBox(width: 4),
+                          Text(
+                            'Super Thanks',
+                            style: TextStyle(
+                              color: Color(0xFFF59E0B),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    GestureDetector(
+                      onTap: _toggleComments,
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

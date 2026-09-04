@@ -15,14 +15,14 @@ class FullscreenLandscapePlayer extends StatefulWidget {
     required this.creator,
   });
 
-  static void open(
+  static Future<void> open(
     BuildContext context, {
     required String videoUrl,
     required String title,
     required String creator,
   }) {
     HapticFeedback.mediumImpact();
-    Navigator.push(
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => FullscreenLandscapePlayer(
@@ -71,13 +71,24 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
     setState(() => _showControls = !_showControls);
   }
 
-  @override
-  void dispose() {
-    // 🚀 स्क्रीन को वापस पोर्ट्रेट (सीधा) मोड में सेट करें
-    SystemChrome.setPreferredOrientations([
+  Future<void> _restorePortraitSystemUi() async {
+    await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _restorePortraitSystemUi();
     super.dispose();
   }
 

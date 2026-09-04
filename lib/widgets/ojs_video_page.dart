@@ -6,7 +6,6 @@ import '../models/ojs_video.dart';
 import '../services/video_engine_service.dart';
 import '../screens/fullscreen_landscape_player.dart';
 import '../screens/sound_detail_screen.dart';
-import '../widgets/super_thanks_modal.dart';
 import '../widgets/ojas_shop_sheet.dart'; // 🚀 Zero-Cost Affiliate E-Commerce
 
 class OjsVideoPage extends StatefulWidget {
@@ -273,12 +272,27 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 right: 0,
                 child: Center(
                   child: GestureDetector(
-                    onTap: () {
-                      FullscreenLandscapePlayer.open(
+                    onTap: () async {
+                      await FullscreenLandscapePlayer.open(
                         context,
                         videoUrl: widget.video.videoUrl,
                         title: widget.video.caption,
                         creator: widget.video.creator,
+                      );
+                      if (!mounted) return;
+                      await SystemChrome.setPreferredOrientations([
+                        DeviceOrientation.portraitUp,
+                      ]);
+                      await SystemChrome.setEnabledSystemUIMode(
+                        SystemUiMode.edgeToEdge,
+                      );
+                      SystemChrome.setSystemUIOverlayStyle(
+                        const SystemUiOverlayStyle(
+                          statusBarColor: Colors.transparent,
+                          statusBarIconBrightness: Brightness.light,
+                          systemNavigationBarColor: Colors.black,
+                          systemNavigationBarIconBrightness: Brightness.light,
+                        ),
                       );
                     },
                     child: Container(
@@ -312,7 +326,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
             // 6. Right Action Rail
             Positioned(
               right: 10,
-              bottom: 84,
+              bottom: 84 + MediaQuery.of(context).viewPadding.bottom,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -381,7 +395,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
                   _buildActionButton(
                     icon: widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -392,7 +406,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       widget.onLike();
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
                   _buildActionButton(
                     icon: Icons.mode_comment_rounded,
@@ -403,18 +417,8 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       widget.onComment();
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
-                  _buildActionButton(
-                    icon: Icons.stars_rounded,
-                    label: 'Thanks',
-                    color: const Color(0xFFF59E0B),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      SuperThanksModal.show(context, creatorName: widget.video.creator);
-                    },
-                  ),
-                  const SizedBox(height: 12),
 
                   _buildActionButton(
                     icon: _isSavedLocal ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
@@ -435,7 +439,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
                   _buildActionButton(
                     icon: Icons.reply_rounded,
@@ -446,7 +450,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       widget.onShare();
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
                   GestureDetector(
                     onTap: _openSoundHub,
@@ -468,7 +472,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
             // 7. Bottom Metadata
             Positioned(
               left: 14,
-              bottom: 84,
+              bottom: 84 + MediaQuery.of(context).viewPadding.bottom,
               right: 84,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
