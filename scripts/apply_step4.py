@@ -14,7 +14,7 @@ p.write_text(s)
 
 p=Path('lib/services/engagement_service.dart'); s=p.read_text()
 anchor="  Future<void> syncInteraction({\n"
-insert="  Future<void> syncFollow({\n    required String creatorId,\n    required bool following,\n  }) async {\n    final uid = _auth.currentUser?.uid;\n    if (uid == null || uid.isEmpty || creatorId.trim().isEmpty || uid == creatorId) return;\n    final followingRef = _firestore.collection('users').doc(uid).collection('following').doc(creatorId);\n    final creatorRef = _firestore.collection('users').doc(creatorId);\n    final batch = _firestore.batch();\n    if (following) {\n      batch.set(followingRef, <String, dynamic>{'following': true, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));\n    } else {\n      batch.delete(followingRef);\n    }\n    batch.set(creatorRef, <String, dynamic>{'followersCount': FieldValue.increment(following ? 1 : -1)}, SetOptions(merge: true));\n    try { await batch.commit(); } catch (error) { print('OJAS follow sync failed: $error'); }\n  }\n\n"
+insert="  Future<void> syncFollow({\n    required String creatorId,\n    required bool following,\n  }) async {\n    final uid = _auth.currentUser?.uid;\n    if (uid == null || uid.isEmpty || creatorId.trim().isEmpty || uid == creatorId) {\n      return;\n    }\n    final followingRef = _firestore.collection('users').doc(uid).collection('following').doc(creatorId);\n    final creatorRef = _firestore.collection('users').doc(creatorId);\n    final batch = _firestore.batch();\n    if (following) {\n      batch.set(followingRef, <String, dynamic>{'following': true, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));\n    } else {\n      batch.delete(followingRef);\n    }\n    batch.set(creatorRef, <String, dynamic>{'followersCount': FieldValue.increment(following ? 1 : -1)}, SetOptions(merge: true));\n    try { await batch.commit(); } catch (error) {\n      // ignore: avoid_print\n      print('OJAS follow sync failed: $error');\n    }\n  }\n\n"
 if 'Future<void> syncFollow' not in s: s=s.replace(anchor,insert+anchor,1)
 p.write_text(s)
 
@@ -22,12 +22,40 @@ p=Path('lib/screens/ojs_feed_screen.dart'); s=p.read_text()
 if "../screens/audio_reels_screen.dart" not in s: s=s.replace("import '../services/video_engine_service.dart';\n", "import '../services/video_engine_service.dart';\nimport '../screens/audio_reels_screen.dart';\n")
 s=s.replace("  final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};\n", "  final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};\n  final Set<String> _notInterestedReels = <String>{};\n")
 s=s.replace("      shopItemIds: reel.shopItemIds,\n", "      shopItemIds: reel.shopItemIds,\n      creatorId: reel.creatorId,\n      audioTrackId: reel.audioTrackId,\n",1)
-s=s.replace("  void _toggleFollowCreator(String creator) {\n    HapticFeedback.selectionClick();\n    setState(() {\n      if (_followedCreators.contains(creator)) {\n        _followedCreators.remove(creator);\n      } else {\n        _followedCreators.add(creator);\n      }\n    });\n  }\n", "  void _toggleFollowCreator(String creator) {\n    HapticFeedback.selectionClick();\n    final shouldFollow = !_followedCreators.contains(creator);\n    setState(() { if (shouldFollow) { _followedCreators.add(creator); } else { _followedCreators.remove(creator); } });\n  }\n\n  void _syncFollow(String creatorId, String creator, bool following) {\n    setState(() { if (following) { _followedCreators.add(creator); } else { _followedCreators.remove(creator); } });\n    _engagementService.syncFollow(creatorId: creatorId, following: following);\n  }\n\n  void _markCurrentNotInterested() {\n    if (_forYouReels.isEmpty || _forYouVisibleIndex < 0 || _forYouVisibleIndex >= _forYouReels.length) return;\n    final reel = _forYouReels[_forYouVisibleIndex];\n    setState(() => _notInterestedReels.add(reel.id));\n    if (_forYouController.hasClients && _forYouVisibleIndex < _forYouReels.length - 1) { _forYouController.nextPage(duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }\n  }\n\n  void _showOptionsSheet() {\n    showModalBottomSheet<void>(context: context, backgroundColor: const Color(0xFF13171D), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))), builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [\n      const SizedBox(height: 8),\n      ListTile(leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70), title: const Text('Not Interested', style: TextStyle(color: Colors.white)), subtitle: const Text('Tune your feed locally', style: TextStyle(color: Colors.white54)), onTap: () { Navigator.pop(context); _markCurrentNotInterested(); }),\n      ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.white70), title: const Text('Report', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted for review'))); }),\n      const SizedBox(height: 8),\n    ])));\n  }\n")
-s=s.replace("onPressed: _showTopFeedFilters,", "onPressed: _showOptionsSheet,",1)
-s=s.replace("            onFollow: () => _toggleFollowCreator(video.creator),\n", "            onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n",1)
-s=s.replace("            onShare: () => ShareBottomSheet.show(\n", "            onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n            onShare: () => ShareBottomSheet.show(\n",1)
-s=s.replace("          onFollow: () => _toggleFollowCreator(video.creator),\n", "          onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n",1)
-s=s.replace("          onShare: () => ShareBottomSheet.show(\n", "          onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n          onShare: () => ShareBottomSheet.show(\n",1)
+start=s.find("  void _toggleFollowCreator(String creator) {")
+if start!=-1:
+  end=s.find("  void _syncFollow(", start)
+  s=s[:start]+s[end:]
+# Replace not-interested method with an analyzer-clean implementation.
+start=s.find("  void _markCurrentNotInterested() {")
+if start!=-1:
+  end=s.find("  void _showOptionsSheet()", start)
+  replacement="""  void _markCurrentNotInterested() {\n    if (_forYouReels.isEmpty || _forYouVisibleIndex < 0 || _forYouVisibleIndex >= _forYouReels.length) {\n      return;\n    }\n    final reel = _forYouReels[_forYouVisibleIndex];\n    setState(() => _notInterestedReels.add(reel.id));\n    final marked = _notInterestedReels.contains(reel.id);\n    if (marked && _forYouController.hasClients && _forYouVisibleIndex < _forYouReels.length - 1) {\n      _forYouController.nextPage(duration: const Duration(milliseconds: 180), curve: Curves.easeOut);\n    }\n  }\n\n"""
+  s=s[:start]+replacement+s[end:]
+# Remove legacy filter method since menu is now options.
+start=s.find("  void _showTopFeedFilters() {")
+if start!=-1:
+  end=s.find("  @override\n  Widget build", start)
+  s=s[:start]+s[end:]
+# Clean up the follow/audio/share wiring deterministically.
+for text in [
+"            onFollow: () => _toggleFollowCreator(video.creator),\n",
+"          onFollow: () => _toggleFollowCreator(video.creator),\n",
+"            onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n            onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n",
+"          onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n          onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n",
+]: s=s.replace(text,'')
+# Follow/audio insertions: first and second OjsVideoPage blocks.
+follow="            onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n"
+follow2="          onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n"
+audio="            onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n"
+audio2="          onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n"
+# insert before onShare occurrences using first/rfind
+share="            onShare: () => ShareBottomSheet.show(\n"
+pos=s.find(share)
+if pos!=-1 and follow not in s: s=s[:pos]+follow+audio+s[pos:]
+share2="          onShare: () => ShareBottomSheet.show(\n"
+pos=s.rfind(share2)
+if pos!=-1 and follow2 not in s: s=s[:pos]+follow2+audio2+s[pos:]
 p.write_text(s)
 
 p=Path('lib/widgets/ojs_video_page.dart'); s=p.read_text()
