@@ -25,6 +25,7 @@ class OjsVideoPage extends StatefulWidget {
   final VoidCallback? onSave;
   final VoidCallback? onAudio;
   final VoidCallback? onProfile;
+  final VoidCallback? onCompleted;
 
   const OjsVideoPage({
     super.key,
@@ -42,6 +43,7 @@ class OjsVideoPage extends StatefulWidget {
     this.onSave,
     this.onAudio,
     this.onProfile,
+    this.onCompleted,
   });
 
   @override
@@ -92,6 +94,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
   @override
   void dispose() {
     _flushLocalWatchState();
+    _controller?.removeListener(_handlePlaybackProgress);
     _animController.dispose();
     super.dispose();
   }
@@ -105,6 +108,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     if (widget.isVisible != oldWidget.isVisible) {
       if (widget.isVisible) {
         _watchStartedAt = DateTime.now();
+        _completionQueued = false;
         _loadAndPlay();
       } else {
         _flushLocalWatchState();
@@ -119,13 +123,24 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     _watchStartedAt = null;
   }
 
+  void _handlePlaybackProgress() {
+    final value = _controller?.value;
+    if (value == null || !value.isInitialized || value.duration == Duration.zero) return;
+    if (value.position >= value.duration && !value.isPlaying && !_completionQueued) {
+      _completionQueued = true;
+      widget.onCompleted?.call();
+    }
+  }
+
   Future<void> _loadAndPlay() async {
     final ctrl = await VideoEngineService.instance.getOrCreateController(
       widget.video.videoUrl,
     );
     if (!mounted) return;
+    _controller?.removeListener(_handlePlaybackProgress);
+    _controller = ctrl;
+    _controller?.addListener(_handlePlaybackProgress);
     setState(() {
-      _controller = ctrl;
       _isInit = ctrl.value.isInitialized;
       _isPlaying = true;
     });
@@ -734,17 +749,6 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                     ),
                     const SizedBox(height: 5),
                     _buildInteractiveCaption(widget.video.caption),
-                      maxLines: _isCaptionExpanded ? 8 : 2,
-                      overflow: _isCaptionExpanded
-                          ? TextOverflow.visible
-                          : TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        height: 1.3,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
                     if (widget.video.caption.length > 90)
                       GestureDetector(
                         onTap: () => setState(

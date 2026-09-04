@@ -81,6 +81,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   @override
   void dispose() {
+    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     _horizontalFeedController.dispose();
     _forYouController.dispose();
     _followingController.dispose();
@@ -172,7 +173,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     if (_forYouVisibleIndex == index || !mounted) return;
     if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     setState(() => _forYouVisibleIndex = index);
-    if (index >= 0) _visibleSince = DateTime.now();
+    if (index >= 0 && index < _forYouReels.length) {
+      _seenReelIds.add(_forYouReels[index].id);
+      _visibleSince = DateTime.now();
+    } else {
+      _visibleSince = null;
+    }
   }
 
   bool _handleForYouScrollNotification(ScrollNotification notification) {
@@ -473,7 +479,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                         child: IconButton(
                           tooltip: _isSuperViewActive ? 'Restore UI' : 'More options',
                           onPressed: () {
-                            HapticFeedback.selectionClick();
                             if (_isSuperViewActive) {
                               setState(() => _isSuperViewActive = false);
                               HapticFeedback.lightImpact();
@@ -535,7 +540,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             isFollowing: _followedCreators.contains(video.creator),
             isFollowingFeed: false,
             isLiked: _likedVideos.contains(video.id),
-            isSaved: _savedVideos.contains(video.id),\n            isSuperViewActive: _isSuperViewActive,
+            isSaved: _savedVideos.contains(video.id),
+            isSuperViewActive: _isSuperViewActive,
+            onCompleted: () => _completionPending[video.id] = true,
             onLike: () => _toggleLikeVideo(video.id),
             onComment: () => _openComments(video.id),
             onSave: () => _toggleSaveVideo(video.id),
@@ -638,7 +645,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowing: true,
           isFollowingFeed: true,
           isLiked: _likedVideos.contains(video.id),
-          isSaved: _savedVideos.contains(video.id),\n          isSuperViewActive: _isSuperViewActive,
+          isSaved: _savedVideos.contains(video.id),
+          isSuperViewActive: _isSuperViewActive,
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
           onSave: () => _toggleSaveVideo(video.id),
