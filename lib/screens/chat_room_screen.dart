@@ -55,7 +55,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _otherUserOnline = false;
   bool _didInitialLoad = false;
   OjasMessage? _replyingTo;
-  Timestamp? _paginationCursor;
+  DocumentSnapshot<Map<String, dynamic>>? _paginationCursor;
   Timestamp? _lastDeliveredAt;
   String? _lastError;
 
@@ -105,7 +105,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (_isLoadingOlder || !_hasMoreOlder) return;
     setState(() => _isLoadingOlder = true);
     try {
-      final page = await _paginationService.loadOlderMessages(
+      final page = await _paginationService.loadPage(
         conversationId: widget.conversationId,
         cursor: _paginationCursor,
       );
@@ -225,18 +225,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null) return;
       if (mounted) setState(() => _isUploadingMedia = true);
-      final uploaded = await _mediaMessageService.prepareAndUploadImage(
-        file: picked,
+      final uploaded = await _mediaMessageService.uploadChatImage(
+        sourceFile: picked,
         conversationId: widget.conversationId,
       );
       await _messagingService.sendImageMessage(
         conversationId: widget.conversationId,
         receiverId: widget.otherUser.uid,
-        imageUrl: uploaded.imageUrl,
+        mediaUrl: uploaded.downloadUrl,
         storagePath: uploaded.storagePath,
         width: uploaded.width,
         height: uploaded.height,
-        mediaBytes: uploaded.mediaBytes,
+        mediaBytes: uploaded.compressedBytes,
         caption: null,
         replyTo: _replyingTo,
       );
@@ -285,17 +285,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     child: Text(message.replyToText!, maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
                 ),
-              if (message.isImage && message.imageUrl != null)
+              if (message.isImage && message.mediaUrl != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(imageUrl: message.imageUrl!),
+                  child: CachedNetworkImage(imageUrl: message.mediaUrl!),
                 ),
               if (text.isNotEmpty) Text(text),
               if (isMine)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
                   child: Text(
-                    message.seenAt != null ? 'Seen' : message.deliveredAt != null ? 'Delivered' : 'Sent',
+                    message.status == 'seen'
+                      ? 'Seen'
+                      : message.status == 'delivered'
+                        ? 'Delivered'
+                        : 'Sent',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),

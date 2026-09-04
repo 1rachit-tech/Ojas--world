@@ -166,7 +166,7 @@ class MessagingService extends WidgetsBindingObserver {
   Future<void> sendImageMessage({
     required String conversationId,
     required String receiverId,
-    required String imageUrl,
+    required String mediaUrl,
     required String storagePath,
     required int width,
     required int height,
@@ -176,7 +176,7 @@ class MessagingService extends WidgetsBindingObserver {
   }) async {
     final uid = currentUid;
     if (uid == null) throw const MessagingException('Please sign in again.');
-    if (receiverId.isEmpty || imageUrl.trim().isEmpty) throw const MessagingException('Invalid conversation.');
+    if (receiverId.isEmpty || mediaUrl.trim().isEmpty) throw const MessagingException('Invalid conversation.');
     if (mediaBytes <= 0 || mediaBytes > 10 * 1024 * 1024) throw const MessagingException('Image is too large.');
     final conversation = conversationReference(conversationId);
     final message = messageCollection(conversationId).doc();
@@ -187,11 +187,10 @@ class MessagingService extends WidgetsBindingObserver {
       'senderId': uid,
       'text': cleanCaption,
       'type': 'image',
-      'imageUrl': imageUrl,
-      'storagePath': storagePath,
-      'width': width,
-      'height': height,
-      'mediaBytes': mediaBytes,
+      'mediaUrl': mediaUrl,
+      'mediaStoragePath': storagePath,
+      'mediaWidth': width,
+      'mediaHeight': height,
       'isDeleted': false,
       'reactions': <String, String>{},
       'createdAt': FieldValue.serverTimestamp(),
