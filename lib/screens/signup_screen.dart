@@ -58,10 +58,13 @@ class _SignupScreenState extends State<SignupScreen> {
     });
     try {
       await AuthService.instance.signUpWithEmail(_email.text, _password.text);
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
-        );
+      if (!mounted) return;
+
+      final complete = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(builder: (_) => const ProfileSetupScreen()),
+      );
+      if (complete == true && mounted) {
+        Navigator.of(context).pop(true);
       }
     } on FirebaseAuthException catch (error) {
       setState(() => _error = _messageFor(error));
