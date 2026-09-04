@@ -29,8 +29,8 @@ jobs:
           import re
           p = Path('lib/screens/ojs_feed_screen.dart')
           s = p.read_text(encoding='utf-8')
-          pattern = r'\n  Widget _buildCommentSheet\(\) \{.*?\n  \}\n\nclass _FeedTab'
-          s2, count = re.subn(pattern, '\n\nclass _FeedTab', s, count=1, flags=re.S)
+          pattern = r'\n  Widget _buildCommentSheet\(\) \{.*?\n  \}\n\}\n\nclass _FeedTab'
+          s2, count = re.subn(pattern, '\n}\n\nclass _FeedTab', s, count=1, flags=re.S)
           if count:
               p.write_text(s2, encoding='utf-8')
           PY
