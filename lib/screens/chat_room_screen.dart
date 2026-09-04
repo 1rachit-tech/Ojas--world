@@ -9,7 +9,6 @@ import 'package:image_picker/image_picker.dart';
 import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
-import '../services/chat_video_upload_service.dart';
 import '../services/media_message_service.dart';
 import '../services/message_delivery_service.dart';
 import '../services/message_memory_window.dart';
@@ -38,8 +37,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   final MessagingService _messagingService = MessagingService.instance;
   final MediaMessageService _mediaMessageService = MediaMessageService.instance;
-  final ChatVideoUploadService _chatVideoUploadService =
-      ChatVideoUploadService.instance;
   final MessageDeliveryService _deliveryService = MessageDeliveryService.instance;
   final MessagePaginationService _paginationService = MessagePaginationService.instance;
   final RealtimePresenceService _presenceService = RealtimePresenceService.instance;
@@ -349,50 +346,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  Future<void> _pickAndSendVideo() async {
-    if (_isUploadingMedia || _isSending) return;
-
-    _typingTimer?.cancel();
-    _setTyping(false);
-
-    try {
-      final picked = await _chatVideoUploadService.pickVideo();
-      if (picked == null) return;
-
-      if (mounted) {
-        setState(() {
-          _isUploadingMedia = true;
-          _lastError = null;
-        });
-      }
-
-      final uploaded = await _chatVideoUploadService.prepareAndUpload(
-        sourceFile: picked,
-        conversationId: widget.conversationId,
-      );
-
-      await _chatVideoUploadService.sendVideoMessage(
-        conversationId: widget.conversationId,
-        receiverId: widget.otherUser.uid,
-        media: uploaded,
-        caption: _messageController.text,
-      );
-
-      _messageController.clear();
-      if (mounted) setState(() => _replyingTo = null);
-      HapticFeedback.lightImpact();
-      _markRead();
-    } catch (error) {
-      if (mounted) _showError(_errorMessage(error));
-    } finally {
-      if (mounted) setState(() => _isUploadingMedia = false);
-    }
-  }
-
   String _errorMessage(Object error) {
     if (error is MessagingException) return error.message;
     if (error is MediaMessageException) return error.message;
-    if (error is ChatVideoUploadException) return error.message;
     if (error is FirebaseException) {
       return error.message ?? 'Message action failed.';
     }
@@ -431,28 +387,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
         errorWidget: (_, _, _) => const Center(
           child: Icon(Icons.broken_image_outlined),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoBubble(OjasMessage message) {
-    if (!message.hasMedia) {
-      return const SizedBox.shrink();
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 250,
-        height: 160,
-        color: Colors.black,
-        child: const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: Colors.white,
-            size: 56,
-          ),
         ),
       ),
     );
@@ -612,9 +546,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         },
                         child: message.isImage
                             ? _buildImageBubble(message)
-                            : message.type == 'video'
-                                ? _buildVideoBubble(message)
-                                : null,
+                            : null,
                       );
                     },
                   );
@@ -662,11 +594,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   ),
                   Text(
                     reply.text.isEmpty
-                        ? (reply.isImage
-                            ? 'Photo'
-                            : reply.type == 'video'
-                                ? 'Video'
-                                : 'Message')
+                        ? (reply.isImage ? 'Photo' : 'Message')
                         : reply.text,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -735,16 +663,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 : () => _pickAndSendImage(ImageSource.gallery),
             icon: const Icon(
               Icons.add_photo_alternate_outlined,
-              color: Color(0xFF111827),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Attach video',
-            onPressed: _isSending || _isUploadingMedia
-                ? null
-                : () => unawaited(_pickAndSendVideo()),
-            icon: const Icon(
-              Icons.videocam_outlined,
               color: Color(0xFF111827),
             ),
           ),
