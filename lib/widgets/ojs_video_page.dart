@@ -23,6 +23,7 @@ class OjsVideoPage extends StatefulWidget {
   final VoidCallback onShare;
   final VoidCallback? onSave;
   final VoidCallback? onAudio;
+  final VoidCallback? onProfile;
 
   const OjsVideoPage({
     super.key,
@@ -38,6 +39,7 @@ class OjsVideoPage extends StatefulWidget {
     required this.onShare,
     this.onSave,
     this.onAudio,
+    this.onProfile,
   });
 
   @override
@@ -363,23 +365,30 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                     alignment: Alignment.bottomCenter,
                     clipBehavior: Clip.none,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(1.5),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: CircleAvatar(
-                          radius: 21,
-                          backgroundColor: const Color(0xFF111827),
-                          child: Text(
-                            widget.video.creator.isNotEmpty
-                                ? widget.video.creator[0].toUpperCase()
-                                : 'U',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                      GestureDetector(
+                        onTap: () {
+                          if (widget.onProfile == null) return;
+                          HapticFeedback.selectionClick();
+                          widget.onProfile!();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(1.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: CircleAvatar(
+                            radius: 21,
+                            backgroundColor: const Color(0xFF111827),
+                            child: Text(
+                              widget.video.creator.isNotEmpty
+                                  ? widget.video.creator[0].toUpperCase()
+                                  : 'U',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
                           ),
                         ),

@@ -8,6 +8,7 @@ import '../services/reel_feed_service.dart';
 import '../services/engagement_service.dart';
 import '../services/video_engine_service.dart';
 import '../screens/audio_reels_screen.dart';
+import '../screens/creator_profile_screen.dart';
 import '../widgets/ojs_video_page.dart';
 import '../widgets/reel_comments_bottom_sheet.dart';
 import '../widgets/ojas_scroll_physics.dart';
@@ -494,6 +495,20 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               final next = !_followedCreators.contains(video.creator);
               _syncFollow(video.creatorId, video.creator, next);
             },
+            onProfile: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CreatorProfileScreen(
+                    creatorId: video.creatorId,
+                    username: video.creator,
+                    isFollowing: _followedCreators.contains(video.creator),
+                    onFollowChanged: (following) {
+                      _syncFollow(video.creatorId, video.creator, following);
+                    },
+                  ),
+                ),
+              );
+            },
             onAudio: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => AudioReelsScreen(
@@ -579,6 +594,20 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           onFollow: () {
             final next = !_followedCreators.contains(video.creator);
             _syncFollow(video.creatorId, video.creator, next);
+          },
+          onProfile: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => CreatorProfileScreen(
+                  creatorId: video.creatorId,
+                  username: video.creator,
+                  isFollowing: _followedCreators.contains(video.creator),
+                  onFollowChanged: (following) {
+                    _syncFollow(video.creatorId, video.creator, following);
+                  },
+                ),
+              ),
+            );
           },
           onAudio: () => Navigator.of(context).push(
             MaterialPageRoute<void>(

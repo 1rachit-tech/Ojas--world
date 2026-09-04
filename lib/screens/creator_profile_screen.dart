@@ -17,8 +17,8 @@ class CreatorProfileScreen extends StatefulWidget {
     this.initialFollowing = 0,
     this.initialLikes = 0,
     this.onFollowChanged,
-  })  : creatorId = creatorId ?? '',
-        username = username ?? creatorName ?? 'OJAS Creator';
+  }) : creatorId = creatorId ?? '',
+       username = username ?? creatorName ?? 'OJAS Creator';
 
   final String creatorId;
   final String username;
@@ -100,7 +100,8 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
       if (!mounted) return;
       setState(() {
         _bio = data['bio'] as String? ?? '';
-        _photoUrl = data['photoUrl'] as String? ??
+        _photoUrl =
+            data['photoUrl'] as String? ??
             data['profileImageUrl'] as String? ??
             '';
         _followers = (data['followersCount'] as num?)?.toInt() ?? _followers;
@@ -174,10 +175,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
       _followers = (_followers + (next ? 1 : -1)).clamp(0, 1 << 31);
     });
     widget.onFollowChanged?.call(next);
-    _engagementService.syncFollow(
-      creatorId: widget.creatorId,
-      following: next,
-    );
+    _engagementService.syncFollow(creatorId: widget.creatorId, following: next);
   }
 
   String _compactNumber(int value) {
@@ -214,18 +212,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
               labelColor: Colors.white,
               unselectedLabelColor: Colors.white54,
               tabs: const [
-                Tab(
-                  icon: Icon(Icons.grid_on_rounded, size: 20),
-                  text: 'Reels',
-                ),
+                Tab(icon: Icon(Icons.grid_on_rounded, size: 20), text: 'Reels'),
                 Tab(
                   icon: Icon(Icons.storefront_rounded, size: 20),
                   text: 'Store',
                 ),
-                Tab(
-                  icon: Icon(Icons.lock_rounded, size: 19),
-                  text: 'Premium',
-                ),
+                Tab(icon: Icon(Icons.lock_rounded, size: 19), text: 'Premium'),
               ],
             ),
             Expanded(
@@ -301,10 +293,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
                     _bio.isEmpty ? 'Creator on OJAS ✨' : _bio,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      height: 1.35,
-                    ),
+                    style: const TextStyle(color: Colors.white70, height: 1.35),
                   ),
           ),
           const SizedBox(height: 14),
@@ -403,10 +392,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
       itemCount: _reels.length,
       itemBuilder: (context, index) {
         final reel = _reels[index];
-        return _ReelTile(
-          thumbnailUrl: reel.thumbnailUrl,
-          views: reel.views,
-        );
+        return _ReelTile(thumbnailUrl: reel.thumbnailUrl, views: reel.views);
       },
     );
   }
@@ -535,9 +521,8 @@ class _ReelTile extends StatelessWidget {
             : Image.network(
                 thumbnailUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const ColoredBox(
-                  color: Color(0xFF171B22),
-                ),
+                errorBuilder: (_, __, ___) =>
+                    const ColoredBox(color: Color(0xFF171B22)),
               ),
         Positioned(
           left: 6,
