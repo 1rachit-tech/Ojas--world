@@ -17,6 +17,7 @@ class OjsVideoPage extends StatefulWidget {
   final bool isFollowingFeed;
   final bool isLiked;
   final bool isSaved;
+  final bool isSuperViewActive;
   final VoidCallback onFollow;
   final VoidCallback onLike;
   final VoidCallback onComment;
@@ -33,6 +34,7 @@ class OjsVideoPage extends StatefulWidget {
     required this.isFollowingFeed,
     required this.isLiked,
     this.isSaved = false,
+    this.isSuperViewActive = false,
     required this.onFollow,
     required this.onLike,
     required this.onComment,
@@ -458,7 +460,13 @@ class _OjsVideoPageState extends State<OjsVideoPage>
               Positioned(
                 right: 10,
                 bottom: 84 + MediaQuery.of(context).viewPadding.bottom,
-                child: Column(
+                child: IgnorePointer(
+                  ignoring: widget.isSuperViewActive,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    opacity: widget.isSuperViewActive ? 0.0 : 1.0,
+                    child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Stack(
@@ -617,7 +625,8 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                         ),
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 

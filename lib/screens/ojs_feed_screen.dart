@@ -65,6 +65,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   bool _forYouHasMore = true;
   bool _forYouLoading = false;
   bool _isCommentsOpen = false;
+  bool _isSuperViewActive = false;
 
   @override
   void initState() {
@@ -250,18 +251,20 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(
-                Icons.visibility_off_outlined,
-                color: Colors.white70,
-              ),
-              title: const Text(
-                'Not Interested',
-                style: TextStyle(color: Colors.white),
-              ),
-              subtitle: const Text(
-                'Tune your feed locally',
-                style: TextStyle(color: Colors.white54),
-              ),
+              leading: const Icon(Icons.visibility_rounded, color: Color(0xFFF5B942)),
+              title: const Text('Super View', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Maximize the video while keeping commerce visible', style: TextStyle(color: Colors.white54)),
+              onTap: () {
+                Navigator.pop(context);
+                if (!mounted) return;
+                setState(() => _isSuperViewActive = true);
+                HapticFeedback.selectionClick();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70),
+              title: const Text('Not Interested', style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Tune your feed locally', style: TextStyle(color: Colors.white54)),
               onTap: () {
                 Navigator.pop(context);
                 _markCurrentNotInterested();
@@ -269,10 +272,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.flag_outlined, color: Colors.white70),
-              title: const Text(
-                'Report',
-                style: TextStyle(color: Colors.white),
-              ),
+              title: const Text('Report', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -397,8 +397,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               physics: _isCommentsOpen
                   ? const NeverScrollableScrollPhysics()
                   : const OjasZeroJankScrollPhysics(),
-              onPageChanged: (index) =>
-                  setState(() => _currentSelectedFeed = index),
+              onPageChanged: (index) => setState(() {
+                _currentSelectedFeed = index;
+                _isSuperViewActive = false;
+              }),
               children: [
                 _buildForYouFeed(),
                 _buildFollowingFeed(followingVideos),
@@ -435,9 +437,17 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                       Positioned(
                         right: 0,
                         child: IconButton(
-                          onPressed: _showOptionsSheet,
-                          icon: const Icon(
-                            Icons.more_vert_rounded,
+                          tooltip: _isSuperViewActive ? 'Restore UI' : 'More options',
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            if (_isSuperViewActive) {
+                              setState(() => _isSuperViewActive = false);
+                            } else {
+                              _showOptionsSheet();
+                            }
+                          },
+                          icon: Icon(
+                            _isSuperViewActive ? Icons.visibility_rounded : Icons.more_vert_rounded,
                             color: Colors.white,
                             size: 24,
                           ),
@@ -469,7 +479,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             : const OjasZeroJankScrollPhysics(),
         itemCount: videos.length,
         onPageChanged: (index) {
-          setState(() => _forYouCurrentIndex = index);
+          setState(() {
+            _forYouCurrentIndex = index;
+            _isSuperViewActive = false;
+          });
           if (_forYouReels.isNotEmpty && index >= _forYouReels.length - 2) {
             _fetchMoreForYouReels();
           }
@@ -487,7 +500,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             isFollowing: _followedCreators.contains(video.creator),
             isFollowingFeed: false,
             isLiked: _likedVideos.contains(video.id),
-            isSaved: _savedVideos.contains(video.id),
+            isSaved: _savedVideos.contains(video.id),\n            isSuperViewActive: _isSuperViewActive,
             onLike: () => _toggleLikeVideo(video.id),
             onComment: () => _openComments(video.id),
             onSave: () => _toggleSaveVideo(video.id),
@@ -573,7 +586,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           ? const NeverScrollableScrollPhysics()
           : const OjasZeroJankScrollPhysics(),
       itemCount: followingVideos.length,
-      onPageChanged: (index) => setState(() => _followingCurrentIndex = index),
+      onPageChanged: (index) => setState(() {
+        _followingCurrentIndex = index;
+        _isSuperViewActive = false;
+      }),
       itemBuilder: (context, index) {
         final video = followingVideos[index];
         final isVideoVisible =
@@ -587,7 +603,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowing: true,
           isFollowingFeed: true,
           isLiked: _likedVideos.contains(video.id),
-          isSaved: _savedVideos.contains(video.id),
+          isSaved: _savedVideos.contains(video.id),\n          isSuperViewActive: _isSuperViewActive,
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
           onSave: () => _toggleSaveVideo(video.id),
