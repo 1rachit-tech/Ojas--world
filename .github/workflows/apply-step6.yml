@@ -1,0 +1,35 @@
+name: Apply Module C Step 6
+on:
+  push:
+    branches: ["step6-metadata-gestures"]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: step6-metadata-gestures
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply and analyze
+        run: |
+          python3 scripts/apply_step6.py
+          dart format lib/widgets/ojs_video_page.dart
+          flutter pub get
+          flutter analyze lib/widgets/ojs_video_page.dart
+          git diff --check
+      - name: Commit production patch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/apply_step6.py .github/workflows/apply-step6.yml
+          git add lib/widgets/ojs_video_page.dart
+          git diff --cached --check
+          git commit -m 'feat(retention): add metadata gestures and scrubber controls'
+          git push origin HEAD:step6-metadata-gestures
