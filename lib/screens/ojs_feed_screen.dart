@@ -7,6 +7,7 @@ import '../models/reel_model.dart';
 import '../services/reel_feed_service.dart';
 import '../services/engagement_service.dart';
 import '../services/video_engine_service.dart';
+import '../screens/audio_reels_screen.dart';
 import '../widgets/ojs_video_page.dart';
 import '../widgets/reel_comments_bottom_sheet.dart';
 import '../widgets/ojas_scroll_physics.dart';
@@ -49,6 +50,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   final EngagementService _engagementService = EngagementService();
 
   final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};
+  final Set<String> _notInterestedReels = <String>{};
   final Set<String> _likedVideos = <String>{};
   final Set<String> _savedVideos = <String>{};
   final List<ReelModel> _forYouReels = <ReelModel>[];
@@ -59,7 +61,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   int _forYouCurrentIndex = 0;
   int _forYouVisibleIndex = 0;
   int _followingCurrentIndex = 0;
-  String _activeCategoryFilter = 'All';
   bool _forYouHasMore = true;
   bool _forYouLoading = false;
   bool _isCommentsOpen = false;
@@ -141,6 +142,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       isVerified: false,
       viralScore: reel.algorithmScore,
       shopItemIds: reel.shopItemIds,
+      creatorId: reel.creatorId,
+      audioTrackId: reel.audioTrackId,
     );
   }
 
@@ -205,15 +208,82 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     setState(() => _isCommentsOpen = !_isCommentsOpen);
   }
 
-  void _toggleFollowCreator(String creator) {
-    HapticFeedback.selectionClick();
+  void _syncFollow(String creatorId, String creator, bool following) {
     setState(() {
-      if (_followedCreators.contains(creator)) {
-        _followedCreators.remove(creator);
-      } else {
+      if (following) {
         _followedCreators.add(creator);
+      } else {
+        _followedCreators.remove(creator);
       }
     });
+    _engagementService.syncFollow(creatorId: creatorId, following: following);
+  }
+
+  void _markCurrentNotInterested() {
+    if (_forYouReels.isEmpty ||
+        _forYouVisibleIndex < 0 ||
+        _forYouVisibleIndex >= _forYouReels.length) {
+      return;
+    }
+    final reel = _forYouReels[_forYouVisibleIndex];
+    setState(() => _notInterestedReels.add(reel.id));
+    if (_forYouController.hasClients &&
+        _forYouVisibleIndex < _forYouReels.length - 1) {
+      _forYouController.nextPage(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _showOptionsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF13171D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(
+                Icons.visibility_off_outlined,
+                color: Colors.white70,
+              ),
+              title: const Text(
+                'Not Interested',
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                'Tune your feed locally',
+                style: TextStyle(color: Colors.white54),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _markCurrentNotInterested();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: Colors.white70),
+              title: const Text(
+                'Report',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Report submitted for review')),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   void _toggleLikeVideo(String videoId) {
@@ -301,68 +371,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     );
   }
 
-  void _showTopFeedFilters() {
-    final categories = [
-      'All Feed',
-      '🔥 Trending',
-      '🎬 Cinematic',
-      '🌿 Vindhya Roots',
-      '🎵 High Bass Beats',
-      '🎭 Comedy',
-    ];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF13171D),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Filter Video Feed',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: categories.map((cat) {
-                  final isSelected = _activeCategoryFilter == cat;
-                  return ActionChip(
-                    label: Text(cat),
-                    backgroundColor: isSelected
-                        ? const Color(0xFFF5B942)
-                        : const Color(0xFF222831),
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white,
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.w500,
-                    ),
-                    side: BorderSide.none,
-                    onPressed: () {
-                      setState(() => _activeCategoryFilter = cat);
-                      Navigator.pop(context);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final followingVideos = temporaryOjsVideos
@@ -426,7 +434,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                       Positioned(
                         right: 0,
                         child: IconButton(
-                          onPressed: _showTopFeedFilters,
+                          onPressed: _showOptionsSheet,
                           icon: const Icon(
                             Icons.more_vert_rounded,
                             color: Colors.white,
@@ -479,10 +487,23 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             isFollowingFeed: false,
             isLiked: _likedVideos.contains(video.id),
             isSaved: _savedVideos.contains(video.id),
-            onFollow: () => _toggleFollowCreator(video.creator),
             onLike: () => _toggleLikeVideo(video.id),
             onComment: () => _openComments(video.id),
             onSave: () => _toggleSaveVideo(video.id),
+            onFollow: () {
+              final next = !_followedCreators.contains(video.creator);
+              _syncFollow(video.creatorId, video.creator, next);
+            },
+            onAudio: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => AudioReelsScreen(
+                  audioTrackId: video.audioTrackId.isEmpty
+                      ? video.id
+                      : video.audioTrackId,
+                  creatorName: video.creator,
+                ),
+              ),
+            ),
             onShare: () => ShareBottomSheet.show(
               context,
               videoUrl: video.videoUrl,
@@ -552,10 +573,23 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowingFeed: true,
           isLiked: _likedVideos.contains(video.id),
           isSaved: _savedVideos.contains(video.id),
-          onFollow: () => _toggleFollowCreator(video.creator),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
           onSave: () => _toggleSaveVideo(video.id),
+          onFollow: () {
+            final next = !_followedCreators.contains(video.creator);
+            _syncFollow(video.creatorId, video.creator, next);
+          },
+          onAudio: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => AudioReelsScreen(
+                audioTrackId: video.audioTrackId.isEmpty
+                    ? video.id
+                    : video.audioTrackId,
+                creatorName: video.creator,
+              ),
+            ),
+          ),
           onShare: () => ShareBottomSheet.show(
             context,
             videoUrl: video.videoUrl,

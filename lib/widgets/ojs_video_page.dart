@@ -22,6 +22,7 @@ class OjsVideoPage extends StatefulWidget {
   final VoidCallback onComment;
   final VoidCallback onShare;
   final VoidCallback? onSave;
+  final VoidCallback? onAudio;
 
   const OjsVideoPage({
     super.key,
@@ -36,6 +37,7 @@ class OjsVideoPage extends StatefulWidget {
     required this.onComment,
     required this.onShare,
     this.onSave,
+    this.onAudio,
   });
 
   @override
@@ -382,28 +384,37 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                           ),
                         ),
                       ),
-                      if (!widget.isFollowing)
-                        Positioned(
-                          bottom: -6,
-                          child: GestureDetector(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              widget.onFollow();
-                            },
+                      Positioned(
+                        bottom: -6,
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            widget.onFollow();
+                          },
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            transitionBuilder: (child, animation) =>
+                                ScaleTransition(scale: animation, child: child),
                             child: Container(
+                              key: ValueKey<bool>(widget.isFollowing),
                               padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
+                              decoration: BoxDecoration(
+                                color: widget.isFollowing
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFFEF4444),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(
-                                Icons.add_rounded,
+                              child: Icon(
+                                widget.isFollowing
+                                    ? Icons.check_rounded
+                                    : Icons.add_rounded,
                                 color: Colors.white,
                                 size: 13,
                               ),
                             ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -475,7 +486,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                   const SizedBox(height: 8),
 
                   GestureDetector(
-                    onTap: _openSoundHub,
+                    onTap: widget.onAudio ?? _openSoundHub,
                     child: Container(
                       width: 34,
                       height: 34,

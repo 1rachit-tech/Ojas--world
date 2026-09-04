@@ -15,6 +15,8 @@ class OjsVideo {
     this.isVerified = false,
     this.viralScore = 0.0,
     this.shopItemIds = const [],
+    this.creatorId = '',
+    this.audioTrackId = '',
   }) : title = title ?? caption,
        commentsCount = commentsCount ?? comments;
 
@@ -26,6 +28,8 @@ class OjsVideo {
   final int comments;
   final int shares;
   final int avatarColor;
+  final String creatorId;
+  final String audioTrackId;
 
   // Compatibility & High-Performance Extensions
   final String title;

@@ -18,6 +18,7 @@ class ReelModel {
     required this.shopItemIds,
     required this.algorithmScore,
     required this.createdAt,
+    this.audioTrackId = '',
   });
 
   final String id;
@@ -36,6 +37,7 @@ class ReelModel {
   final List<String> shopItemIds;
   final double algorithmScore;
   final DateTime createdAt;
+  final String audioTrackId;
 
   factory ReelModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
@@ -55,9 +57,12 @@ class ReelModel {
       comments: (data['comments'] as num?)?.toInt() ?? 0,
       saves: (data['saves'] as num?)?.toInt() ?? 0,
       shares: (data['shares'] as num?)?.toInt() ?? 0,
-      shopItemIds: List<String>.from(data['shopItemIds'] as List? ?? const <String>[]),
+      shopItemIds: List<String>.from(
+        data['shopItemIds'] as List? ?? const <String>[],
+      ),
       algorithmScore: (data['algorithmScore'] as num?)?.toDouble() ?? 0.0,
       createdAt: _readDateTime(data['createdAt']),
+      audioTrackId: data['audioTrackId'] as String? ?? '',
     );
   }
 
@@ -68,20 +73,21 @@ class ReelModel {
   }
 
   Map<String, dynamic> toFirestore() => <String, dynamic>{
-        'creatorId': creatorId,
-        'caption': caption,
-        'thumbnailUrl': thumbnailUrl,
-        'hlsUrl': hlsUrl,
-        'mediaHash': mediaHash,
-        'views': views,
-        'watchTimeMs': watchTimeMs,
-        'completions': completions,
-        'likes': likes,
-        'comments': comments,
-        'saves': saves,
-        'shares': shares,
-        'shopItemIds': shopItemIds,
-        'algorithmScore': algorithmScore,
-        'createdAt': Timestamp.fromDate(createdAt),
-      };
+    'creatorId': creatorId,
+    'caption': caption,
+    'thumbnailUrl': thumbnailUrl,
+    'hlsUrl': hlsUrl,
+    'mediaHash': mediaHash,
+    'views': views,
+    'watchTimeMs': watchTimeMs,
+    'completions': completions,
+    'likes': likes,
+    'comments': comments,
+    'saves': saves,
+    'shares': shares,
+    'shopItemIds': shopItemIds,
+    'algorithmScore': algorithmScore,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'audioTrackId': audioTrackId,
+  };
 }

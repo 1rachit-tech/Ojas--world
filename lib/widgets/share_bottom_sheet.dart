@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 class ShareBottomSheet extends StatelessWidget {
   final String videoUrl;
@@ -21,25 +22,39 @@ class ShareBottomSheet extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => ShareBottomSheet(
-        videoUrl: videoUrl,
-        creatorName: creatorName,
-      ),
+      builder: (context) =>
+          ShareBottomSheet(videoUrl: videoUrl, creatorName: creatorName),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> socialShareList = [
-      {'name': 'WhatsApp', 'icon': Icons.chat_rounded, 'color': const Color(0xFF25D366)},
-      {'name': 'Stories', 'icon': Icons.camera_alt_rounded, 'color': const Color(0xFFE1306C)},
-      {'name': 'Direct Message', 'icon': Icons.send_rounded, 'color': const Color(0xFF111827)},
-      {'name': 'SMS', 'icon': Icons.sms_rounded, 'color': const Color(0xFF2563EB)},
+      {
+        'name': 'WhatsApp',
+        'icon': Icons.chat_rounded,
+        'color': const Color(0xFF25D366),
+      },
+      {
+        'name': 'Stories',
+        'icon': Icons.camera_alt_rounded,
+        'color': const Color(0xFFE1306C),
+      },
+      {
+        'name': 'Send in Ojas',
+        'icon': Icons.send_rounded,
+        'color': const Color(0xFF111827),
+      },
+      {
+        'name': 'SMS',
+        'icon': Icons.sms_rounded,
+        'color': const Color(0xFF2563EB),
+      },
     ];
 
     final List<Map<String, dynamic>> toolActions = [
       {'name': 'Copy Link', 'icon': Icons.copy_rounded},
-      {'name': 'Save Video', 'icon': Icons.download_rounded},
+      {'name': 'Save to Device', 'icon': Icons.download_rounded},
       {'name': 'QR Code', 'icon': Icons.qr_code_rounded},
       {'name': 'Not Interested', 'icon': Icons.heart_broken_outlined},
     ];
@@ -168,12 +183,22 @@ class ShareBottomSheet extends StatelessWidget {
         if (label == 'Copy Link') {
           Clipboard.setData(ClipboardData(text: videoUrl));
         }
+        if (label == 'Save to Device') {
+          DefaultCacheManager().downloadFile(videoUrl);
+        }
+        if (label == 'Send in Ojas') {
+          Clipboard.setData(ClipboardData(text: videoUrl));
+        }
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               label == 'Copy Link'
                   ? 'Link copied to clipboard! 📋'
+                  : label == 'Save to Device'
+                  ? 'Saved to local device cache ✅'
+                  : label == 'Send in Ojas'
+                  ? 'Ready to send in Ojas 💬'
                   : '$label executed!',
             ),
             behavior: SnackBarBehavior.floating,
