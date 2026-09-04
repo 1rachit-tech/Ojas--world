@@ -63,7 +63,7 @@ class VideoCompressionService {
       compressedBytes: selectedBytes,
       width: info?.width,
       height: info?.height,
-      durationMs: info?.duration,
+      durationMs: info?.duration?.round(),
     );
   }
 }
