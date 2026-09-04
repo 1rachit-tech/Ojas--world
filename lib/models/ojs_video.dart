@@ -14,7 +14,8 @@ class OjsVideo {
     this.products = const [],
     this.isVerified = false,
     this.viralScore = 0.0,
-  })  : title = title ?? caption,
+    this.shopItemIds = const [],
+  }) : title = title ?? caption,
         commentsCount = commentsCount ?? comments;
 
   final String id;
@@ -33,6 +34,7 @@ class OjsVideo {
   final List<Map<String, dynamic>> products;
   final bool isVerified;
   final double viralScore;
+  final List<String> shopItemIds;
 }
 
 // TEMPORARY: Replace these public demo URLs with Firebase Storage URLs later.
