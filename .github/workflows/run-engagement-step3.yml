@@ -30,9 +30,10 @@ jobs:
           p = Path('lib/screens/ojs_feed_screen.dart')
           s = p.read_text(encoding='utf-8')
           pattern = r'\n  Widget _buildCommentSheet\(\) \{.*?\n  \}\n\}\n\nclass _FeedTab'
-          s2, count = re.subn(pattern, '\n}\n\nclass _FeedTab', s, count=1, flags=re.S)
-          if count:
-              p.write_text(s2, encoding='utf-8')
+          s, _ = re.subn(pattern, '\n}\n\nclass _FeedTab', s, count=1, flags=re.S)
+          s = s.replace("import '../widgets/super_thanks_modal.dart';\n", '')
+          s, _ = re.subn(r'\n  final List<CommentItem> _commentsList = \[.*?\n  \];\n', '\n', s, count=1, flags=re.S)
+          p.write_text(s, encoding='utf-8')
           PY
           dart format lib/models/ojs_video.dart lib/services/engagement_service.dart lib/widgets/reel_comments_bottom_sheet.dart lib/widgets/reel_shop_products_bottom_sheet.dart lib/screens/ojs_feed_screen.dart lib/widgets/ojs_video_page.dart
           flutter pub get
