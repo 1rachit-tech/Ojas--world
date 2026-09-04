@@ -1,0 +1,252 @@
+name: Apply Module C Step 8 Patch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Step 8
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          feed = Path('lib/screens/ojs_feed_screen.dart')
+          video = Path('lib/widgets/ojs_video_page.dart')
+          f = feed.read_text()
+          v = video.read_text()
+
+          if '_seenReelIds' not in f:
+            f = f.replace(
+                "  final Set<String> _savedVideos = <String>{};\n",
+                "  final Set<String> _savedVideos = <String>{};\n  final Set<String> _seenReelIds = <String>{};\n  final Map<String, int> _watchTimeMs = <String, int>{};\n  final Set<String> _completionPending = <String>{};\n  DateTime? _watchStartedAt;\n",
+                1,
+            )
+
+          old_load_start = '  Future<void> _loadInitialForYouReels() async {'
+          start = f.index(old_load_start)
+          end = f.index('\n  OjsVideo _toOjsVideo', start)
+          load_block = '''  Future<void> _loadInitialForYouReels() async {
+    if (_forYouLoading) return;
+    setState(() => _forYouLoading = true);
+    try {
+      final collected = <ReelModel>[];
+      DocumentSnapshot<Map<String, dynamic>>? cursor;
+      var hasMore = true;
+      while (collected.length < 5 && hasMore) {
+        final page = await _reelFeedService.fetchPage(cursor: cursor);
+        cursor = page.cursor;
+        hasMore = page.hasMore;
+        for (final reel in page.reels) {
+          if (!_seenReelIds.contains(reel.id)) collected.add(reel);
+          if (collected.length >= 5) break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _forYouReels
+          ..clear()
+          ..addAll(collected);
+        _forYouCursor = cursor;
+        _forYouHasMore = hasMore;
+        _forYouVisibleIndex = collected.isEmpty
+            ? 0
+            : (_forYouCurrentIndex < collected.length ? _forYouCurrentIndex : 0);
+        _forYouLoading = false;
+      });
+      _markReelSeen(_forYouVisibleIndex);
+      if (_forYouVisibleIndex >= 0 && _forYouVisibleIndex < _forYouReels.length) {
+        _watchStartedAt = DateTime.now();
+      }
+      await _warmForYouReel(_forYouVisibleIndex + 1);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _forYouLoading = false);
+      debugPrint('OJAS For You feed load failed: $error');
+    }
+  }
+
+  Future<void> _fetchMoreForYouReels() async {
+    if (_forYouLoading || !_forYouHasMore || _forYouReels.isEmpty) return;
+    _forYouLoading = true;
+    try {
+      final newReels = <ReelModel>[];
+      var cursor = _forYouCursor;
+      var hasMore = _forYouHasMore;
+      while (newReels.length < 5 && hasMore) {
+        final page = await _reelFeedService.fetchPage(cursor: cursor);
+        cursor = page.cursor;
+        hasMore = page.hasMore;
+        for (final reel in page.reels) {
+          if (!_seenReelIds.contains(reel.id) &&
+              !_forYouReels.any((existing) => existing.id == reel.id)) {
+            newReels.add(reel);
+          }
+          if (newReels.length >= 5) break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _forYouReels.addAll(newReels);
+        _forYouCursor = cursor;
+        _forYouHasMore = hasMore;
+        _forYouLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      _forYouLoading = false;
+      debugPrint('OJAS For You next page failed: $error');
+    }
+  }
+'''
+          f = f[:start] + load_block + f[end:]
+
+          old_dispose = '''  @override
+  void dispose() {
+    _horizontalFeedController.dispose();
+    _forYouController.dispose();
+    _followingController.dispose();
+    super.dispose();
+  }
+'''
+          new_dispose = '''  @override
+  void dispose() {
+    _flushWatchMetrics(_forYouVisibleIndex);
+    _horizontalFeedController.dispose();
+    _forYouController.dispose();
+    _followingController.dispose();
+    super.dispose();
+  }
+'''
+          f = f.replace(old_dispose, new_dispose, 1)
+
+          old_visible = '''  void _setForYouVisibleIndex(int index) {
+    if (_forYouVisibleIndex == index || !mounted) return;
+    setState(() => _forYouVisibleIndex = index);
+  }
+'''
+          new_visible = '''  void _setForYouVisibleIndex(int index) {
+    if (_forYouVisibleIndex == index || !mounted) return;
+    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
+    setState(() => _forYouVisibleIndex = index);
+    if (index >= 0 && index < _forYouReels.length) {
+      _markReelSeen(index);
+      _watchStartedAt = DateTime.now();
+    } else {
+      _watchStartedAt = null;
+    }
+  }
+
+  void _markReelSeen(int index) {
+    if (index < 0 || index >= _forYouReels.length) return;
+    _seenReelIds.add(_forYouReels[index].id);
+  }
+
+  Future<void> _flushWatchMetrics(int index) async {
+    if (index < 0 || index >= _forYouReels.length) return;
+    final reelId = _forYouReels[index].id;
+    final started = _watchStartedAt;
+    _watchStartedAt = null;
+    if (started != null) {
+      _watchTimeMs[reelId] =
+          (_watchTimeMs[reelId] ?? 0) + DateTime.now().difference(started).inMilliseconds;
+    }
+    final watchMs = _watchTimeMs.remove(reelId) ?? 0;
+    final completed = _completionPending.remove(reelId) == true;
+    if (watchMs <= 0 && !completed) return;
+    await _engagementService.syncWatchMetrics(
+      reelId: reelId,
+      watchTimeMs: watchMs,
+      completionDelta: completed ? 1 : 0,
+    );
+  }
+'''
+          if old_visible not in f:
+            raise SystemExit('visible block not found')
+          f = f.replace(old_visible, new_visible, 1)
+
+          # Step 6 already provides light haptic on double-tap. Keep it there; only normalize Super View OFF.
+          f = f.replace(
+              "                            HapticFeedback.selectionClick();\n                            if (_isSuperViewActive) {",
+              "                            HapticFeedback.lightImpact();\n                            if (_isSuperViewActive) {",
+              1,
+          )
+
+          f = f.replace(
+              '            isSuperViewActive: _isSuperViewActive,\n            onLike:',
+              '            isSuperViewActive: _isSuperViewActive,\n            onCompleted: () => _completionPending.add(video.id),\n            onLike:',
+          )
+          if f.count('onCompleted: () => _completionPending.add(video.id)') != 2:
+            raise SystemExit('completion wiring count mismatch')
+
+          # Ensure the already-created interactive caption parser is rendered.
+          if '_buildInteractiveCaption(widget.video.caption)' not in v:
+            old_caption = '''                    Text(
+                      widget.video.caption,
+                      maxLines: _isCaptionExpanded ? 8 : 2,
+                      overflow: _isCaptionExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.3,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),'''
+            v = v.replace(old_caption, '                    _buildInteractiveCaption(widget.video.caption),', 1)
+
+          if 'final VoidCallback? onCompleted;' not in v:
+            v = v.replace('  final VoidCallback? onProfile;\n', '  final VoidCallback? onProfile;\n  final VoidCallback? onCompleted;\n', 1)
+          if '    this.onCompleted,' not in v:
+            v = v.replace('    this.onProfile,\n', '    this.onProfile,\n    this.onCompleted,\n', 1)
+          if '_handlePlaybackProgress()' not in v:
+            v = v.replace(
+                '  void _flushLocalWatchState() {\n    _watchStartedAt = null;\n  }\n',
+                '''  void _flushLocalWatchState() {
+    _watchStartedAt = null;
+  }
+
+  void _handlePlaybackProgress() {
+    final value = _controller?.value;
+    if (value == null || !value.isInitialized || value.duration == Duration.zero) return;
+    final completed = value.position >= value.duration && !value.isPlaying;
+    if (completed && !_completionQueued) {
+      _completionQueued = true;
+      widget.onCompleted?.call();
+    }
+  }
+''', 1)
+          v = v.replace(
+              '    _animController.dispose();\n    super.dispose();',
+              '    _controller?.removeListener(_handlePlaybackProgress);\n    _animController.dispose();\n    super.dispose();',
+              1,
+          )
+          v = v.replace(
+              '      if (widget.isVisible) {\n        _watchStartedAt = DateTime.now();\n        _loadAndPlay();',
+              '      if (widget.isVisible) {\n        _watchStartedAt = DateTime.now();\n        _completionQueued = false;\n        _loadAndPlay();',
+              1,
+          )
+          v = v.replace(
+              '      _controller = ctrl;\n      _isInit = ctrl.value.isInitialized;',
+              '      _controller?.removeListener(_handlePlaybackProgress);\n      _controller = ctrl;\n      _controller?.addListener(_handlePlaybackProgress);\n      _isInit = ctrl.value.isInitialized;',
+              1,
+          )
+
+          feed.write_text(f)
+          video.write_text(v)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/screens/ojs_feed_screen.dart lib/widgets/ojs_video_page.dart
+          git rm .github/workflows/apply-step8.yml .step8-trigger
+          git commit -m 'feat: polish feed engagement and zero-waste watch metrics'
+          git push origin HEAD:main
