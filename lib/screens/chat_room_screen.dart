@@ -379,6 +379,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       child: CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
+        memCacheWidth: 900,
+        maxWidthDiskCache: 1200,
         placeholder: (_, _) => const Center(
           child: SizedBox.square(
             dimension: 24,
