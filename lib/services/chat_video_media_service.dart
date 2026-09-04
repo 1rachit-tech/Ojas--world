@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -74,10 +73,9 @@ class ChatVideoMediaService {
       );
     }
 
-    final localFile = compressed.file;
-    final bytes = await localFile.readAsBytes();
+    final bytes = await compressed.file.readAsBytes();
     final hash = _hashService.normalize(
-      await _hashBytes(localFile, bytes),
+      _hashService.sha256Bytes(Uint8List.fromList(bytes)),
     );
 
     final existingUrl =
@@ -185,24 +183,6 @@ class ChatVideoMediaService {
         'Video upload failed. Please try again.',
       );
     }
-  }
-
-  Future<String> _hashBytes(
-    XFile file,
-    List<int> bytes,
-  ) async {
-    // Keep the hash path streaming on mobile. Web XFiles do not have a
-    // dart:io File path, so the already-loaded picker bytes are used there.
-    try {
-      final ioFile = File(file.path);
-      if (await ioFile.exists()) {
-        return _hashService.sha256File(ioFile);
-      }
-    } catch (_) {
-      // Browser/blob sources fall through to the byte hash below.
-    }
-
-    return _hashService.sha256Bytes(Uint8List.fromList(bytes));
   }
 }
 
