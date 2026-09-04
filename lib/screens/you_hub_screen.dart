@@ -25,6 +25,21 @@ class YouHubScreen extends StatefulWidget {
   State<YouHubScreen> createState() => _YouHubScreenState();
 }
 
+class _YouHubSwipePhysics extends PageScrollPhysics {
+  const _YouHubSwipePhysics({super.parent});
+
+  @override
+  double? get dragStartDistanceMotionThreshold => 4.0;
+
+  @override
+  double get minFlingDistance => 8.0;
+
+  @override
+  _YouHubSwipePhysics applyTo(ScrollPhysics? ancestor) {
+    return _YouHubSwipePhysics(parent: buildParent(ancestor));
+  }
+}
+
 class _YouHubScreenState extends State<YouHubScreen> {
   static const Color _primary = Color(0xFF111827);
 
@@ -508,7 +523,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
                       child: PageView(
                         controller: _pageController,
                         onPageChanged: _onPageChanged,
-                        physics: const PageScrollPhysics(),
+                        physics: const _YouHubSwipePhysics(),
                         children: [
                           const MessagesScreen(showAppBar: false),
                           _ProfilePage(
