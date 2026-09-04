@@ -1,0 +1,128 @@
+name: Apply For You UI cleanup
+
+on:
+  push:
+    branches: ["fix/for-you-ui-rotation"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply surgical UI and rotation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+
+          # 1) OJS video page: remove Super Thanks from the rail, tighten spacing,
+          # restore portrait/system UI after fullscreen, and protect bottom overlays.
+          p = root / 'lib/widgets/ojs_video_page.dart'
+          s = p.read_text(encoding='utf-8')
+
+          old = "import '../widgets/super_thanks_modal.dart';\n"
+          if s.count(old) != 1:
+              raise SystemExit('Unexpected Super Thanks import count in ojs_video_page.dart')
+          s = s.replace(old, '', 1)
+
+          old = '''                    onTap: () {\n                      FullscreenLandscapePlayer.open(\n                        context,\n                        videoUrl: widget.video.videoUrl,\n                        title: widget.video.caption,\n                        creator: widget.video.creator,\n                      );\n                    },'''
+          new = '''                    onTap: () async {\n                      await FullscreenLandscapePlayer.open(\n                        context,\n                        videoUrl: widget.video.videoUrl,\n                        title: widget.video.caption,\n                        creator: widget.video.creator,\n                      );\n                      if (!mounted) return;\n                      await SystemChrome.setPreferredOrientations([\n                        DeviceOrientation.portraitUp,\n                      ]);\n                      await SystemChrome.setEnabledSystemUIMode(\n                        SystemUiMode.edgeToEdge,\n                      );\n                      SystemChrome.setSystemUIOverlayStyle(\n                        const SystemUiOverlayStyle(\n                          statusBarColor: Colors.transparent,\n                          statusBarIconBrightness: Brightness.light,\n                          systemNavigationBarColor: Colors.black,\n                          systemNavigationBarIconBrightness: Brightness.light,\n                        ),\n                      );\n                    },'''
+          if s.count(old) != 1:
+              raise SystemExit('Fullscreen callback was not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '''                  _buildActionButton(\n                    icon: Icons.stars_rounded,\n                    label: 'Thanks',\n                    color: const Color(0xFFF59E0B),\n                    onTap: () {\n                      HapticFeedback.lightImpact();\n                      SuperThanksModal.show(context, creatorName: widget.video.creator);\n                    },\n                  ),\n                  const SizedBox(height: 12),\n'''
+          if s.count(old) != 1:
+              raise SystemExit('Super Thanks rail block was not found exactly once')
+          s = s.replace(old, '', 1)
+
+          count12 = s.count('const SizedBox(height: 12),')
+          if count12 != 6:
+              raise SystemExit(f'Expected exactly 6 rail spacers, found {count12}')
+          s = s.replace('const SizedBox(height: 12),', 'const SizedBox(height: 8),')
+
+          old = '              right: 10,\n              bottom: 84,\n              child: Column('
+          new = '              right: 10,\n              bottom: 84 + MediaQuery.of(context).viewPadding.bottom,\n              child: Column('
+          if s.count(old) != 1:
+              raise SystemExit('Right rail anchor was not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '              left: 14,\n              bottom: 84,\n              right: 84,\n              child: Column('
+          new = '              left: 14,\n              bottom: 84 + MediaQuery.of(context).viewPadding.bottom,\n              right: 84,\n              child: Column('
+          if s.count(old) != 1:
+              raise SystemExit('Metadata anchor was not found exactly once')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          # 2) Comments modal: keep Super Thanks inside the comments surface.
+          p = root / 'lib/screens/ojs_feed_screen.dart'
+          s = p.read_text(encoding='utf-8')
+
+          old = "import '../widgets/ojas_scroll_physics.dart';\n"
+          new = "import '../widgets/ojas_scroll_physics.dart';\nimport '../widgets/super_thanks_modal.dart';\n"
+          if s.count(old) != 1:
+              raise SystemExit('OJS feed import anchor not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '''  Widget _buildCommentSheet() {\n    return Container('''
+          new = '''  Widget _buildCommentSheet() {\n    final activeVideos = _currentSelectedFeed == 0\n        ? temporaryOjsVideos\n        : temporaryOjsVideos\n            .where((video) => _followedCreators.contains(video.creator))\n            .toList();\n    var activeIndex = _currentSelectedFeed == 0\n        ? _forYouCurrentIndex\n        : _followingCurrentIndex;\n    if (activeVideos.isNotEmpty && activeIndex >= activeVideos.length) {\n      activeIndex = activeVideos.length - 1;\n    }\n    final creatorName = activeVideos.isEmpty\n        ? 'OJAS Creator'\n        : activeVideos[activeIndex].creator;\n\n    return Container('''
+          if s.count(old) != 1:
+              raise SystemExit('Comment sheet method anchor not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '''                Text('${_commentsList.length} comments', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),\n                GestureDetector(onTap: _toggleComments, child: const Icon(Icons.close_rounded, color: Colors.white54)),'''
+          new = '''                Text('${_commentsList.length} comments', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),\n                Row(\n                  mainAxisSize: MainAxisSize.min,\n                  children: [\n                    GestureDetector(\n                      onTap: () {\n                        HapticFeedback.lightImpact();\n                        SuperThanksModal.show(\n                          context,\n                          creatorName: creatorName,\n                        );\n                      },\n                      child: const Row(\n                        mainAxisSize: MainAxisSize.min,\n                        children: [\n                          Icon(Icons.stars_rounded, color: Color(0xFFF59E0B), size: 18),\n                          SizedBox(width: 4),\n                          Text(\n                            'Super Thanks',\n                            style: TextStyle(\n                              color: Color(0xFFF59E0B),\n                              fontWeight: FontWeight.w700,\n                              fontSize: 12,\n                            ),\n                          ),\n                        ],\n                      ),\n                    ),\n                    const SizedBox(width: 14),\n                    GestureDetector(\n                      onTap: _toggleComments,\n                      child: const Icon(\n                        Icons.close_rounded,\n                        color: Colors.white54,\n                      ),\n                    ),\n                  ],\n                ),'''
+          if s.count(old) != 1:
+              raise SystemExit('Comment header anchor not found exactly once')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          # 3) Fullscreen player: make open awaitable and harden portrait/system-UI restore.
+          p = root / 'lib/screens/fullscreen_landscape_player.dart'
+          s = p.read_text(encoding='utf-8')
+
+          old = '  static void open(\n'
+          new = '  static Future<void> open(\n'
+          if s.count(old) != 1:
+              raise SystemExit('Fullscreen open signature not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '''    Navigator.push(\n      context,\n      MaterialPageRoute(\n        builder: (_) => FullscreenLandscapePlayer(\n          videoUrl: videoUrl,\n          title: title,\n          creator: creator,\n        ),\n      ),\n    );'''
+          new = '''    return Navigator.push<void>(\n      context,\n      MaterialPageRoute(\n        builder: (_) => FullscreenLandscapePlayer(\n          videoUrl: videoUrl,\n          title: title,\n          creator: creator,\n        ),\n      ),\n    );'''
+          if s.count(old) != 1:
+              raise SystemExit('Fullscreen navigation block not found exactly once')
+          s = s.replace(old, new, 1)
+
+          old = '''  @override\n  void dispose() {\n    // 🚀 स्क्रीन को वापस पोर्ट्रेट (सीधा) मोड में सेट करें\n    SystemChrome.setPreferredOrientations([\n      DeviceOrientation.portraitUp,\n    ]);\n    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);\n    super.dispose();\n  }'''
+          new = '''  Future<void> _restorePortraitSystemUi() async {\n    await SystemChrome.setPreferredOrientations([\n      DeviceOrientation.portraitUp,\n    ]);\n    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);\n    SystemChrome.setSystemUIOverlayStyle(\n      const SystemUiOverlayStyle(\n        statusBarColor: Colors.transparent,\n        statusBarIconBrightness: Brightness.light,\n        systemNavigationBarColor: Colors.black,\n        systemNavigationBarIconBrightness: Brightness.light,\n      ),\n    );\n  }\n\n  @override\n  void dispose() {\n    _restorePortraitSystemUi();\n    super.dispose();\n  }'''
+          if s.count(old) != 1:
+              raise SystemExit('Fullscreen dispose block not found exactly once')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-for-you-ui-cleanup.yml
+          git add lib/widgets/ojs_video_page.dart lib/screens/ojs_feed_screen.dart lib/screens/fullscreen_landscape_player.dart
+          git diff --cached --check
+          git commit -m 'fix(for-you): clean action rail and restore portrait UI'
+          git push origin HEAD:${{ github.ref_name }}
