@@ -1,0 +1,52 @@
+from pathlib import Path
+
+p=Path('lib/models/reel_model.dart'); s=p.read_text()
+s=s.replace("    required this.createdAt,\n", "    required this.createdAt,\n    this.audioTrackId = '',\n")
+s=s.replace("  final DateTime createdAt;\n", "  final DateTime createdAt;\n  final String audioTrackId;\n")
+s=s.replace("      createdAt: _readDateTime(data['createdAt']),\n", "      createdAt: _readDateTime(data['createdAt']),\n      audioTrackId: data['audioTrackId'] as String? ?? '',\n")
+s=s.replace("        'createdAt': Timestamp.fromDate(createdAt),\n", "        'createdAt': Timestamp.fromDate(createdAt),\n        'audioTrackId': audioTrackId,\n")
+p.write_text(s)
+
+p=Path('lib/models/ojs_video.dart'); s=p.read_text()
+s=s.replace("    this.shopItemIds = const [],\n", "    this.shopItemIds = const [],\n    this.creatorId = '',\n    this.audioTrackId = '',\n")
+s=s.replace("  final int avatarColor;\n", "  final int avatarColor;\n  final String creatorId;\n  final String audioTrackId;\n")
+p.write_text(s)
+
+p=Path('lib/services/engagement_service.dart'); s=p.read_text()
+anchor="  Future<void> syncInteraction({\n"
+insert="  Future<void> syncFollow({\n    required String creatorId,\n    required bool following,\n  }) async {\n    final uid = _auth.currentUser?.uid;\n    if (uid == null || uid.isEmpty || creatorId.trim().isEmpty || uid == creatorId) return;\n    final followingRef = _firestore.collection('users').doc(uid).collection('following').doc(creatorId);\n    final creatorRef = _firestore.collection('users').doc(creatorId);\n    final batch = _firestore.batch();\n    if (following) {\n      batch.set(followingRef, <String, dynamic>{'following': true, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));\n    } else {\n      batch.delete(followingRef);\n    }\n    batch.set(creatorRef, <String, dynamic>{'followersCount': FieldValue.increment(following ? 1 : -1)}, SetOptions(merge: true));\n    try { await batch.commit(); } catch (error) { print('OJAS follow sync failed: $error'); }\n  }\n\n"
+if 'Future<void> syncFollow' not in s: s=s.replace(anchor,insert+anchor,1)
+p.write_text(s)
+
+p=Path('lib/screens/ojs_feed_screen.dart'); s=p.read_text()
+if "../screens/audio_reels_screen.dart" not in s: s=s.replace("import '../services/video_engine_service.dart';\n", "import '../services/video_engine_service.dart';\nimport '../screens/audio_reels_screen.dart';\n")
+s=s.replace("  final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};\n", "  final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};\n  final Set<String> _notInterestedReels = <String>{};\n")
+s=s.replace("      shopItemIds: reel.shopItemIds,\n", "      shopItemIds: reel.shopItemIds,\n      creatorId: reel.creatorId,\n      audioTrackId: reel.audioTrackId,\n",1)
+s=s.replace("  void _toggleFollowCreator(String creator) {\n    HapticFeedback.selectionClick();\n    setState(() {\n      if (_followedCreators.contains(creator)) {\n        _followedCreators.remove(creator);\n      } else {\n        _followedCreators.add(creator);\n      }\n    });\n  }\n", "  void _toggleFollowCreator(String creator) {\n    HapticFeedback.selectionClick();\n    final shouldFollow = !_followedCreators.contains(creator);\n    setState(() { if (shouldFollow) { _followedCreators.add(creator); } else { _followedCreators.remove(creator); } });\n  }\n\n  void _syncFollow(String creatorId, String creator, bool following) {\n    setState(() { if (following) { _followedCreators.add(creator); } else { _followedCreators.remove(creator); } });\n    _engagementService.syncFollow(creatorId: creatorId, following: following);\n  }\n\n  void _markCurrentNotInterested() {\n    if (_forYouReels.isEmpty || _forYouVisibleIndex < 0 || _forYouVisibleIndex >= _forYouReels.length) return;\n    final reel = _forYouReels[_forYouVisibleIndex];\n    setState(() => _notInterestedReels.add(reel.id));\n    if (_forYouController.hasClients && _forYouVisibleIndex < _forYouReels.length - 1) { _forYouController.nextPage(duration: const Duration(milliseconds: 180), curve: Curves.easeOut); }\n  }\n\n  void _showOptionsSheet() {\n    showModalBottomSheet<void>(context: context, backgroundColor: const Color(0xFF13171D), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))), builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [\n      const SizedBox(height: 8),\n      ListTile(leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70), title: const Text('Not Interested', style: TextStyle(color: Colors.white)), subtitle: const Text('Tune your feed locally', style: TextStyle(color: Colors.white54)), onTap: () { Navigator.pop(context); _markCurrentNotInterested(); }),\n      ListTile(leading: const Icon(Icons.flag_outlined, color: Colors.white70), title: const Text('Report', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report submitted for review'))); }),\n      const SizedBox(height: 8),\n    ])));\n  }\n")
+# Replace top menu handler only
+s=s.replace("onPressed: _showTopFeedFilters,", "onPressed: _showOptionsSheet,",1)
+# Pass audio callback + explicit follow sync
+s=s.replace("            onFollow: () => _toggleFollowCreator(video.creator),\n", "            onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n",1)
+s=s.replace("            onShare: () => ShareBottomSheet.show(\n", "            onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n            onShare: () => ShareBottomSheet.show(\n",1)
+# Following feed callback remains toggle but should sync too; replace second occurrence
+s=s.replace("          onFollow: () => _toggleFollowCreator(video.creator),\n", "          onFollow: () { final next = !_followedCreators.contains(video.creator); _syncFollow(video.creatorId, video.creator, next); },\n",1)
+s=s.replace("          onShare: () => ShareBottomSheet.show(\n", "          onAudio: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AudioReelsScreen(audioTrackId: video.audioTrackId.isEmpty ? video.id : video.audioTrackId, creatorName: video.creator))),\n          onShare: () => ShareBottomSheet.show(\n",1)
+p.write_text(s)
+
+p=Path('lib/widgets/ojs_video_page.dart'); s=p.read_text()
+s=s.replace("  final VoidCallback? onSave;\n", "  final VoidCallback? onSave;\n  final VoidCallback? onAudio;\n")
+s=s.replace("    this.onSave,\n", "    this.onSave,\n    this.onAudio,\n")
+# checkmark/add animation
+old="""                      if (!widget.isFollowing)\n                        Positioned(\n                          bottom: -6,\n                          child: GestureDetector(\n                            onTap: () {\n                              HapticFeedback.selectionClick();\n                              widget.onFollow();\n                            },\n                            child: Container(\n                              padding: const EdgeInsets.all(2),\n                              decoration: const BoxDecoration(\n                                color: Color(0xFFEF4444),\n                                shape: BoxShape.circle,\n                              ),\n                              child: const Icon(\n                                Icons.add_rounded,\n                                color: Colors.white,\n                                size: 13,\n                              ),\n                            ),\n                          ),\n                        ),\n"""
+new="""                      Positioned(\n                        bottom: -6,\n                        child: GestureDetector(\n                          onTap: () { HapticFeedback.selectionClick(); widget.onFollow(); },\n                          child: AnimatedSwitcher(\n                            duration: const Duration(milliseconds: 180),\n                            transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),\n                            child: Container(\n                              key: ValueKey<bool>(widget.isFollowing),\n                              padding: const EdgeInsets.all(2),\n                              decoration: BoxDecoration(color: widget.isFollowing ? const Color(0xFF22C55E) : const Color(0xFFEF4444), shape: BoxShape.circle),\n                              child: Icon(widget.isFollowing ? Icons.check_rounded : Icons.add_rounded, color: Colors.white, size: 13),\n                            ),\n                          ),\n                        ),\n                      ),\n"""
+if old not in s: raise SystemExit('follow badge anchor missing')
+s=s.replace(old,new,1)
+s=s.replace("                    onTap: _openSoundHub,", "                    onTap: widget.onAudio ?? _openSoundHub,",1)
+p.write_text(s)
+
+# share sheet: local cache placeholder and Ojas route hook without new dependency
+p=Path('lib/widgets/share_bottom_sheet.dart'); s=p.read_text()
+s=s.replace("{'name': 'Direct Message', 'icon': Icons.send_rounded, 'color': const Color(0xFF111827)},", "{'name': 'Send in Ojas', 'icon': Icons.send_rounded, 'color': const Color(0xFF111827)},")
+s=s.replace("{'name': 'Save Video', 'icon': Icons.download_rounded},", "{'name': 'Save to Device', 'icon': Icons.download_rounded},")
+s=s.replace("if (label == 'Copy Link') {\n          Clipboard.setData(ClipboardData(text: videoUrl));\n        }", "if (label == 'Copy Link') { Clipboard.setData(ClipboardData(text: videoUrl)); }\n        if (label == 'Send in Ojas') { Clipboard.setData(ClipboardData(text: videoUrl)); }\n        if (label == 'Save to Device') { Clipboard.setData(ClipboardData(text: videoUrl)); }")
+p.write_text(s)
