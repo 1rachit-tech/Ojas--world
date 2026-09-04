@@ -64,7 +64,7 @@ class MessagingService extends WidgetsBindingObserver {
   Stream<List<OjasMessage>> watchMessages(String conversationId) {
     return messageCollection(conversationId)
         .orderBy('createdAt', descending: true)
-        .limit(40)
+        .limit(20)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(OjasMessage.fromFirestore).toList());
   }
@@ -147,7 +147,7 @@ class MessagingService extends WidgetsBindingObserver {
       messageData.addAll({
         'replyToMessageId': replyTo.id,
         'replyToSenderId': replyTo.senderId,
-        'replyToText': replyTo.isDeleted ? 'This message was deleted.' : replyTo.isImage ? 'Photo' : _safeReplyPreview(replyTo.text),
+        'replyToText': replyTo.isDeleted ? 'This message was deleted.' : replyTo.isImage ? 'Photo' : replyTo.type == 'video' ? 'Video' : _safeReplyPreview(replyTo.text),
         'replyToType': replyTo.type,
       });
     }
