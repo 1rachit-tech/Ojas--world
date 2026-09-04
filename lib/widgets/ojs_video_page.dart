@@ -17,7 +17,6 @@ class OjsVideoPage extends StatefulWidget {
   final bool isFollowingFeed;
   final bool isLiked;
   final bool isSaved;
-  final bool isSuperViewActive;
   final VoidCallback onFollow;
   final VoidCallback onLike;
   final VoidCallback onComment;
@@ -25,7 +24,6 @@ class OjsVideoPage extends StatefulWidget {
   final VoidCallback? onSave;
   final VoidCallback? onAudio;
   final VoidCallback? onProfile;
-  final VoidCallback? onCompleted;
 
   const OjsVideoPage({
     super.key,
@@ -35,7 +33,6 @@ class OjsVideoPage extends StatefulWidget {
     required this.isFollowingFeed,
     required this.isLiked,
     this.isSaved = false,
-    this.isSuperViewActive = false,
     required this.onFollow,
     required this.onLike,
     required this.onComment,
@@ -43,7 +40,6 @@ class OjsVideoPage extends StatefulWidget {
     this.onSave,
     this.onAudio,
     this.onProfile,
-    this.onCompleted,
   });
 
   @override
@@ -70,8 +66,6 @@ class _OjsVideoPageState extends State<OjsVideoPage>
   bool _isSpeedBoosted = false;
   bool _clearDisplay = false;
   bool _isCaptionExpanded = false;
-  DateTime? _watchStartedAt;
-  bool _completionQueued = false;
 
   @override
   void initState() {
@@ -86,15 +80,12 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     );
 
     if (widget.isVisible) {
-      _watchStartedAt = DateTime.now();
       _loadAndPlay();
     }
   }
 
   @override
   void dispose() {
-    _flushLocalWatchState();
-    _controller?.removeListener(_handlePlaybackProgress);
     _animController.dispose();
     super.dispose();
   }
@@ -107,28 +98,12 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     }
     if (widget.isVisible != oldWidget.isVisible) {
       if (widget.isVisible) {
-        _watchStartedAt = DateTime.now();
-        _completionQueued = false;
         _loadAndPlay();
       } else {
-        _flushLocalWatchState();
         _controller?.pause();
         _isPlaying = false;
         _resetSpeed();
       }
-    }
-  }
-
-  void _flushLocalWatchState() {
-    _watchStartedAt = null;
-  }
-
-  void _handlePlaybackProgress() {
-    final value = _controller?.value;
-    if (value == null || !value.isInitialized || value.duration == Duration.zero) return;
-    if (value.position >= value.duration && !value.isPlaying && !_completionQueued) {
-      _completionQueued = true;
-      widget.onCompleted?.call();
     }
   }
 
@@ -137,10 +112,8 @@ class _OjsVideoPageState extends State<OjsVideoPage>
       widget.video.videoUrl,
     );
     if (!mounted) return;
-    _controller?.removeListener(_handlePlaybackProgress);
-    _controller = ctrl;
-    _controller?.addListener(_handlePlaybackProgress);
     setState(() {
+      _controller = ctrl;
       _isInit = ctrl.value.isInitialized;
       _isPlaying = true;
     });
@@ -165,7 +138,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
   }
 
   void _handleDoubleTap() {
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     widget.onLike();
     setState(() => _showHeartAnim = true);
     _animController.forward(from: 0.0).then((_) {
@@ -253,20 +226,6 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     } else if (selected == 'clear_off') {
       setState(() => _clearDisplay = false);
     }
-  }
-
-  Widget _buildInteractiveCaption(String caption) {
-    final spans = <InlineSpan>[];
-    final regex = RegExp(r'([#@][A-Za-z0-9_]+)');
-    int cursor = 0;
-    for (final match in regex.allMatches(caption)) {
-      if (match.start > cursor) spans.add(TextSpan(text: caption.substring(cursor, match.start)));
-      final token = match.group(0)!;
-      spans.add(WidgetSpan(child: GestureDetector(onTap: () => debugPrint('OJAS caption route: $token'), child: Text(token, style: const TextStyle(color: Color(0xFF7DD3FC), fontWeight: FontWeight.w700)))));
-      cursor = match.end;
-    }
-    if (cursor < caption.length) spans.add(TextSpan(text: caption.substring(cursor)));
-    return RichText(maxLines: _isCaptionExpanded ? 8 : 2, overflow: _isCaptionExpanded ? TextOverflow.visible : TextOverflow.ellipsis, text: TextSpan(style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3, fontWeight: FontWeight.w400), children: spans));
   }
 
   Widget _speedChip(BuildContext context, String label, double speed) {
@@ -499,13 +458,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
               Positioned(
                 right: 10,
                 bottom: 84 + MediaQuery.of(context).viewPadding.bottom,
-                child: IgnorePointer(
-                  ignoring: widget.isSuperViewActive,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOut,
-                    opacity: widget.isSuperViewActive ? 0.0 : 1.0,
-                    child: Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Stack(
@@ -664,8 +617,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                         ),
                       ),
                     ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
 
@@ -748,7 +700,19 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                       ],
                     ),
                     const SizedBox(height: 5),
-                    _buildInteractiveCaption(widget.video.caption),
+                    Text(
+                      widget.video.caption,
+                      maxLines: _isCaptionExpanded ? 8 : 2,
+                      overflow: _isCaptionExpanded
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.3,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
                     if (widget.video.caption.length > 90)
                       GestureDetector(
                         onTap: () => setState(

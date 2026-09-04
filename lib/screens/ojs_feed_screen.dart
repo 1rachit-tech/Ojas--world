@@ -54,12 +54,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   final Set<String> _notInterestedReels = <String>{};
   final Set<String> _likedVideos = <String>{};
   final Set<String> _savedVideos = <String>{};
-  final Set<String> _seenReelIds = <String>{};
   final List<ReelModel> _forYouReels = <ReelModel>[];
   final Map<String, int> _likeDeltas = <String, int>{};
-  final Map<String, int> _watchTimeMs = <String, int>{};
-  final Map<String, bool> _completionPending = <String, bool>{};
-  DateTime? _visibleSince;
 
   DocumentSnapshot<Map<String, dynamic>>? _forYouCursor;
   int _currentSelectedFeed = 0;
@@ -69,7 +65,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   bool _forYouHasMore = true;
   bool _forYouLoading = false;
   bool _isCommentsOpen = false;
-  bool _isSuperViewActive = false;
 
   @override
   void initState() {
@@ -81,11 +76,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   @override
   void dispose() {
-    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     _horizontalFeedController.dispose();
     _forYouController.dispose();
     _followingController.dispose();
-    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     super.dispose();
   }
 
@@ -98,7 +91,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       setState(() {
         _forYouReels
           ..clear()
-          ..addAll(page.reels.where((reel) => !_seenReelIds.contains(reel.id)));
+          ..addAll(page.reels);
         _forYouCursor = page.cursor;
         _forYouHasMore = page.hasMore;
         _forYouVisibleIndex = page.reels.isEmpty
@@ -108,7 +101,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   : 0);
         _forYouLoading = false;
       });
-      _markReelSeen(_forYouVisibleIndex);
       await _warmForYouReel(_forYouVisibleIndex + 1);
     } catch (error) {
       if (!mounted) return;
@@ -124,7 +116,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       final page = await _reelFeedService.fetchPage(cursor: _forYouCursor);
       if (!mounted) return;
       setState(() {
-        _forYouReels.addAll(page.reels.where((reel) => !_seenReelIds.contains(reel.id)));
+        _forYouReels.addAll(page.reels);
         _forYouCursor = page.cursor;
         _forYouHasMore = page.hasMore;
         _forYouLoading = false;
@@ -171,14 +163,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   void _setForYouVisibleIndex(int index) {
     if (_forYouVisibleIndex == index || !mounted) return;
-    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     setState(() => _forYouVisibleIndex = index);
-    if (index >= 0 && index < _forYouReels.length) {
-      _seenReelIds.add(_forYouReels[index].id);
-      _visibleSince = DateTime.now();
-    } else {
-      _visibleSince = null;
-    }
   }
 
   bool _handleForYouScrollNotification(ScrollNotification notification) {
@@ -217,32 +202,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       }
     }
     return false;
-  }
-
-  void _markReelSeen(int index) {
-    if (index >= 0 && index < _forYouReels.length) {
-      _seenReelIds.add(_forYouReels[index].id);
-    }
-  }
-
-  Future<void> _flushWatchMetrics(int index) async {
-    if (index < 0 || index >= _forYouReels.length) return;
-    final reel = _forYouReels[index];
-    final started = _visibleSince;
-    if (started != null) {
-      _watchTimeMs[reel.id] = (_watchTimeMs[reel.id] ?? 0) +
-          DateTime.now().difference(started).inMilliseconds;
-      _visibleSince = null;
-    }
-    final watchMs = _watchTimeMs.remove(reel.id) ?? 0;
-    final completed = _completionPending.remove(reel.id) ?? false;
-    if (watchMs > 0 || completed) {
-      await _engagementService.syncWatchMetrics(
-        reelId: reel.id,
-        watchTimeMs: watchMs,
-        completionDelta: completed ? 1 : 0,
-      );
-    }
   }
 
   void _toggleComments() {
@@ -291,20 +250,18 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.visibility_rounded, color: Color(0xFFF5B942)),
-              title: const Text('Super View', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-              subtitle: const Text('Maximize the video while keeping commerce visible', style: TextStyle(color: Colors.white54)),
-              onTap: () {
-                Navigator.pop(context);
-                if (!mounted) return;
-                setState(() => _isSuperViewActive = true);
-                HapticFeedback.lightImpact();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.visibility_off_outlined, color: Colors.white70),
-              title: const Text('Not Interested', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Tune your feed locally', style: TextStyle(color: Colors.white54)),
+              leading: const Icon(
+                Icons.visibility_off_outlined,
+                color: Colors.white70,
+              ),
+              title: const Text(
+                'Not Interested',
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                'Tune your feed locally',
+                style: TextStyle(color: Colors.white54),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _markCurrentNotInterested();
@@ -312,7 +269,10 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.flag_outlined, color: Colors.white70),
-              title: const Text('Report', style: TextStyle(color: Colors.white)),
+              title: const Text(
+                'Report',
+                style: TextStyle(color: Colors.white),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -328,7 +288,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   void _toggleLikeVideo(String videoId) {
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     final shouldLike = !_likedVideos.contains(videoId);
     setState(() {
       if (shouldLike) {
@@ -437,10 +397,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               physics: _isCommentsOpen
                   ? const NeverScrollableScrollPhysics()
                   : const OjasZeroJankScrollPhysics(),
-              onPageChanged: (index) => setState(() {
-                _currentSelectedFeed = index;
-                _isSuperViewActive = false;
-              }),
+              onPageChanged: (index) =>
+                  setState(() => _currentSelectedFeed = index),
               children: [
                 _buildForYouFeed(),
                 _buildFollowingFeed(followingVideos),
@@ -477,17 +435,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                       Positioned(
                         right: 0,
                         child: IconButton(
-                          tooltip: _isSuperViewActive ? 'Restore UI' : 'More options',
-                          onPressed: () {
-                            if (_isSuperViewActive) {
-                              setState(() => _isSuperViewActive = false);
-                              HapticFeedback.lightImpact();
-                            } else {
-                              _showOptionsSheet();
-                            }
-                          },
-                          icon: Icon(
-                            _isSuperViewActive ? Icons.visibility_rounded : Icons.more_vert_rounded,
+                          onPressed: _showOptionsSheet,
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
                             color: Colors.white,
                             size: 24,
                           ),
@@ -519,10 +469,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             : const OjasZeroJankScrollPhysics(),
         itemCount: videos.length,
         onPageChanged: (index) {
-          setState(() {
-            _forYouCurrentIndex = index;
-            _isSuperViewActive = false;
-          });
+          setState(() => _forYouCurrentIndex = index);
           if (_forYouReels.isNotEmpty && index >= _forYouReels.length - 2) {
             _fetchMoreForYouReels();
           }
@@ -540,9 +487,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             isFollowing: _followedCreators.contains(video.creator),
             isFollowingFeed: false,
             isLiked: _likedVideos.contains(video.id),
-            isSaved: _savedVideos.contains(video.id),\n            isSuperViewActive: _isSuperViewActive,
-            isSuperViewActive: _isSuperViewActive,
-            onCompleted: () => _completionPending[video.id] = true,
+            isSaved: _savedVideos.contains(video.id),
             onLike: () => _toggleLikeVideo(video.id),
             onComment: () => _openComments(video.id),
             onSave: () => _toggleSaveVideo(video.id),
@@ -628,10 +573,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           ? const NeverScrollableScrollPhysics()
           : const OjasZeroJankScrollPhysics(),
       itemCount: followingVideos.length,
-      onPageChanged: (index) => setState(() {
-        _followingCurrentIndex = index;
-        _isSuperViewActive = false;
-      }),
+      onPageChanged: (index) => setState(() => _followingCurrentIndex = index),
       itemBuilder: (context, index) {
         final video = followingVideos[index];
         final isVideoVisible =
@@ -645,8 +587,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isFollowing: true,
           isFollowingFeed: true,
           isLiked: _likedVideos.contains(video.id),
-          isSaved: _savedVideos.contains(video.id),\n          isSuperViewActive: _isSuperViewActive,
-          isSuperViewActive: _isSuperViewActive,
+          isSaved: _savedVideos.contains(video.id),
           onLike: () => _toggleLikeVideo(video.id),
           onComment: _toggleComments,
           onSave: () => _toggleSaveVideo(video.id),

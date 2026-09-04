@@ -20,7 +20,7 @@ class FullscreenLandscapePlayer extends StatefulWidget {
     required String videoUrl,
     required String title,
     required String creator,
-  }) {
+  }) async {
     HapticFeedback.mediumImpact();
     await Navigator.push<void>(
       context,
@@ -46,7 +46,6 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
   @override
   void initState() {
     super.initState();
-    // 🚀 स्क्रीन को लैंडस्केप (हॉरिजॉन्टल) मोड में लॉक करें
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -102,7 +101,6 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Video Surface (Cinema Aspect Ratio)
             if (_isInit && _controller != null)
               Center(
                 child: AspectRatio(
@@ -117,8 +115,6 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
                   color: Colors.white30,
                 ),
               ),
-
-            // 2. Minimalist White Top Bar Control Overlay
             if (_showControls)
               Positioned(
                 top: 16,
@@ -128,7 +124,7 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white, // 🚀 Minimalist White UI Panel
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
@@ -198,8 +194,6 @@ class _FullscreenLandscapePlayerState extends State<FullscreenLandscapePlayer> {
                   ),
                 ),
               ),
-
-            // 3. Minimalist Timeline Scrubber (Bottom White Rail)
             if (_showControls && _isInit && _controller != null)
               Positioned(
                 left: 30,
