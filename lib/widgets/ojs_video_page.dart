@@ -68,6 +68,8 @@ class _OjsVideoPageState extends State<OjsVideoPage>
   bool _isSpeedBoosted = false;
   bool _clearDisplay = false;
   bool _isCaptionExpanded = false;
+  DateTime? _watchStartedAt;
+  bool _completionQueued = false;
 
   @override
   void initState() {
@@ -82,12 +84,14 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     );
 
     if (widget.isVisible) {
+      _watchStartedAt = DateTime.now();
       _loadAndPlay();
     }
   }
 
   @override
   void dispose() {
+    _flushLocalWatchState();
     _animController.dispose();
     super.dispose();
   }
@@ -100,13 +104,19 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     }
     if (widget.isVisible != oldWidget.isVisible) {
       if (widget.isVisible) {
+        _watchStartedAt = DateTime.now();
         _loadAndPlay();
       } else {
+        _flushLocalWatchState();
         _controller?.pause();
         _isPlaying = false;
         _resetSpeed();
       }
     }
+  }
+
+  void _flushLocalWatchState() {
+    _watchStartedAt = null;
   }
 
   Future<void> _loadAndPlay() async {
@@ -140,7 +150,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
   }
 
   void _handleDoubleTap() {
-    HapticFeedback.mediumImpact();
+    HapticFeedback.lightImpact();
     widget.onLike();
     setState(() => _showHeartAnim = true);
     _animController.forward(from: 0.0).then((_) {
@@ -228,6 +238,20 @@ class _OjsVideoPageState extends State<OjsVideoPage>
     } else if (selected == 'clear_off') {
       setState(() => _clearDisplay = false);
     }
+  }
+
+  Widget _buildInteractiveCaption(String caption) {
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'([#@][A-Za-z0-9_]+)');
+    int cursor = 0;
+    for (final match in regex.allMatches(caption)) {
+      if (match.start > cursor) spans.add(TextSpan(text: caption.substring(cursor, match.start)));
+      final token = match.group(0)!;
+      spans.add(WidgetSpan(child: GestureDetector(onTap: () => debugPrint('OJAS caption route: $token'), child: Text(token, style: const TextStyle(color: Color(0xFF7DD3FC), fontWeight: FontWeight.w700)))));
+      cursor = match.end;
+    }
+    if (cursor < caption.length) spans.add(TextSpan(text: caption.substring(cursor)));
+    return RichText(maxLines: _isCaptionExpanded ? 8 : 2, overflow: _isCaptionExpanded ? TextOverflow.visible : TextOverflow.ellipsis, text: TextSpan(style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3, fontWeight: FontWeight.w400), children: spans));
   }
 
   Widget _speedChip(BuildContext context, String label, double speed) {
@@ -709,8 +733,7 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                       ],
                     ),
                     const SizedBox(height: 5),
-                    Text(
-                      widget.video.caption,
+                    _buildInteractiveCaption(widget.video.caption),
                       maxLines: _isCaptionExpanded ? 8 : 2,
                       overflow: _isCaptionExpanded
                           ? TextOverflow.visible

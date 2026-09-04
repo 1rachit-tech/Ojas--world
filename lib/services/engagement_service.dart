@@ -46,6 +46,23 @@ class EngagementService {
     }
   }
 
+  Future<void> syncWatchMetrics({
+    required String reelId,
+    required int watchTimeMs,
+    int completionDelta = 0,
+  }) async {
+    if (reelId.trim().isEmpty || (watchTimeMs <= 0 && completionDelta == 0)) return;
+    try {
+      await _firestore.collection('reels').doc(reelId).set(<String, dynamic>{
+        'watchTimeMs': FieldValue.increment(watchTimeMs),
+        'completions': FieldValue.increment(completionDelta),
+      }, SetOptions(merge: true));
+    } catch (error) {
+      // ignore: avoid_print
+      print('OJAS watch metrics sync failed: $error');
+    }
+  }
+
   Future<void> syncInteraction({
     required String reelId,
     required bool liked,

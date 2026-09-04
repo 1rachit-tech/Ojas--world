@@ -54,8 +54,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   final Set<String> _notInterestedReels = <String>{};
   final Set<String> _likedVideos = <String>{};
   final Set<String> _savedVideos = <String>{};
+  final Set<String> _seenReelIds = <String>{};
   final List<ReelModel> _forYouReels = <ReelModel>[];
   final Map<String, int> _likeDeltas = <String, int>{};
+  final Map<String, int> _watchTimeMs = <String, int>{};
+  final Map<String, bool> _completionPending = <String, bool>{};
+  DateTime? _visibleSince;
 
   DocumentSnapshot<Map<String, dynamic>>? _forYouCursor;
   int _currentSelectedFeed = 0;
@@ -80,6 +84,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     _horizontalFeedController.dispose();
     _forYouController.dispose();
     _followingController.dispose();
+    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     super.dispose();
   }
 
@@ -92,7 +97,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       setState(() {
         _forYouReels
           ..clear()
-          ..addAll(page.reels);
+          ..addAll(page.reels.where((reel) => !_seenReelIds.contains(reel.id)));
         _forYouCursor = page.cursor;
         _forYouHasMore = page.hasMore;
         _forYouVisibleIndex = page.reels.isEmpty
@@ -102,6 +107,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   : 0);
         _forYouLoading = false;
       });
+      _markReelSeen(_forYouVisibleIndex);
       await _warmForYouReel(_forYouVisibleIndex + 1);
     } catch (error) {
       if (!mounted) return;
@@ -117,7 +123,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       final page = await _reelFeedService.fetchPage(cursor: _forYouCursor);
       if (!mounted) return;
       setState(() {
-        _forYouReels.addAll(page.reels);
+        _forYouReels.addAll(page.reels.where((reel) => !_seenReelIds.contains(reel.id)));
         _forYouCursor = page.cursor;
         _forYouHasMore = page.hasMore;
         _forYouLoading = false;
@@ -164,7 +170,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   void _setForYouVisibleIndex(int index) {
     if (_forYouVisibleIndex == index || !mounted) return;
+    if (_forYouVisibleIndex >= 0) _flushWatchMetrics(_forYouVisibleIndex);
     setState(() => _forYouVisibleIndex = index);
+    if (index >= 0) _visibleSince = DateTime.now();
   }
 
   bool _handleForYouScrollNotification(ScrollNotification notification) {
@@ -203,6 +211,32 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       }
     }
     return false;
+  }
+
+  void _markReelSeen(int index) {
+    if (index >= 0 && index < _forYouReels.length) {
+      _seenReelIds.add(_forYouReels[index].id);
+    }
+  }
+
+  Future<void> _flushWatchMetrics(int index) async {
+    if (index < 0 || index >= _forYouReels.length) return;
+    final reel = _forYouReels[index];
+    final started = _visibleSince;
+    if (started != null) {
+      _watchTimeMs[reel.id] = (_watchTimeMs[reel.id] ?? 0) +
+          DateTime.now().difference(started).inMilliseconds;
+      _visibleSince = null;
+    }
+    final watchMs = _watchTimeMs.remove(reel.id) ?? 0;
+    final completed = _completionPending.remove(reel.id) ?? false;
+    if (watchMs > 0 || completed) {
+      await _engagementService.syncWatchMetrics(
+        reelId: reel.id,
+        watchTimeMs: watchMs,
+        completionDelta: completed ? 1 : 0,
+      );
+    }
   }
 
   void _toggleComments() {
@@ -258,7 +292,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                 Navigator.pop(context);
                 if (!mounted) return;
                 setState(() => _isSuperViewActive = true);
-                HapticFeedback.selectionClick();
+                HapticFeedback.lightImpact();
               },
             ),
             ListTile(
@@ -288,7 +322,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   }
 
   void _toggleLikeVideo(String videoId) {
-    HapticFeedback.mediumImpact();
+    HapticFeedback.lightImpact();
     final shouldLike = !_likedVideos.contains(videoId);
     setState(() {
       if (shouldLike) {
@@ -442,6 +476,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                             HapticFeedback.selectionClick();
                             if (_isSuperViewActive) {
                               setState(() => _isSuperViewActive = false);
+                              HapticFeedback.lightImpact();
                             } else {
                               _showOptionsSheet();
                             }
