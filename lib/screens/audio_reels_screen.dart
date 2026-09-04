@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../models/reel_model.dart';
-import 'create_screen.dart';
+import 'camera_screen.dart';
 
 class AudioReelsScreen extends StatefulWidget {
   const AudioReelsScreen({
@@ -33,7 +33,7 @@ class _AudioReelsScreenState extends State<AudioReelsScreen> {
   void _useAudio() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => CreateScreen(audioTrackId: widget.audioTrackId),
+        builder: (_) => CameraScreen(audioId: widget.audioTrackId),
       ),
     );
   }
