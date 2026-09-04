@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -31,6 +32,12 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
   late AnimationController _heartAnimController;
   late Animation<double> _heartScaleAnimation;
 
+  bool get _isNativeHls {
+    if (kIsWeb) return false;
+    final lower = widget.videoUrl.toLowerCase();
+    return lower.contains('.m3u8');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -49,13 +56,15 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
       curve: Curves.easeOutCubic,
     ));
 
-    _loadVideo();
+    if (!_isNativeHls) {
+      _loadVideo();
+    }
   }
 
   @override
   void didUpdateWidget(covariant OjasSmartVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl != widget.videoUrl) {
+    if (oldWidget.videoUrl != widget.videoUrl && !_isNativeHls) {
       _loadVideo();
     }
   }
@@ -117,6 +126,100 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
     });
   }
 
+  Widget _buildNativeHlsPlayer() {
+    final params = <String, Object>{'url': widget.videoUrl};
+
+    Widget playerView;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        playerView = AndroidView(
+          key: ValueKey(widget.videoUrl),
+          viewType: 'ojas/hls_player',
+          creationParams: params,
+          creationParamsCodec: const StandardMessageCodec(),
+        );
+      case TargetPlatform.iOS:
+        playerView = UiKitView(
+          key: ValueKey(widget.videoUrl),
+          viewType: 'ojas/hls_player',
+          creationParams: params,
+          creationParamsCodec: const StandardMessageCodec(),
+        );
+      default:
+        playerView = const ColoredBox(color: Colors.black);
+    }
+
+    return GestureDetector(
+      onDoubleTap: _handleDoubleTap,
+      behavior: HitTestBehavior.opaque,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: AspectRatio(
+          aspectRatio: widget.aspectRatio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              playerView,
+              if (widget.isPortraitReel)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12, width: 0.8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.play_arrow_rounded,
+                          color: Color(0xFFF5B942),
+                          size: 14,
+                        ),
+                        SizedBox(width: 3),
+                        Text(
+                          'REEL 9:16',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_showHeartAnim)
+                Center(
+                  child: ScaleTransition(
+                    scale: _heartScaleAnimation,
+                    child: const Icon(
+                      Icons.favorite_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 80,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black45,
+                          blurRadius: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _heartAnimController.dispose();
@@ -125,6 +228,10 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
 
   @override
   Widget build(BuildContext context) {
+    if (_isNativeHls) {
+      return _buildNativeHlsPlayer();
+    }
+
     return GestureDetector(
       onTap: _togglePlayback,
       onDoubleTap: _handleDoubleTap,
@@ -174,7 +281,10 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
                     top: 10,
                     right: 10,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(12),
@@ -183,7 +293,11 @@ class _OjasSmartVideoPlayerState extends State<OjasSmartVideoPlayer>
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.play_arrow_rounded, color: Color(0xFFF5B942), size: 14),
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            color: Color(0xFFF5B942),
+                            size: 14,
+                          ),
                           SizedBox(width: 3),
                           Text(
                             'REEL 9:16',

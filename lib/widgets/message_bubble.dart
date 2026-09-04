@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/ojas_message.dart';
+import 'ojas_smart_video_player.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -29,6 +30,13 @@ class MessageBubble extends StatelessWidget {
     final displayText = message.isDeleted
         ? 'This message was deleted.'
         : message.text;
+
+    final bubbleChild = message.isVideo && message.hasMedia
+        ? OjasSmartVideoPlayer(
+            videoUrl: message.mediaUrl!,
+            aspectRatio: message.mediaAspectRatio,
+          )
+        : child;
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -77,10 +85,10 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-              if (child != null)
+              if (bubbleChild != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: child,
+                  child: bubbleChild,
                 ),
               if (displayText.trim().isNotEmpty)
                 Padding(

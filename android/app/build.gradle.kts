@@ -55,6 +55,9 @@ android {
 
 dependencies {
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
+    implementation("androidx.media3:media3-ui:1.11.0")
 }
 
 flutter {
