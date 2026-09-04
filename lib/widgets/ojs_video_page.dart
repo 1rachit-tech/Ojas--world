@@ -1,12 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+
 import '../models/ojs_video.dart';
 import '../services/video_engine_service.dart';
 import '../screens/fullscreen_landscape_player.dart';
 import '../screens/sound_detail_screen.dart';
-import '../widgets/ojas_shop_sheet.dart'; // 🚀 Zero-Cost Affiliate E-Commerce
+import 'reel_shop_products_bottom_sheet.dart';
 
 class OjsVideoPage extends StatefulWidget {
   final OjsVideo video;
@@ -40,7 +42,8 @@ class OjsVideoPage extends StatefulWidget {
   State<OjsVideoPage> createState() => _OjsVideoPageState();
 }
 
-class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderStateMixin {
+class _OjsVideoPageState extends State<OjsVideoPage>
+    with SingleTickerProviderStateMixin {
   VideoPlayerController? _controller;
   bool _isInit = false;
   bool _isPlaying = true;
@@ -99,7 +102,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
   }
 
   Future<void> _loadAndPlay() async {
-    final ctrl = await VideoEngineService.instance.getOrCreateController(widget.video.videoUrl);
+    final ctrl = await VideoEngineService.instance.getOrCreateController(
+      widget.video.videoUrl,
+    );
     if (!mounted) return;
     setState(() {
       _controller = ctrl;
@@ -128,9 +133,7 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
 
   void _handleDoubleTap() {
     HapticFeedback.mediumImpact();
-    if (!widget.isLiked) {
-      widget.onLike();
-    }
+    widget.onLike();
     setState(() => _showHeartAnim = true);
     _animController.forward(from: 0.0).then((_) {
       Future.delayed(const Duration(milliseconds: 250), () {
@@ -164,7 +167,8 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final bool isLandscape = _isInit && _controller != null && _controller!.value.aspectRatio > 1.2;
+    final bool isLandscape =
+        _isInit && _controller != null && _controller!.value.aspectRatio > 1.2;
 
     return Container(
       color: Colors.black,
@@ -181,7 +185,9 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
             if (_isInit && _controller != null)
               Center(
                 child: AspectRatio(
-                  aspectRatio: isLandscape ? _controller!.value.aspectRatio : 9 / 16,
+                  aspectRatio: isLandscape
+                      ? _controller!.value.aspectRatio
+                      : 9 / 16,
                   child: ColorFiltered(
                     colorFilter: VideoEngineService.superResolutionEnhancer,
                     child: FittedBox(
@@ -200,7 +206,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 child: SizedBox(
                   width: 36,
                   height: 36,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white30,
+                  ),
                 ),
               ),
 
@@ -213,7 +222,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     color: Colors.black45,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 54),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 54,
+                  ),
                 ),
               ),
 
@@ -238,7 +251,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(20),
@@ -247,7 +263,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.fast_forward_rounded, color: Colors.white, size: 16),
+                        Icon(
+                          Icons.fast_forward_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
                         SizedBox(width: 6),
                         Text(
                           '2X Speed',
@@ -296,7 +316,10 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(20),
@@ -305,7 +328,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.screen_rotation_rounded, color: Colors.white, size: 16),
+                          Icon(
+                            Icons.screen_rotation_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
                           SizedBox(width: 6),
                           Text(
                             'Full screen (Rotate)',
@@ -344,8 +371,14 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                           radius: 21,
                           backgroundColor: const Color(0xFF111827),
                           child: Text(
-                            widget.video.creator.isNotEmpty ? widget.video.creator[0].toUpperCase() : 'U',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            widget.video.creator.isNotEmpty
+                                ? widget.video.creator[0].toUpperCase()
+                                : 'U',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),
@@ -363,7 +396,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                                 color: Color(0xFFEF4444),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.add_rounded, color: Colors.white, size: 13),
+                              child: const Icon(
+                                Icons.add_rounded,
+                                color: Colors.white,
+                                size: 13,
+                              ),
                             ),
                           ),
                         ),
@@ -371,36 +408,14 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 14),
 
-                  // 🛍️ OJAS Shop Button
                   _buildActionButton(
-                    icon: Icons.shopping_bag_rounded,
-                    label: 'Shop',
-                    color: const Color(0xFFF5B942),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      OjasShopSheet.show(
-                        context,
-                        products: [
-                          {
-                            'name': 'Studio Recording Setup',
-                            'price': '1,499',
-                            'url': 'https://amazon.in',
-                          },
-                          {
-                            'name': 'Creator Merch & Apparel',
-                            'price': '699',
-                            'url': 'https://amazon.in',
-                          }
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-
-                  _buildActionButton(
-                    icon: widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                    icon: widget.isLiked
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
                     label: '${widget.video.likes}',
-                    color: widget.isLiked ? const Color(0xFFEF4444) : Colors.white,
+                    color: widget.isLiked
+                        ? const Color(0xFFEF4444)
+                        : Colors.white,
                     onTap: () {
                       HapticFeedback.selectionClick();
                       widget.onLike();
@@ -419,11 +434,14 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 8),
 
-
                   _buildActionButton(
-                    icon: _isSavedLocal ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    icon: _isSavedLocal
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
                     label: 'Save',
-                    color: _isSavedLocal ? const Color(0xFFF59E0B) : Colors.white,
+                    color: _isSavedLocal
+                        ? const Color(0xFFF59E0B)
+                        : Colors.white,
                     onTap: () {
                       HapticFeedback.selectionClick();
                       setState(() => _isSavedLocal = !_isSavedLocal);
@@ -432,7 +450,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                       }
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(_isSavedLocal ? 'Video saved to profile!' : 'Removed from bookmarks.'),
+                          content: Text(
+                            _isSavedLocal
+                                ? 'Video saved to profile!'
+                                : 'Removed from bookmarks.',
+                          ),
                           behavior: SnackBarBehavior.floating,
                           duration: const Duration(seconds: 1),
                         ),
@@ -462,7 +484,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                         color: const Color(0xFF1F2937),
                         border: Border.all(color: Colors.white38, width: 2.5),
                       ),
-                      child: const Icon(Icons.music_note_rounded, color: Colors.white70, size: 16),
+                      child: const Icon(
+                        Icons.music_note_rounded,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ],
@@ -478,6 +504,55 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (widget.video.shopItemIds.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          ReelShopProductsBottomSheet.show(
+                            context,
+                            shopItemIds: widget.video.shopItemIds,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5B942)
+                                .withValues(alpha: 0.94),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.shopping_bag_rounded,
+                                color: Colors.black,
+                                size: 15,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Shop Products',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: Colors.black,
+                                size: 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   Row(
                     children: [
                       Text(
@@ -490,7 +565,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                         ),
                       ),
                       const SizedBox(width: 5),
-                      const Icon(Icons.verified_rounded, color: Color(0xFF38BDF8), size: 14),
+                      const Icon(
+                        Icons.verified_rounded,
+                        color: Color(0xFF38BDF8),
+                        size: 14,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 5),
@@ -510,7 +589,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                     onTap: _openSoundHub,
                     child: Row(
                       children: [
-                        const Icon(Icons.music_note_rounded, color: Colors.white70, size: 13),
+                        const Icon(
+                          Icons.music_note_rounded,
+                          color: Colors.white70,
+                          size: 13,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -542,7 +625,11 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                   builder: (context, VideoPlayerValue val, child) {
                     final duration = val.duration.inMilliseconds.toDouble();
                     final position = val.position.inMilliseconds.toDouble();
-                    final currentVal = _isScrubbing ? _scrubPosition : (duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0);
+                    final currentVal = _isScrubbing
+                        ? _scrubPosition
+                        : (duration > 0
+                              ? (position / duration).clamp(0.0, 1.0)
+                              : 0.0);
 
                     return GestureDetector(
                       onHorizontalDragStart: (details) {
@@ -552,8 +639,13 @@ class _OjsVideoPageState extends State<OjsVideoPage> with SingleTickerProviderSt
                         });
                       },
                       onHorizontalDragUpdate: (details) {
-                        final RenderBox box = context.findRenderObject() as RenderBox;
-                        final relative = (details.localPosition.dx / box.size.width).clamp(0.0, 1.0);
+                        final RenderBox box =
+                            context.findRenderObject() as RenderBox;
+                        final relative =
+                            (details.localPosition.dx / box.size.width).clamp(
+                              0.0,
+                              1.0,
+                            );
                         setState(() {
                           _scrubPosition = relative;
                         });

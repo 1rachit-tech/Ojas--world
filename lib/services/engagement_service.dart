@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class EngagementService {
   EngagementService({FirebaseFirestore? firestore, FirebaseAuth? auth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -13,13 +13,19 @@ class EngagementService {
     required String reelId,
     required bool liked,
     required bool saved,
+    int likeDelta = 0,
+    int saveDelta = 0,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null || reelId.trim().isEmpty) return;
 
     final batch = _firestore.batch();
     batch.set(
-      _firestore.collection('users').doc(uid).collection('interactions').doc(reelId),
+      _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('interactions')
+          .doc(reelId),
       <String, dynamic>{
         'liked': liked,
         'saved': saved,
@@ -27,14 +33,10 @@ class EngagementService {
       },
       SetOptions(merge: true),
     );
-    batch.set(
-      _firestore.collection('reels').doc(reelId),
-      <String, dynamic>{
-        'likes': FieldValue.increment(liked ? 1 : -1),
-        'saves': FieldValue.increment(saved ? 1 : -1),
-      },
-      SetOptions(merge: true),
-    );
+    batch.set(_firestore.collection('reels').doc(reelId), <String, dynamic>{
+      'likes': FieldValue.increment(likeDelta),
+      'saves': FieldValue.increment(saveDelta),
+    }, SetOptions(merge: true));
 
     try {
       await batch.commit();

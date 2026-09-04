@@ -5,11 +5,12 @@ import 'package:flutter/services.dart';
 import '../models/ojs_video.dart';
 import '../models/reel_model.dart';
 import '../services/reel_feed_service.dart';
+import '../services/engagement_service.dart';
 import '../services/video_engine_service.dart';
 import '../widgets/ojs_video_page.dart';
+import '../widgets/reel_comments_bottom_sheet.dart';
 import '../widgets/ojas_scroll_physics.dart';
 import '../widgets/share_bottom_sheet.dart';
-import '../widgets/super_thanks_modal.dart';
 
 class CommentItem {
   CommentItem({
@@ -45,11 +46,13 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   final PageController _forYouController = PageController();
   final PageController _followingController = PageController();
   final ReelFeedService _reelFeedService = ReelFeedService();
+  final EngagementService _engagementService = EngagementService();
 
   final Set<String> _followedCreators = {'Rohan Mehta', 'Nia Okafor'};
   final Set<String> _likedVideos = <String>{};
   final Set<String> _savedVideos = <String>{};
   final List<ReelModel> _forYouReels = <ReelModel>[];
+  final Map<String, int> _likeDeltas = <String, int>{};
 
   DocumentSnapshot<Map<String, dynamic>>? _forYouCursor;
   int _currentSelectedFeed = 0;
@@ -61,27 +64,12 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
   bool _forYouLoading = false;
   bool _isCommentsOpen = false;
 
-  final List<CommentItem> _commentsList = [
-    CommentItem(
-      id: '1',
-      userName: 'Rahul Sharma',
-      text: 'This frame and lighting is magical! 🌿✨',
-      time: '2h',
-      likes: 142,
-    ),
-    CommentItem(
-      id: '2',
-      userName: 'Sneha_09',
-      text: 'Vindhya vibes are unmatched! 🔥',
-      time: '4h',
-      likes: 38,
-    ),
-  ];
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadInitialForYouReels());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadInitialForYouReels(),
+    );
   }
 
   @override
@@ -106,7 +94,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         _forYouHasMore = page.hasMore;
         _forYouVisibleIndex = page.reels.isEmpty
             ? 0
-            : (_forYouCurrentIndex < page.reels.length ? _forYouCurrentIndex : 0);
+            : (_forYouCurrentIndex < page.reels.length
+                  ? _forYouCurrentIndex
+                  : 0);
         _forYouLoading = false;
       });
       await _warmForYouReel(_forYouVisibleIndex + 1);
@@ -143,13 +133,14 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       caption: reel.caption,
       videoUrl: reel.hlsUrl,
       avatarColor: 0xff5d8f8b,
-      likes: reel.likes,
+      likes: reel.likes + (_likeDeltas[reel.id] ?? 0),
       comments: reel.comments,
       shares: reel.shares,
       tags: const <String>[],
       products: const <Map<String, dynamic>>[],
       isVerified: false,
       viralScore: reel.algorithmScore,
+      shopItemIds: reel.shopItemIds,
     );
   }
 
@@ -160,7 +151,9 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
     try {
       await VideoEngineService.instance.getOrCreateController(url);
     } catch (error) {
-      debugPrint('OJAS JIT HLS warm failed for ${_forYouReels[index].id}: $error');
+      debugPrint(
+        'OJAS JIT HLS warm failed for ${_forYouReels[index].id}: $error',
+      );
     }
   }
 
@@ -175,7 +168,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       return false;
     }
 
-    if (notification is ScrollUpdateNotification || notification is OverscrollNotification) {
+    if (notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification) {
       final page = _forYouController.hasClients ? _forYouController.page : null;
       if (page != null) {
         final nearest = page.round();
@@ -224,30 +218,77 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
 
   void _toggleLikeVideo(String videoId) {
     HapticFeedback.mediumImpact();
+    final shouldLike = !_likedVideos.contains(videoId);
     setState(() {
-      if (_likedVideos.contains(videoId)) {
-        _likedVideos.remove(videoId);
-      } else {
+      if (shouldLike) {
         _likedVideos.add(videoId);
+      } else {
+        _likedVideos.remove(videoId);
+      }
+      for (final reel in _forYouReels) {
+        if (reel.id == videoId) {
+          _likeDeltas[videoId] =
+              (_likeDeltas[videoId] ?? 0) + (shouldLike ? 1 : -1);
+          break;
+        }
       }
     });
+    for (final reel in _forYouReels) {
+      if (reel.id == videoId) {
+        _engagementService.syncInteraction(
+          reelId: videoId,
+          liked: shouldLike,
+          saved: _savedVideos.contains(videoId),
+          likeDelta: shouldLike ? 1 : -1,
+        );
+        break;
+      }
+    }
+  }
+
+  Future<void> _openComments(String reelId) async {
+    if (_isCommentsOpen) return;
+    setState(() => _isCommentsOpen = true);
+    try {
+      await ReelCommentsBottomSheet.show(context, reelId: reelId);
+    } finally {
+      if (mounted) setState(() => _isCommentsOpen = false);
+    }
   }
 
   void _toggleSaveVideo(String videoId) {
     HapticFeedback.selectionClick();
+    final shouldSave = !_savedVideos.contains(videoId);
     setState(() {
-      if (_savedVideos.contains(videoId)) {
-        _savedVideos.remove(videoId);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed from Saved'), duration: Duration(seconds: 1)),
-        );
-      } else {
+      if (shouldSave) {
         _savedVideos.add(videoId);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved 🔖'), duration: Duration(seconds: 1)),
+          const SnackBar(
+            content: Text('Saved 🔖'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      } else {
+        _savedVideos.remove(videoId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Removed from Saved'),
+            duration: Duration(seconds: 1),
+          ),
         );
       }
     });
+    for (final reel in _forYouReels) {
+      if (reel.id == videoId) {
+        _engagementService.syncInteraction(
+          reelId: videoId,
+          liked: _likedVideos.contains(videoId),
+          saved: shouldSave,
+          saveDelta: shouldSave ? 1 : -1,
+        );
+        break;
+      }
+    }
   }
 
   void _selectFeed(int index) {
@@ -282,7 +323,14 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Filter Video Feed', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Filter Video Feed',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 10,
@@ -291,10 +339,14 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                   final isSelected = _activeCategoryFilter == cat;
                   return ActionChip(
                     label: Text(cat),
-                    backgroundColor: isSelected ? const Color(0xFFF5B942) : const Color(0xFF222831),
+                    backgroundColor: isSelected
+                        ? const Color(0xFFF5B942)
+                        : const Color(0xFF222831),
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.black : Colors.white,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.w500,
                     ),
                     side: BorderSide.none,
                     onPressed: () {
@@ -336,7 +388,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
               physics: _isCommentsOpen
                   ? const NeverScrollableScrollPhysics()
                   : const OjasZeroJankScrollPhysics(),
-              onPageChanged: (index) => setState(() => _currentSelectedFeed = index),
+              onPageChanged: (index) =>
+                  setState(() => _currentSelectedFeed = index),
               children: [
                 _buildForYouFeed(),
                 _buildFollowingFeed(followingVideos),
@@ -357,8 +410,16 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _FeedTab(label: 'For You', isActive: _currentSelectedFeed == 0, onTap: () => _selectFeed(0)),
-                            _FeedTab(label: 'Following', isActive: _currentSelectedFeed == 1, onTap: () => _selectFeed(1)),
+                            _FeedTab(
+                              label: 'For You',
+                              isActive: _currentSelectedFeed == 0,
+                              onTap: () => _selectFeed(0),
+                            ),
+                            _FeedTab(
+                              label: 'Following',
+                              isActive: _currentSelectedFeed == 1,
+                              onTap: () => _selectFeed(1),
+                            ),
                           ],
                         ),
                       ),
@@ -366,7 +427,11 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                         right: 0,
                         child: IconButton(
                           onPressed: _showTopFeedFilters,
-                          icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 24),
+                          icon: const Icon(
+                            Icons.more_vert_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                       ),
                     ],
@@ -374,14 +439,6 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
                 ),
               ),
             ),
-            if (_isCommentsOpen)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: MediaQuery.of(context).size.height * 0.60,
-                child: _buildCommentSheet(),
-              ),
           ],
         ),
       ),
@@ -410,7 +467,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         },
         itemBuilder: (context, index) {
           final video = videos[index];
-          final isVideoVisible = widget.isActive &&
+          final isVideoVisible =
+              widget.isActive &&
               _currentSelectedFeed == 0 &&
               _forYouVisibleIndex == index;
 
@@ -423,7 +481,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
             isSaved: _savedVideos.contains(video.id),
             onFollow: () => _toggleFollowCreator(video.creator),
             onLike: () => _toggleLikeVideo(video.id),
-            onComment: _toggleComments,
+            onComment: () => _openComments(video.id),
             onSave: () => _toggleSaveVideo(video.id),
             onShare: () => ShareBottomSheet.show(
               context,
@@ -442,14 +500,30 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.person_add_alt_1_rounded, size: 48, color: Color(0xFFF5B942)),
+            const Icon(
+              Icons.person_add_alt_1_rounded,
+              size: 48,
+              color: Color(0xFFF5B942),
+            ),
             const SizedBox(height: 12),
-            const Text('Follow Creators to see their clips here', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            const Text(
+              'Follow Creators to see their clips here',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 14),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF5B942), foregroundColor: Colors.black),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFF5B942),
+                foregroundColor: Colors.black,
+              ),
               onPressed: () => _selectFeed(0),
-              child: const Text('Back to For You', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Back to For You',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
@@ -466,7 +540,8 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       onPageChanged: (index) => setState(() => _followingCurrentIndex = index),
       itemBuilder: (context, index) {
         final video = followingVideos[index];
-        final isVideoVisible = widget.isActive &&
+        final isVideoVisible =
+            widget.isActive &&
             _currentSelectedFeed == 1 &&
             _followingCurrentIndex == index;
 
@@ -490,99 +565,14 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       },
     );
   }
-
-  Widget _buildCommentSheet() {
-    final activeVideos = _currentSelectedFeed == 0
-        ? (_forYouReels.isEmpty
-            ? temporaryOjsVideos
-            : _forYouReels.map(_toOjsVideo).toList(growable: false))
-        : temporaryOjsVideos
-            .where((video) => _followedCreators.contains(video.creator))
-            .toList();
-    var activeIndex = _currentSelectedFeed == 0
-        ? _forYouCurrentIndex
-        : _followingCurrentIndex;
-    if (activeVideos.isNotEmpty && activeIndex >= activeVideos.length) {
-      activeIndex = activeVideos.length - 1;
-    }
-    final creatorName = activeVideos.isEmpty
-        ? 'OJAS Creator'
-        : activeVideos[activeIndex].creator;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF13171D),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${_commentsList.length} comments', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        SuperThanksModal.show(context, creatorName: creatorName);
-                      },
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.stars_rounded, color: Color(0xFFF59E0B), size: 18),
-                          SizedBox(width: 4),
-                          Text('Super Thanks', style: TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.w700, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    GestureDetector(
-                      onTap: _toggleComments,
-                      child: const Icon(Icons.close_rounded, color: Colors.white54),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, color: Colors.white10),
-          Expanded(
-            child: ListView.builder(
-              physics: const BouncingScrollPhysics(),
-              itemCount: _commentsList.length,
-              itemBuilder: (context, index) {
-                final comment = _commentsList[index];
-                return ListTile(
-                  leading: const CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Color(0xFFF5B942),
-                    child: Text('U', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                  ),
-                  title: Text(comment.userName, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text(comment.text, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _FeedTab extends StatelessWidget {
-  const _FeedTab({required this.label, required this.isActive, required this.onTap});
+  const _FeedTab({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
 
   final String label;
   final bool isActive;

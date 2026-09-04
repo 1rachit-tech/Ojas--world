@@ -17,7 +17,8 @@ class ReelCommentsBottomSheet extends StatefulWidget {
   }
 
   @override
-  State<ReelCommentsBottomSheet> createState() => _ReelCommentsBottomSheetState();
+  State<ReelCommentsBottomSheet> createState() =>
+      _ReelCommentsBottomSheetState();
 }
 
 class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
@@ -29,7 +30,10 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
   bool _loading = false;
 
   CollectionReference<Map<String, dynamic>> get _commentsRef =>
-      FirebaseFirestore.instance.collection('reels').doc(widget.reelId).collection('comments');
+      FirebaseFirestore.instance
+          .collection('reels')
+          .doc(widget.reelId)
+          .collection('comments');
 
   @override
   void initState() {
@@ -86,48 +90,109 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
         child: Column(
           children: [
             const SizedBox(height: 10),
-            Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(8))),
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 14, 12, 12),
               child: Row(
                 children: [
-                  const Text('Comments', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                  const Text(
+                    'Comments',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
                   const Spacer(),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded, color: Colors.white54)),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white54,
+                    ),
+                  ),
                 ],
               ),
             ),
             const Divider(height: 1, color: Colors.white10),
             Expanded(
               child: _comments.isEmpty && _loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54))
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white54,
+                      ),
+                    )
                   : _comments.isEmpty
-                      ? const Center(child: Text('No comments yet', style: TextStyle(color: Colors.white54)))
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _comments.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == _comments.length) {
-                              return const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38))),
-                              );
-                            }
-                            final data = _comments[index].data();
-                            final name = data['userName'] as String? ?? 'OJAS User';
-                            final text = data['text'] as String? ?? '';
-                            return ListTile(
-                              leading: CircleAvatar(
-                                radius: 18,
-                                backgroundColor: const Color(0xFF222831),
-                                child: Text(name.isEmpty ? 'U' : name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ? const Center(
+                      child: Text(
+                        'No comments yet',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _comments.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _comments.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white38,
+                                ),
                               ),
-                              title: Text(name, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
-                              subtitle: Padding(padding: const EdgeInsets.only(top: 3), child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13))),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        }
+                        final data = _comments[index].data();
+                        final name = data['userName'] as String? ?? 'OJAS User';
+                        final text = data['text'] as String? ?? '';
+                        return ListTile(
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: const Color(0xFF222831),
+                            child: Text(
+                              name.isEmpty ? 'U' : name[0].toUpperCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(
+                              text,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
