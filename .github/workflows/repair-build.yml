@@ -1,0 +1,39 @@
+name: Repair broken Step 8 build
+
+on:
+  push:
+    branches: [main]
+    paths: ['.repair-build-trigger']
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore last known-good feed/player and fix fullscreen async
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout 593e4b94256c6572ae2b7db269be7691e3632819 -- lib/screens/ojs_feed_screen.dart lib/widgets/ojs_video_page.dart
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/screens/fullscreen_landscape_player.dart')
+          s = p.read_text()
+          old = """  static Future<void> open(\n    BuildContext context, {\n    required String videoUrl,\n    required String title,\n    required String creator,\n  }) {\n    HapticFeedback.mediumImpact();\n    await Navigator.push<void>(\n"""
+          new = """  static Future<void> open(\n    BuildContext context, {\n    required String videoUrl,\n    required String title,\n    required String creator,\n  }) async {\n    HapticFeedback.mediumImpact();\n    await Navigator.push<void>(\n"""
+          if old not in s:
+              raise SystemExit('fullscreen open signature mismatch')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/screens/ojs_feed_screen.dart lib/widgets/ojs_video_page.dart lib/screens/fullscreen_landscape_player.dart
+          git rm .github/workflows/repair-build.yml .repair-build-trigger
+          git commit -m 'fix: restore build-safe feed and fullscreen player syntax'
+          git push origin HEAD:main
