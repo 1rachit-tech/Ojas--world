@@ -8,7 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../google_sign_in_button.dart';
 import '../services/auth_service.dart';
 import '../services/auth_guard.dart';
-import 'ojas_id_login_screen.dart';
+import '../services/profile_service.dart';
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,7 +20,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
@@ -44,28 +44,47 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _googleAuthenticationSubscription?.cancel();
-    _emailController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
-      await AuthService.instance.signInWithEmail(
-        _emailController.text,
-        _passwordController.text,
-      );
+      final identifier = _identifierController.text.trim();
+      final password = _passwordController.text;
+
+      if (identifier.contains('@')) {
+        // Standard email/password authentication.
+        await AuthService.instance.signInWithEmail(identifier, password);
+      } else {
+        // OJAS ID is an alias for the account email stored in /ojasIds/{id}.
+        final email = await ProfileService.instance.emailForOjasId(identifier);
+
+        if (email == null) {
+          throw FirebaseAuthException(
+            code: 'invalid-credential',
+            message: 'OJAS ID or password is incorrect.',
+          );
+        }
+
+        await AuthService.instance.signInWithEmail(email, password);
+      }
+
       await _finishAuthentication();
     } on FirebaseAuthException catch (error) {
       _showError(_messageFor(error));
     } catch (_) {
       _showError('Unable to sign in right now. Please try again.');
     }
+
     if (mounted) setState(() => _loading = false);
   }
 
@@ -116,7 +135,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _forgotPassword() async {
-    final emailController = TextEditingController(text: _emailController.text);
+    final emailController =
+        TextEditingController(text: _identifierController.text);
     final email = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -149,13 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _openOjasIdLogin() async {
-    final authenticated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const OjasIdLoginScreen()),
-    );
-    if (authenticated == true && mounted) Navigator.of(context).pop(true);
-  }
-
   void _showError(String message) => setState(() => _error = message);
 
   void _showMessage(String message) => ScaffoldMessenger.of(
@@ -173,9 +186,9 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'invalid-credential':
       case 'wrong-password':
       case 'user-not-found':
-        return 'Email or password is incorrect.';
+        return 'Email or OJAS ID, or password is incorrect.';
       case 'invalid-email':
-        return 'Enter a valid email address.';
+        return 'Enter a valid email address or OJAS ID.';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later.';
       default:
@@ -194,13 +207,32 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           children: [
             _field(
-              _emailController,
-              'Email address',
-              Icons.mail_outline_rounded,
+              _identifierController,
+              'Email or OJAS ID',
+              Icons.alternate_email_rounded,
               keyboardType: TextInputType.emailAddress,
-              validator: (value) => value == null || !value.contains('@')
-                  ? 'Enter a valid email address'
-                  : null,
+              textInputAction: TextInputAction.next,
+              validator: (value) {
+                final identifier = value?.trim() ?? '';
+
+                if (identifier.isEmpty) {
+                  return 'Enter your email or OJAS ID';
+                }
+
+                if (identifier.contains('@')) {
+                  final emailPattern =
+                      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+                  if (!emailPattern.hasMatch(identifier)) {
+                    return 'Enter a valid email address';
+                  }
+                } else if (!ProfileService.isValidOjasId(
+                  ProfileService.normalizeOjasId(identifier),
+                )) {
+                  return 'Use a valid 3–20 character OJAS ID';
+                }
+
+                return null;
+              },
             ),
             const SizedBox(height: 14),
             _field(
@@ -208,6 +240,8 @@ class _LoginScreenState extends State<LoginScreen> {
               'Password',
               Icons.lock_outline_rounded,
               obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _loading ? null : _submit(),
               suffix: IconButton(
                 onPressed: () =>
                     setState(() => _obscurePassword = !_obscurePassword),
@@ -231,18 +265,6 @@ class _LoginScreenState extends State<LoginScreen> {
             if (_error != null) _ErrorText(_error!),
             const SizedBox(height: 8),
             _primaryButton('Log in', _submit),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: OutlinedButton.icon(
-                onPressed: _loading
-                    ? null
-                    : _openOjasIdLogin,
-                icon: const Icon(Icons.alternate_email_rounded),
-                label: const Text('Log in with OJAS ID'),
-              ),
-            ),
             const SizedBox(height: 14),
             kIsWeb ? _googleWebButton() : _googleButton(_googleSignIn),
             const SizedBox(height: 10),
@@ -281,14 +303,18 @@ class _LoginScreenState extends State<LoginScreen> {
     String label,
     IconData icon, {
     TextInputType? keyboardType,
+    TextInputAction? textInputAction,
     bool obscureText = false,
     Widget? suffix,
     String? Function(String?)? validator,
+    void Function(String)? onFieldSubmitted,
   }) => TextFormField(
     controller: controller,
     keyboardType: keyboardType,
+    textInputAction: textInputAction,
     obscureText: obscureText,
     validator: validator,
+    onFieldSubmitted: onFieldSubmitted,
     decoration: InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(color: Color(0xFF4B5563)),
@@ -331,6 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Text(label),
     ),
   );
+
   Widget _googleButton(VoidCallback action) => SizedBox(
     width: double.infinity,
     height: 54,
