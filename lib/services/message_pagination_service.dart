@@ -20,7 +20,8 @@ class MessagePaginationService {
   static final MessagePaginationService instance =
       MessagePaginationService._();
 
-  static const int pageSize = 40;
+  /// Hard upper bound for every history request.
+  static const int pageSize = 20;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -48,8 +49,8 @@ class MessagePaginationService {
           ? await orderedQuery.get()
           : await orderedQuery.startAfterDocument(cursor).get();
     } on FirebaseException catch (error) {
-      // Pagination is an enhancement; real-time watchMessages remains the
-      // source of truth for the active chat. A missing index must not block it.
+      // Keep pagination optional. If the composite ordering index is missing,
+      // fall back to document ID so an older-history fetch still works.
       if (error.code != 'failed-precondition') {
         return _emptyPage(cursor);
       }
@@ -74,7 +75,7 @@ class MessagePaginationService {
       try {
         messages.add(OjasMessage.fromFirestore(document));
       } catch (_) {
-        // Ignore a malformed legacy message instead of breaking the chat.
+        // Ignore malformed legacy messages rather than breaking the room.
       }
     }
 
