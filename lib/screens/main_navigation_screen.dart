@@ -14,10 +14,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   void _onTabTapped(int index) {
-    if (index == _currentIndex) return;
+    if (index < 0 || index > 4 || index == _currentIndex) return;
     HapticFeedback.selectionClick();
 
-    // बीच वाला '+' बटन (Studio Upload)
     if (index == 2) {
       _openStudioPicker();
       return;
@@ -48,7 +47,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         children: [
           OjsFeedScreen(isActive: _currentIndex == 0),
           _buildPlaceholderScreen('Discover Trending', Icons.explore_outlined),
-          const SizedBox.shrink(), // Studio button placeholder
+          const SizedBox.shrink(),
           _buildPlaceholderScreen(
             'Activity & Notifications',
             Icons.notifications_none_rounded,
@@ -56,50 +55,60 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const ProfileScreen(),
         ],
       ),
-      bottomNavigationBar: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          color: isFeed ? Colors.black : Colors.white,
-          border: Border(
-            top: BorderSide(
-              color: isFeed ? Colors.white10 : const Color(0xFFF3F4F6),
-              width: 1,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 60,
+          decoration: BoxDecoration(
+            color: isFeed ? Colors.black : Colors.white,
+            border: Border(
+              top: BorderSide(
+                color: isFeed ? Colors.white10 : const Color(0xFFF3F4F6),
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(
-              0,
-              Icons.home_rounded,
-              Icons.home_outlined,
-              'Home',
-              isFeed,
-            ),
-            _buildNavItem(
-              1,
-              Icons.explore_rounded,
-              Icons.explore_outlined,
-              'Discover',
-              isFeed,
-            ),
-            _buildCenterStudioButton(isFeed),
-            _buildNavItem(
-              3,
-              Icons.notifications_rounded,
-              Icons.notifications_none_rounded,
-              'Inbox',
-              isFeed,
-            ),
-            _buildNavItem(
-              4,
-              Icons.person_rounded,
-              Icons.person_outline_rounded,
-              'Profile',
-              isFeed,
-            ),
-          ],
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildNavItem(
+                  0,
+                  Icons.home_rounded,
+                  Icons.home_outlined,
+                  'Home',
+                  isFeed,
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  1,
+                  Icons.explore_rounded,
+                  Icons.explore_outlined,
+                  'Discover',
+                  isFeed,
+                ),
+              ),
+              Expanded(child: _buildCenterStudioButton(isFeed)),
+              Expanded(
+                child: _buildNavItem(
+                  3,
+                  Icons.notifications_rounded,
+                  Icons.notifications_none_rounded,
+                  'Inbox',
+                  isFeed,
+                ),
+              ),
+              Expanded(
+                child: _buildNavItem(
+                  4,
+                  Icons.person_rounded,
+                  Icons.person_outline_rounded,
+                  'Profile',
+                  isFeed,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -121,24 +130,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return GestureDetector(
       onTap: () => _onTabTapped(index),
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSelected ? activeIcon : inactiveIcon,
-            color: isSelected ? activeColor : inactiveColor,
-            size: 24,
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: TextStyle(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : inactiveIcon,
               color: isSelected ? activeColor : inactiveColor,
-              fontSize: 10,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              size: 24,
             ),
-          ),
-        ],
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? activeColor : inactiveColor,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -146,17 +157,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget _buildCenterStudioButton(bool isDarkFeed) {
     return GestureDetector(
       onTap: () => _onTabTapped(2),
-      child: Container(
-        width: 44,
-        height: 30,
-        decoration: BoxDecoration(
-          color: isDarkFeed ? Colors.white : const Color(0xFF111827),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          Icons.add_rounded,
-          color: isDarkFeed ? Colors.black : Colors.white,
-          size: 22,
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: Container(
+          width: 44,
+          height: 30,
+          decoration: BoxDecoration(
+            color: isDarkFeed ? Colors.white : const Color(0xFF111827),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            Icons.add_rounded,
+            color: isDarkFeed ? Colors.black : Colors.white,
+            size: 22,
+          ),
         ),
       ),
     );
@@ -164,7 +178,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildPlaceholderScreen(String title, IconData icon) {
     return Scaffold(
-      backgroundColor: Colors.white, // 🚀 Minimalist Pure White
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
