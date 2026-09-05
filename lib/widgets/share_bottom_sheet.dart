@@ -112,7 +112,6 @@ class ShareBottomSheet extends StatelessWidget {
                     onTap: () async {
                       HapticFeedback.selectionClick();
                       if (item['name'] == 'Send in Ojas') {
-                        Navigator.pop(context);
                         await _showConversationShareSheet(
                           context,
                           videoUrl: videoUrl,
@@ -120,9 +119,9 @@ class ShareBottomSheet extends StatelessWidget {
                         return;
                       }
 
-                      Clipboard.setData(ClipboardData(text: videoUrl));
-                      Navigator.pop(context);
+                      await Clipboard.setData(ClipboardData(text: videoUrl));
                       if (!context.mounted) return;
+                      Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Opening ${item['name']}... 🚀'),
@@ -203,7 +202,6 @@ class ShareBottomSheet extends StatelessWidget {
             await DefaultCacheManager().downloadFile(videoUrl);
           } catch (_) {}
         } else if (label == 'Send in Ojas') {
-          Navigator.pop(context);
           await _showConversationShareSheet(context, videoUrl: videoUrl);
           return;
         }
@@ -407,11 +405,11 @@ class _ConversationShareSheet extends StatelessWidget {
 
     try {
       final message = caption.isEmpty ? 'Shared a reel' : caption;
-      await FirebaseFirestore.instance
+      final conversationRef = FirebaseFirestore.instance
           .collection('conversations')
-          .doc(conversationId)
-          .collection('messages')
-          .add({
+          .doc(conversationId);
+
+      await conversationRef.collection('messages').add({
         'senderId': user.uid,
         'type': 'video',
         'mediaUrl': videoUrl,
@@ -419,10 +417,7 @@ class _ConversationShareSheet extends StatelessWidget {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      await FirebaseFirestore.instance
-          .collection('conversations')
-          .doc(conversationId)
-          .update({
+      await conversationRef.update({
         'lastMessageText': message,
         'lastMessage': message,
         'lastMessageAt': FieldValue.serverTimestamp(),
@@ -431,6 +426,7 @@ class _ConversationShareSheet extends StatelessWidget {
       });
 
       if (!context.mounted) return;
+      Navigator.pop(context);
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Sent to $recipientName!')),
