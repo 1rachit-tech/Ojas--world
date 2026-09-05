@@ -13,8 +13,11 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? _controller;
+  XFile? _capturedFile;
   String? _error;
   bool _initializing = true;
+  bool _isRecording = false;
+  bool _shutterBusy = false;
 
   @override
   void initState() {
@@ -30,10 +33,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    setState(() {
-      _initializing = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _initializing = true;
+        _error = null;
+      });
+    }
 
     try {
       final permissionsGranted = await _requestPermissions();
@@ -111,6 +116,125 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  Future<void> _takePicture() async {
+    final controller = _controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        _isRecording ||
+        _shutterBusy) {
+      return;
+    }
+
+    setState(() {
+      _shutterBusy = true;
+      _error = null;
+    });
+
+    try {
+      final file = await controller.takePicture();
+      _capturedFile = file;
+      debugPrint('Photo saved to: ${file.path}');
+
+      // TODO: Pass the captured photo/video through video_compress or the
+      // appropriate local media pipeline before any upload is introduced.
+    } on CameraException catch (error) {
+      _showCaptureError(error);
+    } catch (error) {
+      debugPrint('Camera photo capture failed: $error');
+      _showCaptureError();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _shutterBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _startVideoRecording() async {
+    final controller = _controller;
+    if (controller == null ||
+        !controller.value.isInitialized ||
+        _isRecording ||
+        _shutterBusy) {
+      return;
+    }
+
+    setState(() {
+      _shutterBusy = true;
+      _error = null;
+    });
+
+    try {
+      await controller.startVideoRecording();
+      if (!mounted) return;
+
+      setState(() {
+        _isRecording = true;
+        _shutterBusy = false;
+      });
+    } on CameraException catch (error) {
+      _showCaptureError(error);
+      if (mounted) {
+        setState(() {
+          _shutterBusy = false;
+        });
+      }
+    } catch (error) {
+      debugPrint('Camera video start failed: $error');
+      _showCaptureError();
+      if (mounted) {
+        setState(() {
+          _shutterBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _stopVideoRecording() async {
+    final controller = _controller;
+    if (controller == null || !_isRecording || _shutterBusy) {
+      return;
+    }
+
+    setState(() {
+      _shutterBusy = true;
+    });
+
+    try {
+      final file = await controller.stopVideoRecording();
+      _capturedFile = file;
+      debugPrint('Video saved to: ${file.path}');
+
+      // TODO: Process the captured video locally with video_compress before
+      // any upload or remote processing is added.
+    } on CameraException catch (error) {
+      _showCaptureError(error);
+    } catch (error) {
+      debugPrint('Camera video stop failed: $error');
+      _showCaptureError();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+          _shutterBusy = false;
+        });
+      }
+    }
+  }
+
+  void _showCaptureError([CameraException? error]) {
+    final message = error?.description;
+    debugPrint('Camera capture failed: ${error?.code ?? 'unknown'}');
+
+    if (!mounted) return;
+    setState(() {
+      _error = message == null || message.isEmpty
+          ? 'Unable to capture media. Please try again.'
+          : message;
+    });
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -121,6 +245,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final previewReady = controller?.value.isInitialized == true;
+    final showChrome = !_isRecording;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -149,42 +274,50 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
           if (_error == null || previewReady)
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.music_note_rounded,
-                          color: Color(0xFFF5B942),
-                          size: 17,
+            AnimatedOpacity(
+              opacity: showChrome ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              child: IgnorePointer(
+                ignoring: !showChrome,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
                         ),
-                        const SizedBox(width: 6),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          child: Text(
-                            widget.audioId,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.music_note_rounded,
+                              color: Color(0xFFF5B942),
+                              size: 17,
                             ),
-                          ),
+                            const SizedBox(width: 6),
+                            ConstrainedBox(
+                              constraints:
+                                  const BoxConstraints(maxWidth: 220),
+                              child: Text(
+                                widget.audioId,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -196,46 +329,29 @@ class _CameraScreenState extends State<CameraScreen> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                  child: AnimatedOpacity(
+                    opacity: showChrome ? 1 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: IgnorePointer(
+                      ignoring: !showChrome,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _ShaderChip(label: 'Natural'),
-                          SizedBox(width: 8),
-                          _ShaderChip(label: 'Crisp'),
-                          SizedBox(width: 8),
-                          _ShaderChip(label: 'Vivid'),
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _ShaderChip(label: 'Natural'),
+                              SizedBox(width: 8),
+                              _ShaderChip(label: 'Crisp'),
+                              SizedBox(width: 8),
+                              _ShaderChip(label: 'Vivid'),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _buildShutterButton(),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      GestureDetector(
-                        onTap: () {
-                          // Recording intentionally deferred to a later Studio step.
-                          // TODO: Pass the captured video file through video_compress
-                          // before any upload or remote processing occurs.
-                        },
-                        child: Container(
-                          width: 78,
-                          height: 78,
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: 4,
-                            ),
-                          ),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -250,6 +366,45 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildShutterButton() {
+    return GestureDetector(
+      onTap: _isRecording || _shutterBusy ? null : _takePicture,
+      onLongPress: _isRecording || _shutterBusy
+          ? null
+          : _startVideoRecording,
+      onLongPressUp: _isRecording ? _stopVideoRecording : null,
+      child: AnimatedScale(
+        scale: _isRecording ? 0.88 : 1,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 78,
+          height: 78,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: _isRecording ? Colors.redAccent : Colors.white,
+              width: 4,
+            ),
+          ),
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: _isRecording ? 30 : 58,
+              height: _isRecording ? 30 : 58,
+              decoration: BoxDecoration(
+                color: _isRecording ? Colors.redAccent : Colors.white,
+                borderRadius: BorderRadius.circular(_isRecording ? 7 : 30),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
