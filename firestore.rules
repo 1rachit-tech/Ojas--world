@@ -133,6 +133,37 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /reels/{reelId} {
+      allow get, list: if signedIn();
+      allow create: if signedIn()
+          && request.resource.data.creatorId == request.auth.uid
+          && request.resource.data.videoUrl is string
+          && request.resource.data.videoUrl.size() > 0
+          && request.resource.data.videoUrl.size() <= 2048
+          && request.resource.data.hlsUrl == request.resource.data.videoUrl
+          && request.resource.data.caption is string
+          && request.resource.data.caption.size() <= 2200
+          && request.resource.data.shaderUsed is string
+          && (
+            request.resource.data.shaderUsed == 'Natural'
+            || request.resource.data.shaderUsed == '4K Ultra HDR'
+            || request.resource.data.shaderUsed == '8K Hyper Clarity'
+          )
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.likesCount == 0
+          && request.resource.data.commentsCount == 0
+          && request.resource.data.sharesCount == 0
+          && request.resource.data.likes == 0
+          && request.resource.data.comments == 0
+          && request.resource.data.shares == 0
+          && request.resource.data.saves == 0
+          && request.resource.data.views == 0
+          && request.resource.data.watchTimeMs == 0
+          && request.resource.data.completions == 0;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     match /mediaIndex/{mediaHash} {
       allow get: if signedIn();
       allow list: if false;
@@ -175,8 +206,6 @@ service cloud.firestore {
             || request.resource.data.lastMessageSenderId in request.resource.data.participants
             || request.resource.data.lastMessageSenderId == ''
           );
-
-      allow delete: if false;
 
       match /messages/{messageId} {
         allow get, list: if signedIn()
