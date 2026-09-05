@@ -22,16 +22,23 @@ class FullscreenLandscapePlayer extends StatefulWidget {
     required String creator,
   }) async {
     HapticFeedback.mediumImpact();
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FullscreenLandscapePlayer(
-          videoUrl: videoUrl,
-          title: title,
-          creator: creator,
+    try {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FullscreenLandscapePlayer(
+            videoUrl: videoUrl,
+            title: title,
+            creator: creator,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
   }
 
   @override
