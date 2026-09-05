@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -18,18 +20,20 @@ class ShareBottomSheet extends StatelessWidget {
     required String creatorName,
   }) {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) =>
-          ShareBottomSheet(videoUrl: videoUrl, creatorName: creatorName),
+      builder: (context) => ShareBottomSheet(
+        videoUrl: videoUrl,
+        creatorName: creatorName,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> socialShareList = [
+    final socialShareList = <Map<String, dynamic>>[
       {
         'name': 'WhatsApp',
         'icon': Icons.chat_rounded,
@@ -52,7 +56,7 @@ class ShareBottomSheet extends StatelessWidget {
       },
     ];
 
-    final List<Map<String, dynamic>> toolActions = [
+    final toolActions = <Map<String, dynamic>>[
       {'name': 'Copy Link', 'icon': Icons.copy_rounded},
       {'name': 'Save to Device', 'icon': Icons.download_rounded},
       {'name': 'QR Code', 'icon': Icons.qr_code_rounded},
@@ -105,10 +109,20 @@ class ShareBottomSheet extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final item = socialShareList[index];
                   return GestureDetector(
-                    onTap: () {
+                    onTap: () async {
                       HapticFeedback.selectionClick();
+                      if (item['name'] == 'Send in Ojas') {
+                        Navigator.pop(context);
+                        await _showConversationShareSheet(
+                          context,
+                          videoUrl: videoUrl,
+                        );
+                        return;
+                      }
+
                       Clipboard.setData(ClipboardData(text: videoUrl));
                       Navigator.pop(context);
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('Opening ${item['name']}... 🚀'),
@@ -162,6 +176,7 @@ class ShareBottomSheet extends StatelessWidget {
                     context,
                     icon: action['icon'] as IconData,
                     label: action['name'] as String,
+                    videoUrl: videoUrl,
                   );
                 }).toList(),
               ),
@@ -176,19 +191,24 @@ class ShareBottomSheet extends StatelessWidget {
     BuildContext context, {
     required IconData icon,
     required String label,
+    required String videoUrl,
   }) {
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         HapticFeedback.selectionClick();
         if (label == 'Copy Link') {
-          Clipboard.setData(ClipboardData(text: videoUrl));
+          await Clipboard.setData(ClipboardData(text: videoUrl));
+        } else if (label == 'Save to Device') {
+          try {
+            await DefaultCacheManager().downloadFile(videoUrl);
+          } catch (_) {}
+        } else if (label == 'Send in Ojas') {
+          Navigator.pop(context);
+          await _showConversationShareSheet(context, videoUrl: videoUrl);
+          return;
         }
-        if (label == 'Save to Device') {
-          DefaultCacheManager().downloadFile(videoUrl);
-        }
-        if (label == 'Send in Ojas') {
-          Clipboard.setData(ClipboardData(text: videoUrl));
-        }
+
+        if (!context.mounted) return;
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -197,8 +217,6 @@ class ShareBottomSheet extends StatelessWidget {
                   ? 'Link copied to clipboard! 📋'
                   : label == 'Save to Device'
                   ? 'Saved to local device cache ✅'
-                  : label == 'Send in Ojas'
-                  ? 'Ready to send in Ojas 💬'
                   : '$label executed!',
             ),
             behavior: SnackBarBehavior.floating,
@@ -229,6 +247,244 @@ class ShareBottomSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  static Future<void> _showConversationShareSheet(
+    BuildContext context, {
+    required String videoUrl,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please sign in to send a reel.')),
+        );
+      }
+      return;
+    }
+
+    String caption = '';
+    try {
+      final reelSnapshot = await FirebaseFirestore.instance
+          .collection('reels')
+          .where('hlsUrl', isEqualTo: videoUrl)
+          .limit(1)
+          .get();
+      if (reelSnapshot.docs.isNotEmpty) {
+        final data = reelSnapshot.docs.first.data();
+        final value = data['caption'];
+        if (value is String) caption = value.trim();
+      }
+    } catch (_) {}
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => _ConversationShareSheet(
+        currentUserId: user.uid,
+        videoUrl: videoUrl,
+        caption: caption,
+      ),
+    );
+  }
+}
+
+class _ConversationShareSheet extends StatelessWidget {
+  const _ConversationShareSheet({
+    required this.currentUserId,
+    required this.videoUrl,
+    required this.caption,
+  });
+
+  final String currentUserId;
+  final String videoUrl;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final query = FirebaseFirestore.instance
+        .collection('conversations')
+        .where('participants', arrayContains: currentUserId)
+        .orderBy('lastMessageAt', descending: true)
+        .limit(20);
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.55,
+        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: query.snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Center(child: Text('Unable to load conversations.'));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              );
+            }
+
+            final docs = snapshot.data?.docs ?? const [];
+            if (docs.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'No conversations yet. Start a chat first.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+              itemCount: docs.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final data = docs[index].data();
+                final participants = data['participants'];
+                final ids = participants is List
+                    ? List<String>.from(participants.whereType<String>())
+                    : const <String>[];
+                final recipientId = ids.firstWhere(
+                  (id) => id != currentUserId,
+                  orElse: () => '',
+                );
+                final profileMap = data['participantProfiles'];
+                final allProfiles = profileMap is Map
+                    ? Map<String, dynamic>.from(profileMap)
+                    : const <String, dynamic>{};
+                final rawRecipientProfile = allProfiles[recipientId];
+                final recipientProfile = rawRecipientProfile is Map
+                    ? Map<String, dynamic>.from(rawRecipientProfile)
+                    : const <String, dynamic>{};
+                final name = _firstString([
+                  recipientProfile['ojasId'],
+                  recipientProfile['displayName'],
+                  recipientId,
+                ], fallback: 'OJAS user');
+                final avatar = _stringValue(recipientProfile['photoUrl']);
+
+                return ListTile(
+                  leading: _ConversationAvatar(url: avatar, label: name),
+                  title: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: const Text('Send reel'),
+                  onTap: recipientId.isEmpty
+                      ? null
+                      : () => _sendReel(
+                            context,
+                            conversationId: docs[index].id,
+                            recipientId: recipientId,
+                            recipientName: name,
+                          ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendReel(
+    BuildContext context, {
+    required String conversationId,
+    required String recipientId,
+    required String recipientName,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final message = caption.isEmpty ? 'Shared a reel' : caption;
+      await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .collection('messages')
+          .add({
+        'senderId': user.uid,
+        'type': 'video',
+        'mediaUrl': videoUrl,
+        'text': message,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .update({
+        'lastMessageText': message,
+        'lastMessage': message,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageSenderId': user.uid,
+        'lastSenderId': user.uid,
+      });
+
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sent to $recipientName!')),
+      );
+    } on FirebaseException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message ?? 'Unable to send reel.')),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to send reel.')),
+      );
+    }
+  }
+
+  static String _stringValue(dynamic value) =>
+      value is String ? value.trim() : '';
+
+  static String _firstString(List<dynamic> values, {String fallback = ''}) {
+    for (final value in values) {
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return fallback;
+  }
+}
+
+class _ConversationAvatar extends StatelessWidget {
+  const _ConversationAvatar({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = label.isEmpty ? 'O' : label.substring(0, 1).toUpperCase();
+    if (url.isNotEmpty) {
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: const Color(0xFFF3F4F6),
+        backgroundImage: NetworkImage(url),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: const Color(0xFFF3F4F6),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Color(0xFF111827),
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
