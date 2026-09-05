@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/reel_model.dart';
@@ -36,6 +37,7 @@ class CreatorProfileScreen extends StatefulWidget {
 class _CreatorProfileScreenState extends State<CreatorProfileScreen>
     with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final EngagementService _engagementService = EngagementService();
 
   late final TabController _tabController;
@@ -48,6 +50,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
   bool _profileLoading = true;
   bool _reelsLoading = false;
   bool _shopLoading = false;
+  bool _followUpdating = false;
   bool _reelsLoaded = false;
   bool _shopLoaded = false;
   List<ReelModel> _reels = const <ReelModel>[];
@@ -85,28 +88,37 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
 
   Future<void> _loadProfile() async {
     if (widget.creatorId.isEmpty) {
-      if (mounted) {
-        setState(() => _profileLoading = false);
-      }
+      if (mounted) setState(() => _profileLoading = false);
       return;
     }
 
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(widget.creatorId)
-          .get();
+      final profileRef =
+          _firestore.collection('publicProfiles').doc(widget.creatorId);
+      final snapshot = await profileRef.get();
       final data = snapshot.data() ?? const <String, dynamic>{};
+      final currentUser = _auth.currentUser;
+      Map<String, dynamic> currentData = const <String, dynamic>{};
+
+      if (currentUser != null) {
+        final currentSnapshot = await _firestore
+            .collection('publicProfiles')
+            .doc(currentUser.uid)
+            .get();
+        currentData = currentSnapshot.data() ?? const <String, dynamic>{};
+      }
+
       if (!mounted) return;
+      final followingIds = _stringList(currentData['following']);
       setState(() {
         _bio = data['bio'] as String? ?? '';
-        _photoUrl =
-            data['photoUrl'] as String? ??
-            data['profileImageUrl'] as String? ??
-            '';
+        _photoUrl = data['photoUrl'] as String? ?? '';
         _followers = (data['followersCount'] as num?)?.toInt() ?? _followers;
         _following = (data['followingCount'] as num?)?.toInt() ?? _following;
         _likes = (data['likesCount'] as num?)?.toInt() ?? _likes;
+        if (currentUser != null) {
+          _isFollowing = followingIds.contains(widget.creatorId);
+        }
         _profileLoading = false;
       });
       _loadReels();
@@ -168,14 +180,65 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
     }
   }
 
-  void _toggleFollow() {
+  Future<void> _toggleFollow() async {
+    if (_followUpdating || widget.creatorId.isEmpty) return;
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || currentUser.uid == widget.creatorId) return;
+
     final next = !_isFollowing;
+    final previousFollowers = _followers;
+    final previousFollowing = _following;
     setState(() {
+      _followUpdating = true;
       _isFollowing = next;
       _followers = (_followers + (next ? 1 : -1)).clamp(0, 1 << 31);
     });
-    widget.onFollowChanged?.call(next);
-    _engagementService.syncFollow(creatorId: widget.creatorId, following: next);
+
+    try {
+      await _engagementService.setFollowState(
+        creatorId: widget.creatorId,
+        following: next,
+      );
+      if (!mounted) return;
+      widget.onFollowChanged?.call(next);
+      setState(() => _followUpdating = false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _followUpdating = false;
+        _isFollowing = !next;
+        _followers = previousFollowers;
+        _following = previousFollowing;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to update follow status.')),
+      );
+      debugPrint('OJAS creator follow update failed: $error');
+    }
+  }
+
+  Future<void> _showSocialList(String type) async {
+    if (widget.creatorId.isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF171B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => _SocialListSheet(
+        profileId: widget.creatorId,
+        type: type,
+        currentUserId: _auth.currentUser?.uid,
+        engagementService: _engagementService,
+      ),
+    );
+  }
+
+  static List<String> _stringList(dynamic value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().toList(growable: false);
   }
 
   String _compactNumber(int value) {
@@ -264,13 +327,21 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _Stat(
-                          label: 'Followers',
-                          value: _compactNumber(_followers),
+                        GestureDetector(
+                          onTap: () => _showSocialList('followers'),
+                          behavior: HitTestBehavior.opaque,
+                          child: _Stat(
+                            label: 'Followers',
+                            value: _compactNumber(_followers),
+                          ),
                         ),
-                        _Stat(
-                          label: 'Following',
-                          value: _compactNumber(_following),
+                        GestureDetector(
+                          onTap: () => _showSocialList('following'),
+                          behavior: HitTestBehavior.opaque,
+                          child: _Stat(
+                            label: 'Following',
+                            value: _compactNumber(_following),
+                          ),
                         ),
                         _Stat(label: 'Likes', value: _compactNumber(_likes)),
                       ],
@@ -301,7 +372,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
             width: double.infinity,
             height: 42,
             child: ElevatedButton(
-              onPressed: widget.creatorId.isEmpty ? null : _toggleFollow,
+              onPressed: widget.creatorId.isEmpty || _followUpdating
+                  ? null
+                  : _toggleFollow,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isFollowing
                     ? const Color(0xFF242933)
@@ -314,10 +387,15 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: Text(
-                _isFollowing ? 'Unfollow' : 'Follow',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
+              child: _followUpdating
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      _isFollowing ? 'Unfollow' : 'Follow',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
             ),
           ),
         ],
@@ -372,9 +450,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
   }
 
   Widget _buildReelsGrid() {
-    if (_reelsLoading && !_reelsLoaded) {
-      return const _GridLoader();
-    }
+    if (_reelsLoading && !_reelsLoaded) return const _GridLoader();
     if (_reels.isEmpty) {
       return const _EmptyState(
         icon: Icons.video_library_outlined,
@@ -398,9 +474,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
   }
 
   Widget _buildShopGrid() {
-    if (_shopLoading && !_shopLoaded) {
-      return const _GridLoader();
-    }
+    if (_shopLoading && !_shopLoaded) return const _GridLoader();
     if (_shopItems.isEmpty) {
       return const _EmptyState(
         icon: Icons.storefront_outlined,
@@ -416,9 +490,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen>
         childAspectRatio: 0.82,
       ),
       itemCount: _shopItems.length,
-      itemBuilder: (context, index) {
-        return _ShopTile(item: _shopItems[index]);
-      },
+      itemBuilder: (context, index) => _ShopTile(item: _shopItems[index]),
     );
   }
 
@@ -468,22 +540,354 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
           ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SocialListSheet extends StatefulWidget {
+  const _SocialListSheet({
+    required this.profileId,
+    required this.type,
+    required this.currentUserId,
+    required this.engagementService,
+  });
+
+  final String profileId;
+  final String type;
+  final String? currentUserId;
+  final EngagementService engagementService;
+
+  @override
+  State<_SocialListSheet> createState() => _SocialListSheetState();
+}
+
+class _SocialListSheetState extends State<_SocialListSheet> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool _loading = true;
+  List<Map<String, dynamic>> _profiles = const <Map<String, dynamic>>[];
+  Set<String> _followingIds = <String>{};
+  final Set<String> _updatingIds = <String>{};
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  List<String> _asStringList(dynamic value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().toList(growable: false);
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final snapshot = await _firestore
+          .collection('publicProfiles')
+          .doc(widget.profileId)
+          .get();
+      final data = snapshot.data() ?? const <String, dynamic>{};
+      final ids = _asStringList(
+        widget.type == 'followers' ? data['followers'] : data['following'],
+      );
+
+      if (widget.currentUserId != null) {
+        final currentSnapshot = await _firestore
+            .collection('publicProfiles')
+            .doc(widget.currentUserId)
+            .get();
+        final currentData = currentSnapshot.data() ?? const <String, dynamic>{};
+        _followingIds = _asStringList(currentData['following']).toSet();
+      }
+
+      if (ids.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _profiles = const <Map<String, dynamic>>[];
+          _loading = false;
+        });
+        return;
+      }
+
+      final docs = <Map<String, dynamic>>[];
+      for (var start = 0; start < ids.length; start += 30) {
+        final chunk = ids.sublist(
+          start,
+          start + 30 > ids.length ? ids.length : start + 30,
+        );
+        final profileSnapshot = await _firestore
+            .collection('publicProfiles')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        docs.addAll(
+          profileSnapshot.docs.map((doc) {
+            final profile = doc.data();
+            return <String, dynamic>{
+              'uid': doc.id,
+              'ojasId': profile['ojasId'] is String
+                  ? profile['ojasId'] as String
+                  : '',
+              'displayName': profile['displayName'] is String
+                  ? profile['displayName'] as String
+                  : '',
+              'photoUrl': profile['photoUrl'] is String
+                  ? profile['photoUrl'] as String
+                  : '',
+            };
+          }),
+        );
+      }
+
+      final order = <String, int>{};
+      for (var i = 0; i < ids.length; i++) {
+        order[ids[i]] = i;
+      }
+      docs.sort(
+        (a, b) => (order[a['uid']] ?? 999999).compareTo(
+          order[b['uid']] ?? 999999,
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white54, fontSize: 11),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _profiles = docs;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Unable to load this list.';
+      });
+      debugPrint('OJAS social list load failed: $error');
+    }
+  }
+
+  Future<void> _toggleListedUser(String userId, String name) async {
+    final currentUserId = widget.currentUserId;
+    if (currentUserId == null ||
+        currentUserId.isEmpty ||
+        currentUserId == userId ||
+        _updatingIds.contains(userId)) {
+      return;
+    }
+
+    final next = !_followingIds.contains(userId);
+    setState(() {
+      _updatingIds.add(userId);
+      if (next) {
+        _followingIds.add(userId);
+      } else {
+        _followingIds.remove(userId);
+      }
+    });
+
+    try {
+      await widget.engagementService.setFollowState(
+        creatorId: userId,
+        following: next,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (next) {
+          _followingIds.remove(userId);
+        } else {
+          _followingIds.add(userId);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to update @$name.')),
+      );
+      debugPrint('OJAS social list follow update failed: $error');
+    } finally {
+      if (mounted) setState(() => _updatingIds.remove(userId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.type == 'followers' ? 'Followers' : 'Following';
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.65,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                    )
+                  : _profiles.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No $title yet.',
+                        style: const TextStyle(color: Colors.white54),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+                      itemCount: _profiles.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: Colors.white10, height: 1),
+                      itemBuilder: (context, index) {
+                        final profile = _profiles[index];
+                        final uid = profile['uid'] as String? ?? '';
+                        final ojasId = profile['ojasId'] as String? ?? '';
+                        final displayName = profile['displayName'] as String? ?? '';
+                        final photoUrl = profile['photoUrl'] as String? ?? '';
+                        final name = ojasId.isNotEmpty
+                            ? ojasId
+                            : (displayName.isNotEmpty ? displayName : 'OJAS user');
+                        final isSelf = uid == widget.currentUserId;
+                        final following = _followingIds.contains(uid);
+                        final updating = _updatingIds.contains(uid);
+
+                        return ListTile(
+                          leading: _SocialAvatar(url: photoUrl, label: name),
+                          title: Text(
+                            '@$name',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          subtitle: displayName.isNotEmpty && displayName != name
+                              ? Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white54),
+                                )
+                              : null,
+                          trailing: isSelf || widget.currentUserId == null
+                              ? null
+                              : SizedBox(
+                                  width: 92,
+                                  height: 34,
+                                  child: ElevatedButton(
+                                    onPressed: updating
+                                        ? null
+                                        : () => _toggleListedUser(uid, name),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: following
+                                          ? const Color(0xFF242933)
+                                          : const Color(0xFFF5B942),
+                                      foregroundColor: following
+                                          ? Colors.white
+                                          : Colors.black,
+                                      elevation: 0,
+                                      padding: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    child: updating
+                                        ? const SizedBox.square(
+                                            dimension: 15,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : Text(
+                                            following ? 'Unfollow' : 'Follow',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _SocialAvatar extends StatelessWidget {
+  const _SocialAvatar({required this.url, required this.label});
+
+  final String url;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = label.isEmpty ? 'O' : label.substring(0, 1).toUpperCase();
+    if (url.isNotEmpty) {
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: const Color(0xFF242933),
+        backgroundImage: NetworkImage(url),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: const Color(0xFF242933),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 }
