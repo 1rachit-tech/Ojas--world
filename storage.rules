@@ -16,12 +16,20 @@ service firebase.storage {
       return request.resource.contentType.matches('video/.*');
     }
 
+    function isAudio() {
+      return request.resource.contentType.matches('audio/.*');
+    }
+
     function isValidImageSize() {
       return request.resource.size <= 10 * 1024 * 1024;
     }
 
     function isValidVideoSize() {
       return request.resource.size <= 50 * 1024 * 1024;
+    }
+
+    function isValidAudioSize() {
+      return request.resource.size <= 10 * 1024 * 1024;
     }
 
     match /conversations/{conversationId}/messages/{userId}/{fileName} {
@@ -50,6 +58,18 @@ service firebase.storage {
 
       allow delete: if isSignedIn()
         && request.auth.uid == userId;
+    }
+
+    match /chat_media/audio/{conversationId}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && isAudio()
+        && isValidAudioSize();
+
+      allow update: if false;
+
+      allow delete: if isSignedIn();
     }
 
     match /profileImages/{userId}/{fileName} {
