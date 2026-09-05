@@ -9,38 +9,86 @@ class EngagementService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
-  Future<void> syncFollow({
+  Future<void> setFollowState({
     required String creatorId,
     required bool following,
   }) async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null ||
-        uid.isEmpty ||
-        creatorId.trim().isEmpty ||
-        uid == creatorId) {
+    final targetId = creatorId.trim();
+
+    if (uid == null || uid.isEmpty || targetId.isEmpty || uid == targetId) {
       return;
     }
-    final followingRef = _firestore
-        .collection('users')
-        .doc(uid)
-        .collection('following')
-        .doc(creatorId);
-    final creatorRef = _firestore.collection('users').doc(creatorId);
-    final batch = _firestore.batch();
-    if (following) {
-      batch.set(followingRef, <String, dynamic>{
-        'following': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } else {
-      batch.delete(followingRef);
-    }
-    batch.set(creatorRef, <String, dynamic>{
-      'followersCount': FieldValue.increment(following ? 1 : -1),
-    }, SetOptions(merge: true));
+
+    final currentUserRef = _firestore.collection('publicProfiles').doc(uid);
+    final creatorRef = _firestore.collection('publicProfiles').doc(targetId);
+
+    await _firestore.runTransaction((transaction) async {
+      final currentSnapshot = await transaction.get(currentUserRef);
+      final creatorSnapshot = await transaction.get(creatorRef);
+
+      if (!creatorSnapshot.exists) {
+        throw StateError('Creator profile not found.');
+      }
+
+      final currentData = currentSnapshot.data() ?? const <String, dynamic>{};
+      final creatorData = creatorSnapshot.data() ?? const <String, dynamic>{};
+      final currentFollowing = _stringList(currentData['following']);
+      final creatorFollowers = _stringList(creatorData['followers']);
+      final alreadyFollowing = currentFollowing.contains(targetId);
+
+      if (alreadyFollowing == following) return;
+
+      if (following) {
+        transaction.set(
+          currentUserRef,
+          <String, dynamic>{
+            'following': FieldValue.arrayUnion(<String>[targetId]),
+            'followingCount': FieldValue.increment(1),
+          },
+          SetOptions(merge: true),
+        );
+        transaction.set(
+          creatorRef,
+          <String, dynamic>{
+            'followers': FieldValue.arrayUnion(<String>[uid]),
+            'followersCount': FieldValue.increment(1),
+          },
+          SetOptions(merge: true),
+        );
+      } else {
+        transaction.set(
+          currentUserRef,
+          <String, dynamic>{
+            'following': FieldValue.arrayRemove(<String>[targetId]),
+            'followingCount': FieldValue.increment(-1),
+          },
+          SetOptions(merge: true),
+        );
+        transaction.set(
+          creatorRef,
+          <String, dynamic>{
+            'followers': FieldValue.arrayRemove(<String>[uid]),
+            'followersCount': FieldValue.increment(-1),
+          },
+          SetOptions(merge: true),
+        );
+      }
+
+      // Keep these reads as the authoritative state check for idempotent UI retries.
+      if (following && creatorFollowers.contains(uid)) return;
+      if (!following && !creatorFollowers.contains(uid)) return;
+    });
+  }
+
+  Future<void> syncFollow({
+    required String creatorId,
+    required bool following,
+  }) async {
     try {
-      await batch.commit();
+      await setFollowState(creatorId: creatorId, following: following);
     } catch (error) {
+      // Background engagement must never block feed interaction.
       // ignore: avoid_print
       print('OJAS follow sync failed: $error');
     }
@@ -99,5 +147,10 @@ class EngagementService {
       // ignore: avoid_print
       print('OJAS engagement sync failed: $error');
     }
+  }
+
+  static List<String> _stringList(dynamic value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().toList(growable: false);
   }
 }
