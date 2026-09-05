@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+
+import 'creator_profile_screen.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -12,19 +17,13 @@ class DiscoverScreen extends StatefulWidget {
 class _DiscoverScreenState extends State<DiscoverScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchDebounce;
 
   static const List<String> _categories = <String>[
     '🔥 For You',
     '🎵 Sounds',
     '# Trending',
     '👥 Creators',
-  ];
-
-  static const List<String> _suggestions = <String>[
-    '@ojascreator',
-    '@trendingojas',
-    '@creator_ojas',
-    '@ojasmusic',
   ];
 
   static const List<String> _viewCounts = <String>[
@@ -71,26 +70,248 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   int _selectedCategory = 0;
   bool _isSearching = false;
+  bool _isLoading = false;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _searchResults =
+      <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  int _searchRequestId = 0;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String value) {
-    final searching = value.trim().isNotEmpty;
-    if (_isSearching == searching) return;
-    setState(() => _isSearching = searching);
+    _searchDebounce?.cancel();
+
+    final query = value.trim().toLowerCase();
+    if (query.isEmpty) {
+      _searchRequestId++;
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+          _isLoading = false;
+          _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _isLoading = true;
+      _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    });
+
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      searchUsers(query);
+    });
+  }
+
+  Future<void> searchUsers(String query) async {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) {
+      return;
+    }
+
+    final int requestId = ++_searchRequestId;
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where(
+            'username',
+            isGreaterThanOrEqualTo: normalizedQuery,
+          )
+          .where(
+            'username',
+            isLessThan: '$normalizedQuery' 'z',
+          )
+          .limit(20)
+          .get();
+
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() {
+        _searchResults = snapshot.docs;
+        _isLoading = false;
+      });
+    } on FirebaseException catch (error) {
+      if (!mounted || requestId != _searchRequestId) return;
+      debugPrint('OJAS Discover user search failed: ${error.message}');
+      setState(() {
+        _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || requestId != _searchRequestId) return;
+      debugPrint('OJAS Discover user search failed: $error');
+      setState(() {
+        _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        _isLoading = false;
+      });
+    }
   }
 
   void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchRequestId++;
     _searchController.clear();
     _searchFocusNode.unfocus();
-    if (_isSearching) {
-      setState(() => _isSearching = false);
+    if (mounted) {
+      setState(() {
+        _isSearching = false;
+        _isLoading = false;
+        _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      });
     }
+  }
+
+  void _openProfile(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final rawUid = data['uid'];
+    final uid = rawUid is String && rawUid.trim().isNotEmpty
+        ? rawUid.trim()
+        : doc.id;
+    if (uid.isEmpty) return;
+
+    final username = data['username'] is String
+        ? (data['username'] as String).trim()
+        : '';
+    final name = data['name'] is String
+        ? (data['name'] as String).trim()
+        : data['displayName'] is String
+            ? (data['displayName'] as String).trim()
+            : '';
+
+    _searchFocusNode.unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CreatorProfileScreen(
+          creatorId: uid,
+          username: username.isNotEmpty
+              ? username
+              : (name.isNotEmpty ? name : 'OJAS Creator'),
+          creatorName: name.isNotEmpty ? name : username,
+          avatarColor: const Color(0xFFE5E7EB),
+        ),
+      ),
+    );
+  }
+
+  Widget _searchResultsView() {
+    if (_isLoading && _searchResults.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (_searchResults.isEmpty) {
+      return const Center(
+        child: Text(
+          'No results found',
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.only(top: 4),
+      itemCount: _searchResults.length,
+      itemBuilder: (context, index) {
+        final doc = _searchResults[index];
+        final data = doc.data();
+        final username = data['username'] is String
+            ? (data['username'] as String).trim()
+            : '';
+        final name = data['name'] is String
+            ? (data['name'] as String).trim()
+            : data['displayName'] is String
+                ? (data['displayName'] as String).trim()
+                : 'OJAS User';
+        final imageUrl = data['profileImageUrl'] is String
+            ? (data['profileImageUrl'] as String).trim()
+            : data['photoUrl'] is String
+                ? (data['photoUrl'] as String).trim()
+                : '';
+        final initialSource = name.isNotEmpty
+            ? name
+            : (username.isNotEmpty ? username : 'O');
+        final initial = initialSource.substring(0, 1).toUpperCase();
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          leading: CircleAvatar(
+            backgroundColor: const Color(0xFFE5E7EB),
+            child: ClipOval(
+              child: imageUrl.isEmpty
+                  ? Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Color(0xFF111827),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Center(
+                        child: Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Center(
+                        child: Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          title: Text(
+            name.isNotEmpty ? name : '@$username',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            username.isEmpty ? '@ojasuser' : '@$username',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 13,
+            ),
+          ),
+          onTap: () => _openProfile(doc),
+        );
+      },
+    );
   }
 
   @override
@@ -204,47 +425,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 const SizedBox(height: 8),
                 Expanded(
                   child: _isSearching
-                      ? ListView.builder(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.only(top: 4),
-                          itemCount: _suggestions.length,
-                          itemBuilder: (context, index) {
-                            final creator = _suggestions[index];
-                            final initial = creator.substring(1, 2).toUpperCase();
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFFE5E7EB),
-                                foregroundColor: const Color(0xFF111827),
-                                child: Text(
-                                  initial,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                creator,
-                                style: const TextStyle(
-                                  color: Color(0xFF111827),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              onTap: () {
-                                _searchController.text = creator;
-                                _searchController.selection =
-                                    TextSelection.collapsed(
-                                  offset: creator.length,
-                                );
-                                _searchFocusNode.unfocus();
-                              },
-                            );
-                          },
-                        )
+                      ? _searchResultsView()
                       : MasonryGridView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
                           gridDelegate:
