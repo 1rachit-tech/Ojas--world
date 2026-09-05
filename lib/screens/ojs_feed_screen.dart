@@ -248,6 +248,24 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 12),
+            const Text(
+              'Video Filters',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Filter controls coming soon.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ),
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(
@@ -392,17 +410,20 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            PageView(
-              controller: _horizontalFeedController,
-              physics: _isCommentsOpen
-                  ? const NeverScrollableScrollPhysics()
-                  : const OjasZeroJankScrollPhysics(),
-              onPageChanged: (index) =>
-                  setState(() => _currentSelectedFeed = index),
-              children: [
-                _buildForYouFeed(),
-                _buildFollowingFeed(followingVideos),
-              ],
+            SafeArea(
+              bottom: true,
+              child: PageView(
+                controller: _horizontalFeedController,
+                physics: _isCommentsOpen
+                    ? const NeverScrollableScrollPhysics()
+                    : const OjasZeroJankScrollPhysics(),
+                onPageChanged: (index) =>
+                    setState(() => _currentSelectedFeed = index),
+                children: [
+                  _buildForYouFeed(),
+                  _buildFollowingFeed(followingVideos),
+                ],
+              ),
             ),
             Positioned(
               top: 0,
@@ -589,7 +610,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
           isLiked: _likedVideos.contains(video.id),
           isSaved: _savedVideos.contains(video.id),
           onLike: () => _toggleLikeVideo(video.id),
-          onComment: _toggleComments,
+          onComment: () => _openComments(video.id),
           onSave: () => _toggleSaveVideo(video.id),
           onFollow: () {
             final next = !_followedCreators.contains(video.creator);
