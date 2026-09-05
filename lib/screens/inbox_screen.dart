@@ -434,23 +434,7 @@ class _ConversationTile extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           if (unreadCount > 0)
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color(0xFF111827),
-                shape: BoxShape.circle,
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(5),
-                child: Text(
-                  '•',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    height: 0.8,
-                  ),
-                ),
-              ),
-            ),
+            _UnreadBadge(count: unreadCount),
         ],
       ),
       onTap: otherUserId.isEmpty
@@ -502,6 +486,35 @@ class _ConversationTile extends StatelessWidget {
   }
 }
 
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Color(0xFF111827),
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.url, required this.label});
 
@@ -529,7 +542,6 @@ class _Avatar extends StatelessWidget {
         style: const TextStyle(
           color: Color(0xFF111827),
           fontWeight: FontWeight.w800,
-          fontSize: 20,
         ),
       ),
     );
@@ -555,18 +567,18 @@ class _InboxMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 52, color: const Color(0xFFD1D5DB)),
+            Icon(icon, size: 42, color: const Color(0xFF9CA3AF)),
             const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF111827),
-                fontSize: 17,
                 fontWeight: FontWeight.w800,
+                fontSize: 17,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Text(
               message,
               textAlign: TextAlign.center,
