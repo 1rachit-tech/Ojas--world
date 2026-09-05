@@ -128,8 +128,57 @@ service cloud.firestore {
       allow get, list: if signedIn();
       allow create: if isOwner(userId)
           && request.resource.data.uid == userId;
-      allow update: if isOwner(userId)
-          && request.resource.data.uid == userId;
+      allow update: if (
+            isOwner(userId)
+            && request.resource.data.uid == userId
+          ) || (
+            signedIn()
+            && userId != request.auth.uid
+            && request.resource.data.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'followers',
+              'followersCount'
+            ])
+            && (
+              (
+                !('followers' in resource.data)
+                && request.resource.data.followers is list
+                && request.resource.data.followers.size() == 1
+                && request.resource.data.followers.hasOnly([request.auth.uid])
+                && request.resource.data.followersCount == 1
+              )
+              || (
+                resource.data.followers is list
+                && request.resource.data.followers is list
+                && resource.data.followersCount is num
+                && request.resource.data.followersCount is num
+                && (
+                  (
+                    request.auth.uid !in resource.data.followers
+                    && request.auth.uid in request.resource.data.followers
+                    && request.resource.data.followers.size()
+                        == resource.data.followers.size() + 1
+                    && resource.data.followers.hasOnly(
+                      request.resource.data.followers
+                    )
+                    && request.resource.data.followersCount
+                        == resource.data.followersCount + 1
+                  )
+                  || (
+                    request.auth.uid in resource.data.followers
+                    && request.auth.uid !in request.resource.data.followers
+                    && resource.data.followers.size()
+                        == request.resource.data.followers.size() + 1
+                    && request.resource.data.followers.hasOnly(
+                      resource.data.followers
+                    )
+                    && request.resource.data.followersCount
+                        == resource.data.followersCount - 1
+                  )
+                )
+              )
+            )
+          );
       allow delete: if false;
     }
 
