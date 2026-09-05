@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -23,6 +25,48 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     '@trendingojas',
     '@creator_ojas',
     '@ojasmusic',
+  ];
+
+  static const List<String> _viewCounts = <String>[
+    '1.2M',
+    '34K',
+    '820K',
+    '56K',
+    '2.4M',
+    '91K',
+    '640K',
+    '18K',
+    '3.1M',
+    '77K',
+    '450K',
+    '29K',
+    '1.8M',
+    '63K',
+    '710K',
+    '42K',
+    '950K',
+    '105K',
+  ];
+
+  static const List<double> _tileHeights = <double>[
+    220,
+    300,
+    250,
+    300,
+    220,
+    250,
+    300,
+    220,
+    250,
+    300,
+    220,
+    250,
+    300,
+    220,
+    250,
+    300,
+    220,
+    250,
   ];
 
   int _selectedCategory = 0;
@@ -201,20 +245,113 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             );
                           },
                         )
-                      : const Center(
-                          child: Text(
-                            'Masonry Grid Placeholder',
-                            style: TextStyle(
-                              color: Color(0xFF6B7280),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      : MasonryGridView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          gridDelegate:
+                              const SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
                           ),
+                          mainAxisSpacing: 2,
+                          crossAxisSpacing: 2,
+                          itemCount: _tileHeights.length,
+                          itemBuilder: (context, index) {
+                            return _MasonryVideoCard(
+                              index: index,
+                              height: _tileHeights[index],
+                              viewCount: _viewCounts[index],
+                            );
+                          },
                         ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MasonryVideoCard extends StatelessWidget {
+  const _MasonryVideoCard({
+    required this.index,
+    required this.height,
+    required this.viewCount,
+  });
+
+  final int index;
+  final double height;
+  final String viewCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = 'https://picsum.photos/seed/$index/400/600';
+
+    return SizedBox(
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: imageUrl,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => ColoredBox(
+                color: Colors.grey.shade300,
+              ),
+              errorWidget: (_, __, ___) => ColoredBox(
+                color: Colors.grey.shade300,
+                child: const Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: 92,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[
+                        Colors.transparent,
+                        Color(0xB3000000),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.play_arrow_outlined,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    viewCount,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
