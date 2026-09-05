@@ -1,0 +1,62 @@
+name: Apply OJAS Brand Theme
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]' && contains(github.event.head_commit.message, 'Apply OJAS brand theme patch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch main theme and logo
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = s.replace(
+              "import 'package:firebase_core/firebase_core.dart';\n",
+              "import 'package:firebase_core/firebase_core.dart';\nimport 'package:google_fonts/google_fonts.dart';\n",
+              1,
+          )
+          s = s.replace(
+              "import 'widgets/ojas_smart_video_player.dart';\n",
+              "import 'widgets/ojas_smart_video_player.dart';\nimport 'widgets/ojas_brand_logo.dart';\n",
+              1,
+          )
+          s = s.replace(
+              "scaffoldBackgroundColor: const Color(0xFFFAFAFA),",
+              "scaffoldBackgroundColor: Colors.white,",
+              1,
+          )
+          s = s.replace(
+              "        fontFamily: 'sans-serif',\n        useMaterial3: true,",
+              "        textTheme: GoogleFonts.interTextTheme(),\n        useMaterial3: true,",
+              1,
+          )
+          old = """                    title: const Text(\n                      'OJAS',\n                      style: TextStyle(\n                        fontSize: 21,\n                        fontWeight: FontWeight.w900,\n                        letterSpacing: 2.2,\n                        color: Color(0xFF111827),\n                      ),\n                    ),"""
+          new = """                    title: const OjasBrandLogo(fontSize: 21),"""
+          if old not in s:
+              raise SystemExit('Expected OJAS app-bar title block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Remove temporary workflow and commit
+        run: |
+          rm -f .github/workflows/apply_brand_theme.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/main.dart .github/workflows/apply_brand_theme.yml
+          git commit -m 'Apply global OJAS branding theme'
+          git push
