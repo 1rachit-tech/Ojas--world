@@ -66,6 +66,21 @@ service firebase.storage {
         && request.auth.uid == userId;
     }
 
+    match /reels/{userId}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && isVideo()
+        && request.resource.contentType == 'video/mp4'
+        && isValidVideoSize();
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == userId;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
