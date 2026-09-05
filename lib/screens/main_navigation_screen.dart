@@ -39,9 +39,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     final bool isFeed = _currentIndex == 0;
+    final Color background = isFeed ? Colors.black : Colors.white;
+    final Color borderColor =
+        isFeed ? Colors.white10 : const Color(0xFFF3F4F6);
 
     return Scaffold(
-      backgroundColor: isFeed ? Colors.black : Colors.white,
+      backgroundColor: background,
       body: IndexedStack(
         index: _currentIndex,
         children: [
@@ -57,16 +60,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           height: 60,
           decoration: BoxDecoration(
-            color: isFeed ? Colors.black : Colors.white,
-            border: Border(
-              top: BorderSide(
-                color: isFeed ? Colors.white10 : const Color(0xFFF3F4F6),
-                width: 1,
-              ),
-            ),
+            color: background,
+            border: Border(top: BorderSide(color: borderColor, width: 1)),
           ),
           child: Row(
             children: [
@@ -125,7 +125,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final Color activeColor =
         isDarkFeed ? Colors.white : const Color(0xFF111827);
     final Color inactiveColor =
-        isDarkFeed ? Colors.white38 : const Color(0xFF9CA3AF);
+        isDarkFeed ? Colors.white54 : const Color(0xFF6B7280);
 
     return GestureDetector(
       onTap: () => _onTabTapped(index),
@@ -134,19 +134,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isSelected ? activeIcon : inactiveIcon,
-              color: isSelected ? activeColor : inactiveColor,
-              size: 24,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 140),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: child,
+              ),
+              child: Icon(
+                isSelected ? activeIcon : inactiveIcon,
+                key: ValueKey<String>('$index-$isSelected-$isDarkFeed'),
+                color: isSelected ? activeColor : inactiveColor,
+                size: 24,
+              ),
             ),
             const SizedBox(height: 3),
-            Text(
-              label,
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
               style: TextStyle(
                 color: isSelected ? activeColor : inactiveColor,
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),
+              child: Text(label),
             ),
           ],
         ),
@@ -159,7 +171,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       onTap: () => _onTabTapped(2),
       behavior: HitTestBehavior.opaque,
       child: Center(
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
           width: 44,
           height: 30,
           decoration: BoxDecoration(
