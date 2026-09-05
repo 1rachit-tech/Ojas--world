@@ -329,15 +329,15 @@ class _CameraScreenState extends State<CameraScreen> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-                  child: AnimatedOpacity(
-                    opacity: showChrome ? 1 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: IgnorePointer(
-                      ignoring: !showChrome,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedOpacity(
+                        opacity: showChrome ? 1 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: IgnorePointer(
+                          ignoring: !showChrome,
+                          child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               _ShaderChip(label: 'Natural'),
@@ -347,11 +347,11 @@ class _CameraScreenState extends State<CameraScreen> {
                               _ShaderChip(label: 'Vivid'),
                             ],
                           ),
-                          const SizedBox(height: 20),
-                          _buildShutterButton(),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      _buildShutterButton(),
+                    ],
                   ),
                 ),
               ),
