@@ -46,13 +46,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.clear();
     setState(() => _sending = true);
 
-    final now = FieldValue.serverTimestamp();
     try {
       await _messagesRef.add({
         'senderId': user.uid,
         'type': 'text',
         'text': text,
-        'createdAt': now,
+        'createdAt': FieldValue.serverTimestamp(),
       });
 
       await _conversationRef.update({
@@ -62,27 +61,26 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } on FirebaseException catch (error) {
       if (!mounted) return;
-      _messageController.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
+      _restoreDraft(text);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message ?? 'Unable to send message.'),
-        ),
+        SnackBar(content: Text(error.message ?? 'Unable to send message.')),
       );
     } catch (_) {
       if (!mounted) return;
-      _messageController.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
+      _restoreDraft(text);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unable to send message.')),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _restoreDraft(String text) {
+    _messageController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   String _formatTime(dynamic value) {
@@ -120,8 +118,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _messageBubble(
-    BuildContext context,
+  Widget _textBubble(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
     String currentUserId,
   ) {
@@ -131,35 +128,95 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = data['text'] is String ? data['text'] as String : '';
     final time = _formatTime(data['createdAt']);
 
+    return _bubbleShell(
+      isMine: isMine,
+      time: time,
+      child: Text(
+        text,
+        style: TextStyle(
+          color: isMine ? Colors.white : const Color(0xFF111827),
+          fontSize: 15,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
+  Widget _videoBubble(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String currentUserId,
+  ) {
+    final data = doc.data();
+    final senderId = data['senderId'];
+    final isMine = senderId is String && senderId == currentUserId;
+    final caption = data['text'] is String ? data['text'] as String : '';
+    final mediaUrl = data['mediaUrl'] is String ? data['mediaUrl'] as String : '';
+    final time = _formatTime(data['createdAt']);
+
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 280),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isMine
-              ? const Color(0xFF243447)
-              : const Color(0xFFE5E7EB),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isMine ? 18 : 4),
-            bottomRight: Radius.circular(isMine ? 4 : 18),
-          ),
+          color: isMine ? const Color(0xFF243447) : const Color(0xFFE5E7EB),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           crossAxisAlignment:
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Text(
-              text,
-              style: TextStyle(
-                color: isMine ? Colors.white : const Color(0xFF111827),
-                fontSize: 15,
-                height: 1.35,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (mediaUrl.isNotEmpty)
+                      Image.network(
+                        mediaUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Color(0xFF374151),
+                        ),
+                      )
+                    else
+                      const ColoredBox(color: Color(0xFF374151)),
+                    const Center(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+            if (caption.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                caption,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isMine ? Colors.white : const Color(0xFF111827),
+                  fontSize: 13,
+                  height: 1.25,
+                ),
+              ),
+            ],
             if (time.isNotEmpty) ...[
               const SizedBox(height: 3),
               Text(
@@ -174,6 +231,58 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Widget _bubbleShell({
+    required bool isMine,
+    required String time,
+    required Widget child,
+  }) {
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 320),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 7),
+        decoration: BoxDecoration(
+          color: isMine ? const Color(0xFF243447) : const Color(0xFFE5E7EB),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isMine ? 18 : 4),
+            bottomRight: Radius.circular(isMine ? 4 : 18),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            child,
+            if (time.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(
+                time,
+                style: TextStyle(
+                  color: isMine ? Colors.white54 : const Color(0xFF6B7280),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _messageBubble(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String currentUserId,
+  ) {
+    final type = doc.data()['type'];
+    if (type is String && type == 'video') {
+      return _videoBubble(doc, currentUserId);
+    }
+    return _textBubble(doc, currentUserId);
   }
 
   @override
@@ -197,10 +306,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 widget.recipientName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -262,11 +368,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         reverse: true,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         itemCount: messages.length,
-                        itemBuilder: (context, index) => _messageBubble(
-                          context,
-                          messages[index],
-                          currentUserId,
-                        ),
+                        itemBuilder: (context, index) =>
+                            _messageBubble(messages[index], currentUserId),
                       );
                     },
                   ),
@@ -282,9 +385,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     tooltip: 'Attach',
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Media attachments coming soon.'),
-                        ),
+                        const SnackBar(content: Text('Media attachments coming soon.')),
                       );
                     },
                     icon: const Icon(Icons.add_circle_outline_rounded),
