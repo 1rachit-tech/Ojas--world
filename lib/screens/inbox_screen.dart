@@ -25,43 +25,14 @@ class InboxScreen extends StatelessWidget {
         ),
         title: const Text(
           'Messages',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
         ),
         actions: [
           IconButton(
             tooltip: 'New chat',
-            onPressed: () {
-              showModalBottomSheet<void>(
-                context: context,
-                showDragHandle: true,
-                builder: (context) => const SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'New chat',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Chat creation will be available in the next step.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Color(0xFF6B7280)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+            onPressed: userId == null
+                ? null
+                : () => _showNewChatSheet(context, userId),
             icon: const Icon(Icons.edit_rounded),
           ),
         ],
@@ -75,6 +46,242 @@ class InboxScreen extends StatelessWidget {
           : _ConversationStream(userId: userId),
     );
   }
+
+  static Future<void> _showNewChatSheet(
+    BuildContext context,
+    String currentUserId,
+  ) async {
+    final selected = await showModalBottomSheet<_SelectedUser>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _NewChatSheet(currentUserId: currentUserId),
+    );
+
+    if (!context.mounted || selected == null) return;
+
+    try {
+      final conversationId = currentUserId.compareTo(selected.uid) < 0
+          ? '${currentUserId}_${selected.uid}'
+          : '${selected.uid}_$currentUserId';
+      final ref = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId);
+      final existing = await ref.get();
+
+      if (!existing.exists) {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        await ref.set({
+          'participants': [currentUserId, selected.uid],
+          'participantProfiles': {
+            currentUserId: {
+              'displayName': currentUser?.displayName?.trim() ?? '',
+              'ojasId': currentUser?.email?.trim() ?? '',
+              'photoUrl': currentUser?.photoURL?.trim() ?? '',
+            },
+            selected.uid: {
+              'displayName': selected.name,
+              'ojasId': selected.ojasId,
+              'photoUrl': selected.avatarUrl,
+            },
+          },
+          'unreadCounts': {
+            currentUserId: 0,
+            selected.uid: 0,
+          },
+          'lastMessage': '',
+          'lastMessageText': '',
+          'lastMessageSenderId': '',
+          'lastSenderId': '',
+          'typingBy': {},
+        });
+      }
+
+      if (!context.mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatScreen(
+            conversationId: conversationId,
+            recipientId: selected.uid,
+            recipientName: selected.name.isNotEmpty
+                ? selected.name
+                : selected.ojasId,
+            recipientAvatar: selected.avatarUrl,
+          ),
+        ),
+      );
+    } on FirebaseException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message ?? 'Unable to start chat.'),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to start chat.')),
+      );
+    }
+  }
+}
+
+class _NewChatSheet extends StatefulWidget {
+  const _NewChatSheet({required this.currentUserId});
+
+  final String currentUserId;
+
+  @override
+  State<_NewChatSheet> createState() => _NewChatSheetState();
+}
+
+class _NewChatSheetState extends State<_NewChatSheet> {
+  final TextEditingController _controller = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final ojasId = _controller.text.trim().toLowerCase();
+    if (ojasId.isEmpty) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('publicProfiles')
+          .where('ojasId', isEqualTo: ojasId)
+          .limit(1)
+          .get();
+
+      if (!mounted) return;
+
+      if (snapshot.docs.isEmpty) {
+        setState(() => _error = 'OJAS ID not found.');
+        return;
+      }
+
+      final doc = snapshot.docs.first;
+      if (doc.id == widget.currentUserId) {
+        setState(() => _error = 'You cannot start a chat with yourself.');
+        return;
+      }
+
+      final data = doc.data();
+      final name = _stringValue(data['displayName']);
+      final resolvedOjasId = _stringValue(data['ojasId']);
+      final avatarUrl = _stringValue(data['photoUrl']);
+
+      Navigator.of(context).pop(
+        _SelectedUser(
+          uid: doc.id,
+          name: name,
+          ojasId: resolvedOjasId.isNotEmpty ? resolvedOjasId : ojasId,
+          avatarUrl: avatarUrl,
+        ),
+      );
+    } on FirebaseException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message ?? 'Unable to search for that OJAS ID.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Unable to search for that OJAS ID.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  static String _stringValue(dynamic value) {
+    return value is String ? value.trim() : '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 8, 20, 24 + bottomInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'New chat',
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Enter an exact OJAS ID to start a private conversation.',
+            style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            enabled: !_loading,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.none,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _search(),
+            decoration: InputDecoration(
+              labelText: 'OJAS ID',
+              hintText: 'e.g. rachit_ojas',
+              prefixIcon: const Icon(Icons.alternate_email_rounded),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13),
+            ),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _search,
+              icon: _loading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.search_rounded),
+              label: const Text('Find user'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectedUser {
+  const _SelectedUser({
+    required this.uid,
+    required this.name,
+    required this.ojasId,
+    required this.avatarUrl,
+  });
+
+  final String uid;
+  final String name;
+  final String ojasId;
+  final String avatarUrl;
 }
 
 class _ConversationStream extends StatelessWidget {
@@ -185,8 +392,7 @@ class _ConversationTile extends StatelessWidget {
       data['lastMessage'],
     ], fallback: 'No messages yet');
     final unreadCount = _readUnreadCount(data['unreadCounts'], currentUserId);
-    final lastMessageAt = data['lastMessageAt'];
-    final time = _formatTime(lastMessageAt);
+    final time = _formatTime(data['lastMessageAt']);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
@@ -228,12 +434,12 @@ class _ConversationTile extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           if (unreadCount > 0)
-            DecoratedBox(
-              decoration: const BoxDecoration(
+            const DecoratedBox(
+              decoration: BoxDecoration(
                 color: Color(0xFF111827),
                 shape: BoxShape.circle,
               ),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(5),
                 child: Text(
                   '•',
