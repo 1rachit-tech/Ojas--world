@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide debugPrint;
 import 'package:flutter/services.dart';
@@ -17,6 +18,7 @@ import 'widgets/home_story_viewer.dart';
 import 'widgets/home_comments_sheet.dart';
 import 'widgets/super_thanks_modal.dart';
 import 'widgets/ojas_smart_video_player.dart';
+import 'widgets/ojas_brand_logo.dart';
 import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
@@ -74,12 +76,12 @@ class OjasApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFFAFAFA),
+        scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF111827),
           brightness: Brightness.light,
         ),
-        fontFamily: 'sans-serif',
+        textTheme: GoogleFonts.interTextTheme(),
         useMaterial3: true,
       ),
       home: const OjasHomePage(),
@@ -254,15 +256,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                         WorldSearchSheet.show(context);
                       },
                     ),
-                    title: const Text(
-                      'OJAS',
-                      style: TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2.2,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
+                    title: const OjasBrandLogo(fontSize: 21),
                     centerTitle: true,
                     actions: [
                       IconButton(
