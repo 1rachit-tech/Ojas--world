@@ -85,7 +85,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.black60,
+                  color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
