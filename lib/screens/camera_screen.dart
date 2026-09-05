@@ -2,6 +2,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'post_creation_screen.dart';
+
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key, required this.audioId});
 
@@ -18,6 +20,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _initializing = true;
   bool _isRecording = false;
   bool _shutterBusy = false;
+  String _currentShaderMode = 'Natural';
 
   @override
   void initState() {
@@ -207,13 +210,33 @@ class _CameraScreenState extends State<CameraScreen> {
       debugPrint('Video saved to: ${file.path}');
 
       // TODO: Process the captured video locally with video_compress before
-      // any upload or remote processing is added.
+      // any upload or remote processing is added to this screen.
+      if (!mounted) return;
+
+      setState(() {
+        _isRecording = false;
+        _shutterBusy = false;
+      });
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PostCreationScreen(
+            videoPath: file.path,
+            selectedShader: _currentShaderMode,
+          ),
+        ),
+      );
     } on CameraException catch (error) {
       _showCaptureError(error);
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+          _shutterBusy = false;
+        });
+      }
     } catch (error) {
       debugPrint('Camera video stop failed: $error');
       _showCaptureError();
-    } finally {
       if (mounted) {
         setState(() {
           _isRecording = false;
@@ -337,14 +360,30 @@ class _CameraScreenState extends State<CameraScreen> {
                         duration: const Duration(milliseconds: 180),
                         child: IgnorePointer(
                           ignoring: !showChrome,
-                          child: const Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _ShaderChip(label: 'Natural'),
-                              SizedBox(width: 8),
-                              _ShaderChip(label: 'Crisp'),
-                              SizedBox(width: 8),
-                              _ShaderChip(label: 'Vivid'),
+                              _ShaderChip(
+                                label: 'Natural',
+                                selected: _currentShaderMode == 'Natural',
+                                onTap: () => _setShaderMode('Natural'),
+                              ),
+                              const SizedBox(width: 8),
+                              _ShaderChip(
+                                label: '4K Ultra HDR',
+                                selected:
+                                    _currentShaderMode == '4K Ultra HDR',
+                                onTap: () =>
+                                    _setShaderMode('4K Ultra HDR'),
+                              ),
+                              const SizedBox(width: 8),
+                              _ShaderChip(
+                                label: '8K Hyper Clarity',
+                                selected:
+                                    _currentShaderMode == '8K Hyper Clarity',
+                                onTap: () =>
+                                    _setShaderMode('8K Hyper Clarity'),
+                              ),
                             ],
                           ),
                         ),
@@ -368,6 +407,15 @@ class _CameraScreenState extends State<CameraScreen> {
         ],
       ),
     );
+  }
+
+  void _setShaderMode(String mode) {
+    if (_currentShaderMode == mode || _isRecording || _shutterBusy) {
+      return;
+    }
+    setState(() {
+      _currentShaderMode = mode;
+    });
   }
 
   Widget _buildShutterButton() {
@@ -411,28 +459,42 @@ class _CameraScreenState extends State<CameraScreen> {
 }
 
 class _ShaderChip extends StatelessWidget {
-  const _ShaderChip({required this.label});
+  const _ShaderChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 7,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white24 : Colors.black54,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? Colors.white : Colors.transparent,
+            width: 1,
+          ),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 7,
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),
