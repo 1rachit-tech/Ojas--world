@@ -414,6 +414,10 @@ class _ConversationShareSheet extends StatelessWidget {
         'type': 'video',
         'mediaUrl': videoUrl,
         'text': message,
+        'status': 'sent',
+        'isDeleted': false,
+        'reactions': <String, dynamic>{},
+        'conversationId': conversationId,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -423,6 +427,7 @@ class _ConversationShareSheet extends StatelessWidget {
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastMessageSenderId': user.uid,
         'lastSenderId': user.uid,
+        'unreadCounts.$recipientId': FieldValue.increment(1),
       });
 
       if (!context.mounted) return;
