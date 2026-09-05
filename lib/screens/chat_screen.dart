@@ -25,6 +25,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _sending = false;
+  bool _markingRead = false;
 
   DocumentReference<Map<String, dynamic>> get _conversationRef =>
       _firestore.collection('conversations').doc(widget.conversationId);
@@ -38,6 +39,48 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<void> _markMessagesAsRead(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> messages,
+    String currentUserId,
+  ) async {
+    if (_markingRead) return;
+
+    final unread = messages.where((doc) {
+      final data = doc.data();
+      final senderId = data['senderId'];
+      if (senderId is! String || senderId == currentUserId) return false;
+
+      final isRead = data['isRead'];
+      if (isRead is bool) return !isRead;
+
+      final status = data['status'];
+      return status != 'seen';
+    }).toList();
+
+    if (unread.isEmpty) return;
+
+    _markingRead = true;
+    try {
+      final batch = _firestore.batch();
+      for (final doc in unread) {
+        batch.update(doc.reference, {
+          'status': 'seen',
+        });
+      }
+      batch.update(_conversationRef, {
+        'unreadCounts.$currentUserId': 0,
+        'lastReadAtBy.$currentUserId': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+    } on FirebaseException {
+      // Keep the chat usable even when read-state persistence is temporarily unavailable.
+    } catch (_) {
+      // Ignore non-critical read-state failures.
+    } finally {
+      _markingRead = false;
+    }
+  }
+
   Future<void> _sendMessage() async {
     final user = _auth.currentUser;
     final text = _messageController.text.trim();
@@ -48,9 +91,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _messagesRef.add({
+        'conversationId': widget.conversationId,
         'senderId': user.uid,
         'type': 'text',
         'text': text,
+        'isDeleted': false,
+        'status': 'sent',
+        'reactions': <String, dynamic>{},
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -58,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'lastMessageText': text,
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastSenderId': user.uid,
+        'unreadCounts.${widget.recipientId}': FieldValue.increment(1),
       });
     } on FirebaseException catch (error) {
       if (!mounted) return;
@@ -90,6 +138,22 @@ class _ChatScreenState extends State<ChatScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $suffix';
+  }
+
+  String _messageStatus(dynamic value) {
+    if (value is String) return value;
+    return 'sent';
+  }
+
+  Widget _statusIcon(Map<String, dynamic> data) {
+    final status = _messageStatus(data['status']);
+    final isRead = data['isRead'] is bool && data['isRead'] == true;
+    final read = status == 'seen' || isRead;
+    return Icon(
+      read ? Icons.done_all_rounded : Icons.done_rounded,
+      size: 13,
+      color: read ? Colors.lightBlueAccent : Colors.white54,
+    );
   }
 
   Widget _avatar() {
@@ -131,6 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return _bubbleShell(
       isMine: isMine,
       time: time,
+      status: isMine ? _statusIcon(data) : null,
       child: Text(
         text,
         style: TextStyle(
@@ -217,14 +282,24 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ],
-            if (time.isNotEmpty) ...[
+            if (time.isNotEmpty || isMine) ...[
               const SizedBox(height: 3),
-              Text(
-                time,
-                style: TextStyle(
-                  color: isMine ? Colors.white54 : const Color(0xFF6B7280),
-                  fontSize: 10,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (time.isNotEmpty)
+                    Text(
+                      time,
+                      style: TextStyle(
+                        color: isMine ? Colors.white54 : const Color(0xFF6B7280),
+                        fontSize: 10,
+                      ),
+                    ),
+                  if (isMine) ...[
+                    const SizedBox(width: 3),
+                    _statusIcon(data),
+                  ],
+                ],
               ),
             ],
           ],
@@ -237,6 +312,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required bool isMine,
     required String time,
     required Widget child,
+    Widget? status,
   }) {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -258,14 +334,24 @@ class _ChatScreenState extends State<ChatScreen> {
               isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             child,
-            if (time.isNotEmpty) ...[
+            if (time.isNotEmpty || status != null) ...[
               const SizedBox(height: 3),
-              Text(
-                time,
-                style: TextStyle(
-                  color: isMine ? Colors.white54 : const Color(0xFF6B7280),
-                  fontSize: 10,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (time.isNotEmpty)
+                    Text(
+                      time,
+                      style: TextStyle(
+                        color: isMine ? Colors.white54 : const Color(0xFF6B7280),
+                        fontSize: 10,
+                      ),
+                    ),
+                  if (status != null) ...[
+                    const SizedBox(width: 3),
+                    status,
+                  ],
+                ],
               ),
             ],
           ],
@@ -351,6 +437,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
 
                       final messages = snapshot.data?.docs ?? const [];
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          _markMessagesAsRead(messages, currentUserId);
+                        }
+                      });
+
                       if (messages.isEmpty) {
                         return const Center(
                           child: Padding(
