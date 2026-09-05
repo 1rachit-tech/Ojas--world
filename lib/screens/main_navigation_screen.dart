@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'discover_screen.dart';
 import 'ojs_feed_screen.dart';
 import 'profile_screen.dart';
 
@@ -49,7 +50,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         index: _currentIndex,
         children: [
           OjsFeedScreen(isActive: _currentIndex == 0),
-          _buildPlaceholderScreen('Discover Trending', Icons.explore_outlined),
+          const DiscoverScreen(),
           const SizedBox.shrink(),
           _buildPlaceholderScreen(
             'Activity & Notifications',
