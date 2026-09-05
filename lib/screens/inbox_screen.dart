@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'chat_screen.dart';
+
 class InboxScreen extends StatelessWidget {
   const InboxScreen({super.key});
 
@@ -150,7 +152,9 @@ class _ConversationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final participants = List<String>.from(
-      data['participants'] is List ? data['participants'] as List : const <String>[],
+      data['participants'] is List
+          ? data['participants'] as List
+          : const <String>[],
     );
     final otherUserId = participants.firstWhere(
       (id) => id != currentUserId,
@@ -229,7 +233,7 @@ class _ConversationTile extends StatelessWidget {
                 color: Color(0xFF111827),
                 shape: BoxShape.circle,
               ),
-              child: Padding(
+              child: const Padding(
                 padding: EdgeInsets.all(5),
                 child: Text(
                   '•',
@@ -243,14 +247,20 @@ class _ConversationTile extends StatelessWidget {
             ),
         ],
       ),
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Chat room will open in the next step.'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      },
+      onTap: otherUserId.isEmpty
+          ? null
+          : () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ChatScreen(
+                    conversationId: conversationId,
+                    recipientId: otherUserId,
+                    recipientName: username,
+                    recipientAvatar: avatarUrl,
+                  ),
+                ),
+              );
+            },
     );
   }
 
