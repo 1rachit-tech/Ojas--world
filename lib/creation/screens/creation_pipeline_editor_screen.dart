@@ -6,8 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/creation_project.dart';
 import '../services/creation_project_store.dart';
-import '../services/creation_publish_service.dart';
-import '../services/creation_validation_service.dart';
+import 'creation_post_composer_screen.dart';
 
 class CreationPipelineEditorScreen extends StatefulWidget {
   const CreationPipelineEditorScreen({super.key, required this.project});
@@ -23,13 +22,10 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   late CreationProject _project;
   VideoPlayerController? _videoController;
   Timer? _autosaveTimer;
-  bool _publishing = false;
   bool _saving = false;
   bool _videoInitializing = true;
   bool _videoError = false;
-
   late final TextEditingController _captionController;
-
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
 
@@ -47,10 +43,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       if (mounted) setState(() => _videoInitializing = false);
       return;
     }
-
-    final path = _project.mediaAssets.first.localUri;
     try {
-      final controller = VideoPlayerController.file(File(path));
+      final controller = VideoPlayerController.file(File(_project.mediaAssets.first.localUri));
       _videoController = controller;
       await controller.initialize();
       await controller.setLooping(false);
@@ -74,9 +68,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _videoController;
     if (controller == null) return;
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       controller.pause();
     }
   }
@@ -117,9 +109,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       );
       await CreationProjectStore.instance.save(_project);
       if (showFeedback && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Draft checkpoint saved locally.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Draft checkpoint saved locally.')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -134,12 +124,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       builder: (sheetContext) {
         final controller = TextEditingController(text: _captionController.text);
         return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 18,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 22,
-          ),
+          padding: EdgeInsets.only(left: 20, right: 20, top: 18, bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -155,10 +140,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                   hintText: 'Tell people about this post…',
                   filled: true,
                   fillColor: const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 12),
@@ -186,17 +168,14 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       context: context,
       backgroundColor: Colors.white,
       builder: (sheetContext) {
-        final options = const <String>['Public', 'Followers', 'Only Me'];
+        const options = <String>['Public', 'Followers', 'Only Me'];
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('Audience', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
-                ),
+                const Align(alignment: Alignment.centerLeft, child: Text('Audience', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
                 const SizedBox(height: 12),
                 ...options.map(
                   (option) => ListTile(
@@ -213,51 +192,22 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       },
     );
     if (result == null || !mounted) return;
-    setState(() {
-      _project = _project.copyWith(privacy: result);
-    });
+    setState(() => _project = _project.copyWith(privacy: result));
     _scheduleAutosave();
   }
 
-  Future<void> _publish() async {
-    if (_publishing) return;
-    setState(() => _publishing = true);
-    try {
-      _project = _project.copyWith(
-        status: CreationProjectStatus.ready,
-        caption: _captionController.text.trim(),
-      );
-      await CreationProjectStore.instance.save(_project);
-
-      final validation = await CreationValidationService.validateProject(_project);
-      if (!validation.isValid) {
-        throw CreationPublishException(validation.message);
-      }
-
-      final result = await CreationPublishService().publish(_project);
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Published'),
-          content: Text('Your post is live.\nPost ID: ${result.postId}'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-      if (mounted) Navigator.pop(context);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error is CreationPublishException ? error.message : 'Publishing failed: $error')),
-      );
-    } finally {
-      if (mounted) setState(() => _publishing = false);
-    }
+  Future<void> _openPostComposer() async {
+    if (_saving || _project.mediaAssets.isEmpty) return;
+    final readyProject = _project.copyWith(
+      status: CreationProjectStatus.ready,
+      caption: _captionController.text.trim(),
+      updatedAt: DateTime.now(),
+    );
+    await CreationProjectStore.instance.save(readyProject);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => CreationPostComposerScreen(project: readyProject)),
+    );
   }
 
   Future<void> _setTrim(double start, double end) async {
@@ -277,17 +227,13 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   }
 
   Widget _buildPreview() {
-    if (_project.mediaAssets.isEmpty) {
-      return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
-    }
+    if (_project.mediaAssets.isEmpty) return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
     final asset = _project.mediaAssets.first;
     if (asset.type != 'video') {
       return Image.file(
         File(asset.localUri),
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const Center(
-          child: Text('Unable to load image', style: TextStyle(color: Colors.white)),
-        ),
+        errorBuilder: (_, __, ___) => const Center(child: Text('Unable to load image', style: TextStyle(color: Colors.white))),
       );
     }
     if (_videoInitializing) return const Center(child: CircularProgressIndicator());
@@ -315,7 +261,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
   @override
   Widget build(BuildContext context) {
-    final canPublish = !_publishing && !_saving && _project.mediaAssets.isNotEmpty;
+    final canContinue = !_saving && _project.mediaAssets.isNotEmpty;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -368,28 +314,13 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                       Text('${(_trimStart * 100).round()}% — ${(_trimEnd * 100).round()}%'),
                     ],
                   ),
-                  RangeSlider(
-                    values: RangeValues(_trimStart, _trimEnd),
-                    onChanged: (value) => _setTrim(value.start, value.end),
-                  ),
+                  RangeSlider(values: RangeValues(_trimStart, _trimEnd), onChanged: (value) => _setTrim(value.start, value.end)),
                 ],
                 Row(
                   children: [
-                    Expanded(
-                      child: _ComposerTile(
-                        icon: Icons.subtitles_rounded,
-                        title: _captionController.text.isEmpty ? 'Caption' : 'Caption added',
-                        onTap: _openCaption,
-                      ),
-                    ),
+                    Expanded(child: _ComposerTile(icon: Icons.subtitles_rounded, title: _captionController.text.isEmpty ? 'Caption' : 'Caption added', onTap: _openCaption)),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: _ComposerTile(
-                        icon: Icons.visibility_outlined,
-                        title: _project.privacy,
-                        onTap: _openPrivacy,
-                      ),
-                    ),
+                    Expanded(child: _ComposerTile(icon: Icons.visibility_outlined, title: _project.privacy, onTap: _openPrivacy)),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -397,11 +328,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    onPressed: canPublish ? _publish : null,
-                    icon: _publishing
-                        ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.publish_rounded),
-                    label: Text(_publishing ? 'Publishing…' : 'Preview & Publish'),
+                    onPressed: canContinue ? _openPostComposer : null,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Continue to Post'),
                   ),
                 ),
               ],
@@ -430,13 +359,7 @@ class _ToolButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(
-              children: [
-                Icon(icon, color: Colors.white, size: 19),
-                const SizedBox(height: 3),
-                Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
-              ],
-            ),
+            child: Column(children: [Icon(icon, color: Colors.white, size: 19), const SizedBox(height: 3), Text(label, style: const TextStyle(color: Colors.white, fontSize: 10))]),
           ),
         ),
       ),
@@ -456,10 +379,7 @@ class _ComposerTile extends StatelessWidget {
       onPressed: onTap,
       icon: Icon(icon, size: 18),
       label: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 46),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
     );
   }
 }
