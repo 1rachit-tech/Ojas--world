@@ -23,6 +23,7 @@ class HomeFeedController extends ChangeNotifier {
 
   final List<HomeFeedItem> _items = <HomeFeedItem>[];
   final Set<String> _seen = <String>{};
+  final Set<String> _impressionsSent = <String>{};
   final Set<String> _negativeContent = <String>{};
   final Set<String> _mutedCreators = <String>{};
   final Set<String> _blockedCreators = <String>{};
@@ -71,6 +72,7 @@ class HomeFeedController extends ChangeNotifier {
     _error = null;
     _items.clear();
     _seen.clear();
+    _impressionsSent.clear();
     _hasMore = true;
     _cursor = null;
     notifyListeners();
@@ -133,6 +135,7 @@ class HomeFeedController extends ChangeNotifier {
   }
 
   void markImpression(HomeFeedItem item, int position) {
+    if (!_impressionsSent.add(item.contentId)) return;
     _seen.add(item.contentId);
     _session?.markSeen(item.contentId);
     _eventQueue.enqueue(HomeFeedEvent(
@@ -192,12 +195,14 @@ class HomeFeedController extends ChangeNotifier {
   void muteCreator(HomeFeedItem item) {
     _mutedCreators.add(item.creatorId);
     _items.removeWhere((candidate) => candidate.creatorId == item.creatorId);
+    notifyListeners();
     markInteraction(item, HomeFeedEventType.mute);
   }
 
   void blockCreator(HomeFeedItem item) {
     _blockedCreators.add(item.creatorId);
     _items.removeWhere((candidate) => candidate.creatorId == item.creatorId);
+    notifyListeners();
     markInteraction(item, HomeFeedEventType.block);
   }
 
