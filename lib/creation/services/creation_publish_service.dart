@@ -168,7 +168,7 @@ class CreationPublishService {
       totalBytes: asset.sizeBytes,
     );
 
-    final mediaHash = await _computeLocalFileHash(asset.localUri);
+    final mediaHash = await _computeLocalFingerprint(asset.localUri);
 
     await _saveState(
       project.projectId,
@@ -268,19 +268,28 @@ class CreationPublishService {
     }
   }
 
-  Future<String> _computeLocalFileHash(String path) async {
+  Future<String> _computeLocalFingerprint(String path) async {
+    RandomAccessFile? handle;
     try {
-      final bytes = await File(path).readAsBytes();
-      // A deterministic local fingerprint is sufficient here; the server remains
-      // authoritative for media identity and validation.
+      handle = await File(path).open(mode: FileMode.read);
+      const sampleLimit = 1024 * 1024;
+      const readSize = 64 * 1024;
+      var remaining = sampleLimit;
       var hash = 0x811C9DC5;
-      for (final byte in bytes.take(1024 * 1024)) {
-        hash ^= byte;
-        hash = (hash * 0x01000193) & 0xFFFFFFFF;
+      while (remaining > 0) {
+        final bytes = await handle.read(remaining > readSize ? readSize : remaining);
+        if (bytes.isEmpty) break;
+        for (final byte in bytes) {
+          hash ^= byte;
+          hash = (hash * 0x01000193) & 0xFFFFFFFF;
+        }
+        remaining -= bytes.length;
       }
       return hash.toRadixString(16).padLeft(8, '0');
     } catch (_) {
       return '';
+    } finally {
+      await handle?.close();
     }
   }
 }
