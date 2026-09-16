@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -32,9 +33,7 @@ class HomeFeedController extends ChangeNotifier {
   bool _refreshing = false;
   bool _hasMore = true;
   Object? _error;
-
-  DocumentSnapshotAdapter? _ignored;
-  dynamic _cursor;
+  DocumentSnapshot<Map<String, dynamic>>? _cursor;
 
   List<HomeFeedItem> get items => List.unmodifiable(_items);
   HomeFeedMode get mode => _mode;
@@ -84,7 +83,6 @@ class HomeFeedController extends ChangeNotifier {
         userId: session.userId,
         mode: _mode,
         startedAt: session.startedAt,
-        cursor: null,
         seenContentIds: _seen,
         negativeContentIds: _negativeContent,
         mutedCreatorIds: _mutedCreators,
@@ -115,7 +113,7 @@ class HomeFeedController extends ChangeNotifier {
         userId: session.userId,
         mode: _mode,
         startedAt: session.startedAt,
-        cursor: _cursor is dynamic ? null : _cursor,
+        cursor: _cursor,
         seenContentIds: _seen,
         negativeContentIds: _negativeContent,
         mutedCreatorIds: _mutedCreators,
@@ -151,7 +149,8 @@ class HomeFeedController extends ChangeNotifier {
     ));
   }
 
-  void markWatch(HomeFeedItem item, {
+  void markWatch(
+    HomeFeedItem item, {
     required HomeFeedEventType eventType,
     required int position,
     int watchTimeMs = 0,
@@ -241,10 +240,4 @@ class HomeFeedController extends ChangeNotifier {
     _items.removeWhere((item) => item.contentId == contentId);
     notifyListeners();
   }
-}
-
-// Kept private to this controller so the public cursor type remains owned by
-// the feed model/service layer. The runtime cursor is a Firestore snapshot.
-class DocumentSnapshotAdapter {
-  const DocumentSnapshotAdapter();
 }
