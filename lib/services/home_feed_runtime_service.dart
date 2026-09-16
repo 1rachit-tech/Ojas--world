@@ -49,6 +49,10 @@ class HomeFeedRuntimeService {
   Future<void> clearSession() =>
       _sessions.clear(_auth.currentUser?.uid ?? '');
 
+  /// Compatibility alias used by the feed controller when resetting its
+  /// recommendation session. It intentionally clears only session state.
+  Future<void> clearSavedSession() => clearSession();
+
   Future<void> learn(HomeFeedItem item, HomeFeedEventType type) async {
     await _interests.record(item: item, type: type);
   }
