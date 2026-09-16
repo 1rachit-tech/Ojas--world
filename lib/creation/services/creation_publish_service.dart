@@ -51,6 +51,11 @@ class CreationPublishService {
 
     final source = File(project.mediaAssets.first.localUri);
     final postRef = _firestore.collection('reels').doc(project.projectId);
+    final publishState = project.publishState;
+    final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
+    final recommendRequested = publishState['recommend'] is bool ? publishState['recommend'] as bool : true;
+    final isPublic = project.privacy.toLowerCase() == 'public';
+    final recommendationEligible = isPublic && recommendRequested;
 
     final existing = await postRef.get();
     if (existing.exists) {
@@ -84,7 +89,8 @@ class CreationPublishService {
       'caption': project.caption,
       'shaderUsed': 'Natural',
       'visibility': project.privacy.toLowerCase(),
-      'recommendationEligible': project.privacy.toLowerCase() == 'public',
+      'recommendationEligible': recommendationEligible,
+      'allowComments': allowComments,
       'createdAt': FieldValue.serverTimestamp(),
       'likesCount': 0,
       'commentsCount': 0,
@@ -105,10 +111,13 @@ class CreationPublishService {
     final published = project.copyWith(
       status: CreationProjectStatus.published,
       publishState: <String, dynamic>{
+        ...publishState,
         'postId': postRef.id,
         'mediaUrl': downloadUrl,
         'publishedAt': DateTime.now().toIso8601String(),
         'publishRequestId': publishRequestId,
+        'allowComments': allowComments,
+        'recommend': recommendationEligible,
       },
     );
     await CreationProjectStore.instance.save(published);
