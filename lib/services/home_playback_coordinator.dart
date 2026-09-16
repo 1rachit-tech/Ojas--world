@@ -22,6 +22,7 @@ class HomePlaybackCoordinator with WidgetsBindingObserver {
   final Map<String, HomeVisibilityProbe> _visibilityProbes = <String, HomeVisibilityProbe>{};
   final Set<String> _activeIds = <String>{};
   bool _disposed = false;
+  Future<void>? _activationTask;
 
   String? get activeContentId => _activeIds.isEmpty ? null : _activeIds.first;
 
@@ -41,23 +42,36 @@ class HomePlaybackCoordinator with WidgetsBindingObserver {
     _activeIds.remove(contentId);
   }
 
-  Future<void> activate(String contentId) async {
-    if (_disposed || !_handles.containsKey(contentId)) return;
+  Future<void> activate(String contentId) {
+    if (_disposed || !_handles.containsKey(contentId)) return Future<void>.value();
+    final previous = _activationTask;
+    final next = () async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {}
+      }
+      if (_disposed || !_handles.containsKey(contentId)) return;
 
-    for (final id in _activeIds.toList()) {
-      if (id == contentId) continue;
-      await _handles[id]?.pause();
-      _activeIds.remove(id);
-    }
+      for (final id in _activeIds.toList()) {
+        if (id == contentId) continue;
+        await _handles[id]?.pause();
+        _activeIds.remove(id);
+      }
 
-    if (_activeIds.length >= maxActiveControllers) {
-      final oldest = _activeIds.first;
-      await _handles[oldest]?.pause();
-      _activeIds.remove(oldest);
-    }
+      if (_activeIds.length >= maxActiveControllers) {
+        final oldest = _activeIds.first;
+        await _handles[oldest]?.pause();
+        _activeIds.remove(oldest);
+      }
 
-    await _handles[contentId]?.play();
-    _activeIds.add(contentId);
+      await _handles[contentId]?.play();
+      _activeIds.add(contentId);
+    }();
+    _activationTask = next;
+    return next.whenComplete(() {
+      if (identical(_activationTask, next)) _activationTask = null;
+    });
   }
 
   Future<void> pause(String contentId) async {
