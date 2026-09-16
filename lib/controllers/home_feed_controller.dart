@@ -45,11 +45,11 @@ class HomeFeedController extends ChangeNotifier {
 
   HomeSessionState? _session;
   HomeFeedMode _mode = HomeFeedMode.personalized;
-  double _restoredScrollOffset = 0;
   bool _loading = false;
   bool _refreshing = false;
   bool _hasMore = true;
   Object? _error;
+  double _restoredScrollOffset = 0;
   DocumentSnapshot<Map<String, dynamic>>? _cursor;
 
   List<HomeFeedItem> get items => List.unmodifiable(_items);
@@ -59,9 +59,10 @@ class HomeFeedController extends ChangeNotifier {
   bool get hasMore => _hasMore;
   Object? get error => _error;
   HomeSessionState? get session => _session;
-  double get restoredScrollOffset => _restoredScrollOffset;
   HomeFeedRemoteConfig get remoteConfig => _runtime.config;
   HomeFeedExperimentVariant get experimentVariant => _runtime.assignExperiment();
+  double get restoredScrollOffset => _restoredScrollOffset;
+  List<String> get mutedCreatorIds => List.unmodifiable(_mutedCreators);
   bool isLiked(String id) => _liked.contains(id);
   bool isSaved(String id) => _saved.contains(id);
 
@@ -76,12 +77,13 @@ class HomeFeedController extends ChangeNotifier {
 
     await _runtime.initialize();
     final restored = await _runtime.restoreSession();
+    _restoredScrollOffset = restored?.scrollOffset.clamp(0, double.infinity) ?? 0;
     final restoredMode = restored?.mode ?? _mode;
     _mode = restoredMode == HomeFeedMode.friends && !_runtime.config.enableFriendsMode
         ? HomeFeedMode.personalized
         : restoredMode;
-    _restoredScrollOffset = (restored?.scrollOffset ?? 0).clamp(0, double.infinity);
-    _startSession(uid, _mode, sessionId: restored?.sessionId, restored: restored);
+    _startSession(uid, _mode, sessionId: restored?.sessionId);
+    _seen.addAll(restored?.seenItemIds ?? const <String>[]);
     await _loadCache();
     await refresh();
   }
@@ -94,11 +96,9 @@ class HomeFeedController extends ChangeNotifier {
     _mode = mode;
     final uid = _auth.currentUser?.uid ?? '';
     if (uid.isEmpty) return;
-    _restoredScrollOffset = 0;
     _startSession(uid, mode);
+    _restoredScrollOffset = 0;
     _items.clear();
-    _seen.clear();
-    _impressionsSent.clear();
     notifyListeners();
     await refresh();
   }
@@ -110,7 +110,6 @@ class HomeFeedController extends ChangeNotifier {
     _error = null;
     _hasMore = true;
     _cursor = null;
-    _impressionsSent.clear();
     notifyListeners();
 
     try {
@@ -121,7 +120,7 @@ class HomeFeedController extends ChangeNotifier {
         userId: session.userId,
         mode: _mode,
         startedAt: session.startedAt,
-        seenContentIds: _seen,
+        seenContentIds: const <String>{},
         negativeContentIds: _negativeContent,
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
@@ -130,6 +129,8 @@ class HomeFeedController extends ChangeNotifier {
       _items
         ..clear()
         ..addAll(page.items);
+      _seen.addAll(page.items.map((item) => item.contentId));
+      _impressionsSent.clear();
       _appendSession(page.items);
       _hasMore = page.hasMore && page.items.isNotEmpty;
       _cursor = page.cursor;
@@ -335,17 +336,60 @@ class HomeFeedController extends ChangeNotifier {
     ));
   }
 
+  String whyThisPost(HomeFeedItem item) {
+    if (item.recommendationReason != null && item.recommendationReason!.trim().isNotEmpty) {
+      return item.recommendationReason!;
+    }
+    switch (item.source) {
+      case HomeFeedSource.following:
+        return 'This post is from a creator you follow.';
+      case HomeFeedSource.favorite:
+        return 'This post is related to content you saved.';
+      case HomeFeedSource.interest:
+        return 'This post matches interests you have interacted with.';
+      case HomeFeedSource.trending:
+        return 'This post is receiving strong recent engagement.';
+      case HomeFeedSource.fresh:
+        return 'This post was published recently.';
+      case HomeFeedSource.friend:
+        return 'This post is from your community.';
+      case HomeFeedSource.suggested:
+        return 'This post was suggested based on your recent activity.';
+    }
+  }
+
+  Future<void> resetRecommendations() async {
+    _negativeContent.clear();
+    _mutedCreators.clear();
+    _blockedCreators.clear();
+    _liked.clear();
+    _saved.clear();
+    _seen.clear();
+    _impressionsSent.clear();
+    _items.clear();
+    _restoredScrollOffset = 0;
+    await _runtime.clearSavedSession();
+    await _interactions.resetRecommendationControls();
+    final uid = _auth.currentUser?.uid ?? '';
+    if (uid.isNotEmpty) _startSession(uid, HomeFeedMode.personalized);
+    notifyListeners();
+    await refresh();
+  }
+
+  Future<void> clearMutedCreator(String creatorId) async {
+    if (creatorId.isEmpty) return;
+    _mutedCreators.remove(creatorId);
+    await _interactions.removeNegativeFeedbackForCreator(creatorId: creatorId, type: 'mute_creator');
+    notifyListeners();
+  }
+
   Future<void> saveSession(double scrollOffset) async {
     final session = _session;
     if (session == null) return;
-    _restoredScrollOffset = scrollOffset.clamp(0, double.infinity);
-    await _runtime.saveSession(session, _restoredScrollOffset);
+    await _runtime.saveSession(session, scrollOffset);
   }
 
-  Future<void> clearSavedSession() async {
-    _restoredScrollOffset = 0;
-    await _runtime.clearSession();
-  }
+  Future<void> clearSavedSession() => _runtime.clearSession();
 
   Future<void> flushEvents() => _eventQueue.flush();
 
@@ -355,12 +399,7 @@ class HomeFeedController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _startSession(
-    String uid,
-    HomeFeedMode mode, {
-    String? sessionId,
-    HomeFeedSessionSnapshot? restored,
-  }) {
+  void _startSession(String uid, HomeFeedMode mode, {String? sessionId}) {
     final now = DateTime.now().toUtc();
     _session = HomeSessionState(
       sessionId: sessionId ?? '${uid}_${now.microsecondsSinceEpoch}',
@@ -368,11 +407,6 @@ class HomeFeedController extends ChangeNotifier {
       mode: mode,
       startedAt: now,
     );
-    if (restored != null) {
-      _session!
-        ..servedItems.addAll(restored.servedItemIds)
-        ..seenItems.addAll(restored.seenItemIds);
-    }
   }
 
   Future<void> _loadCache() async {
