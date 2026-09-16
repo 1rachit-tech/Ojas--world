@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -10,6 +12,7 @@ import '../services/home_playback_coordinator.dart';
 import '../services/home_story_service.dart';
 import '../widgets/home_comments_sheet.dart';
 import '../widgets/home_story_viewer.dart';
+import '../widgets/home_why_post_sheet.dart';
 import '../widgets/share_bottom_sheet.dart';
 import '../widgets/super_thanks_modal.dart';
 import '../widgets/world_search_delegate.dart';
@@ -23,7 +26,7 @@ class DynamicHomeScreen extends StatefulWidget {
   State<DynamicHomeScreen> createState() => _DynamicHomeScreenState();
 }
 
-class _DynamicHomeScreenState extends State<DynamicHomeScreen> {
+class _DynamicHomeScreenState extends State<DynamicHomeScreen> with WidgetsBindingObserver {
   late final HomeFeedController _controller;
   final HomeStoryService _storyService = HomeStoryService();
   final ScrollController _scrollController = ScrollController();
@@ -35,6 +38,7 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = HomeFeedController()..addListener(_onChanged);
     _scrollController.addListener(_onScroll);
     _bootstrap();
@@ -42,6 +46,7 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> {
 
   Future<void> _bootstrap() async {
     await Future.wait<void>([_controller.initialize(), _loadStories()]);
+    _schedulePlaybackEvaluation();
   }
 
   Future<void> _loadStories() async {
@@ -58,22 +63,48 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> {
   }
 
   void _onChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _schedulePlaybackEvaluation();
   }
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 700) {
-      _controller.loadMore();
+      unawaited(_controller.loadMore());
+    }
+    _schedulePlaybackEvaluation();
+  }
+
+  void _schedulePlaybackEvaluation() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_playback.evaluateDominantVisibility());
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_controller.saveSession(
+        _scrollController.hasClients ? _scrollController.offset : 0,
+      ));
+      unawaited(_controller.flushEvents());
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_controller.saveSession(
+      _scrollController.hasClients ? _scrollController.offset : 0,
+    ));
+    unawaited(_controller.flushEvents());
     _scrollController.dispose();
     _controller.dispose();
-    _playback.disposeAll();
+    unawaited(_playback.disposeAll());
     super.dispose();
   }
 
@@ -117,6 +148,7 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> {
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>([_controller.refresh(), _loadStories()]);
+          _schedulePlaybackEvaluation();
         },
         child: CustomScrollView(
           controller: _scrollController,
@@ -418,6 +450,7 @@ class _FeedCard extends StatelessWidget {
             trailing: PopupMenuButton<String>(
               onSelected: (value) => _menu(context, value),
               itemBuilder: (_) => const [
+                PopupMenuItem(value: 'why', child: Text('Why am I seeing this?')),
                 PopupMenuItem(value: 'not_interested', child: Text('Not Interested')),
                 PopupMenuItem(value: 'hide', child: Text('Hide this post')),
                 PopupMenuItem(value: 'mute', child: Text('Mute creator')),
@@ -519,6 +552,13 @@ class _FeedCard extends StatelessWidget {
 
   void _menu(BuildContext context, String value) {
     switch (value) {
+      case 'why':
+        HomeWhyPostSheet.show(
+          context,
+          reason: controller.whyThisPost(item),
+          onNotInterested: () => controller.notInterested(item),
+        );
+        break;
       case 'not_interested':
         controller.notInterested(item);
         break;
@@ -578,16 +618,32 @@ class _FeedMediaState extends State<_FeedMedia> implements HomePlaybackHandle {
   void initState() {
     super.initState();
     widget.playback.register(widget.item.contentId, this);
+    widget.playback.registerVisibilityProbe(widget.item.contentId, _visibilityFraction);
     if (widget.autoplay && _url != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.playback.activate(widget.item.contentId);
+        if (mounted) unawaited(widget.playback.evaluateDominantVisibility());
       });
     }
   }
 
+  double _visibilityFraction() {
+    if (!mounted) return 0;
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return 0;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final bottomRight = renderObject.localToGlobal(renderObject.size.bottomRight(Offset.zero));
+    final screen = MediaQuery.sizeOf(context);
+    final visibleTop = topLeft.dy.clamp(0.0, screen.height);
+    final visibleBottom = bottomRight.dy.clamp(0.0, screen.height);
+    final visible = (visibleBottom - visibleTop).clamp(0.0, renderObject.size.height);
+    if (renderObject.size.height <= 0) return 0;
+    return visible / renderObject.size.height;
+  }
+
   @override
   void dispose() {
-    widget.playback.pause(widget.item.contentId);
+    widget.playback.unregister(widget.item.contentId);
+    unawaited(widget.playback.pause(widget.item.contentId));
     _controller?.dispose();
     super.dispose();
   }
