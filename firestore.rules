@@ -152,6 +152,18 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
     }
 
+    match /users/{userId}/feedProfile/{profileId} {
+      allow get: if isOwner(userId);
+      allow create, update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    match /appConfig/homeFeed {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
     match /ojasIds/{ojasId} {
       allow get: if true;
       allow list: if false;
@@ -190,8 +202,8 @@ service cloud.firestore {
               || (
                 resource.data.followers is list
                 && request.resource.data.followers is list
-                && resource.data.followersCount is num
-                && request.resource.data.followersCount is num
+                && resource.data.followersCount is number
+                && request.resource.data.followersCount is number
                 && (
                   (
                     (request.auth.uid in resource.data.followers) == false
