@@ -112,6 +112,46 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /users/{userId}/interactions/{contentId} {
+      allow get, list: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+          && request.resource.data.liked is bool
+          && request.resource.data.saved is bool;
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/feedFeedback/{contentId} {
+      allow get, list: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+          && request.resource.data.contentId == contentId
+          && request.resource.data.type is string
+          && request.resource.data.type.size() <= 64
+          && (!('creatorId' in request.resource.data) || request.resource.data.creatorId is string);
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/feedEvents/{eventId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId)
+          && request.resource.data.sessionId is string
+          && request.resource.data.sessionId.size() <= 256
+          && request.resource.data.contentId is string
+          && request.resource.data.contentId.size() <= 256
+          && request.resource.data.eventType is string
+          && request.resource.data.eventType.size() <= 64
+          && request.resource.data.position is int
+          && request.resource.data.watchTimeMs is int
+          && request.resource.data.metadata is map;
+      allow update, delete: if false;
+    }
+
+    match /users/{userId}/storyViews/{storyId} {
+      allow get, list: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+          && request.resource.data.storyId == storyId;
+      allow delete: if isOwner(userId);
+    }
+
     match /ojasIds/{ojasId} {
       allow get: if true;
       allow list: if false;
