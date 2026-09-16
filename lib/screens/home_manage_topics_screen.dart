@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 class HomeManageTopicsScreen extends StatefulWidget {
-  const HomeManageTopicsScreen({super.key, this.initialTopics = const <String>[]});
+  const HomeManageTopicsScreen({
+    super.key,
+    this.initialTopics = const <String>[],
+    this.onSave,
+  });
 
   final List<String> initialTopics;
+  final Future<void> Function(List<String> topics)? onSave;
 
   @override
   State<HomeManageTopicsScreen> createState() => _HomeManageTopicsScreenState();
@@ -11,6 +16,7 @@ class HomeManageTopicsScreen extends StatefulWidget {
 
 class _HomeManageTopicsScreenState extends State<HomeManageTopicsScreen> {
   late final Set<String> _selected = widget.initialTopics.toSet();
+  bool _saving = false;
 
   static const topics = <String>[
     'Music',
@@ -27,6 +33,17 @@ class _HomeManageTopicsScreenState extends State<HomeManageTopicsScreen> {
     'Art',
   ];
 
+  Future<void> _done() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onSave?.call(_selected.toList(growable: false));
+      if (mounted) Navigator.pop(context, _selected.toList(growable: false));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -34,8 +51,14 @@ class _HomeManageTopicsScreenState extends State<HomeManageTopicsScreen> {
         title: const Text('Manage Topics'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, _selected.toList(growable: false)),
-            child: const Text('Done'),
+            onPressed: _saving ? null : _done,
+            child: _saving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Done'),
           ),
         ],
       ),
