@@ -62,17 +62,22 @@ class HomeFeedEvent {
       };
 }
 
+/// Local-first event queue. Firestore upload is intentionally disabled by
+/// default because feed telemetry can become a high-volume, billable workload.
+/// Enable it only after the backend rules, retention and budget are approved.
 class HomeFeedEventQueue {
   HomeFeedEventQueue({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
     this.flushThreshold = 12,
+    this.enabled = false,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final int flushThreshold;
+  final bool enabled;
   final List<HomeFeedEvent> _pending = <HomeFeedEvent>[];
   Timer? _timer;
   bool _flushing = false;
@@ -81,6 +86,8 @@ class HomeFeedEventQueue {
 
   void enqueue(HomeFeedEvent event) {
     _pending.add(event);
+    if (!enabled) return;
+
     _timer ??= Timer(const Duration(seconds: 8), () {
       _timer = null;
       unawaited(flush());
@@ -91,7 +98,7 @@ class HomeFeedEventQueue {
   }
 
   Future<void> flush() async {
-    if (_flushing || _pending.isEmpty) return;
+    if (!enabled || _flushing || _pending.isEmpty) return;
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty) return;
 
@@ -118,7 +125,7 @@ class HomeFeedEventQueue {
   Future<void> dispose() async {
     _timer?.cancel();
     _timer = null;
-    await flush();
+    if (enabled) await flush();
     _pending.clear();
   }
 }
