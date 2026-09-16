@@ -11,6 +11,10 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function interactionPath(contentId) {
+      return /databases/$(database)/documents/users/$(request.auth.uid)/interactions/$(contentId);
+    }
+
     function validParticipants(data) {
       return data.participants is list
           && data.participants.size() == 2
@@ -261,7 +265,43 @@ service cloud.firestore {
           && request.resource.data.views == 0
           && request.resource.data.watchTimeMs == 0
           && request.resource.data.completions == 0;
-      allow update: if false;
+
+      // Engagement counters are writable only as part of the user's own
+      // interaction state transition. This prevents arbitrary counter edits
+      // while allowing the existing optimistic interaction flow to persist.
+      allow update: if signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'likes',
+            'saves'
+          ])
+          && request.resource.data.likes is number
+          && request.resource.data.saves is number
+          && request.resource.data.likes >= 0
+          && request.resource.data.saves >= 0
+          && request.resource.data.likes
+              == resource.data.likes
+              + (
+                getAfter(interactionPath(reelId)).data.liked
+                ? 1
+                : 0
+              )
+              - (
+                get(interactionPath(reelId)).data.liked
+                ? 1
+                : 0
+              )
+          && request.resource.data.saves
+              == resource.data.saves
+              + (
+                getAfter(interactionPath(reelId)).data.saved
+                ? 1
+                : 0
+              )
+              - (
+                get(interactionPath(reelId)).data.saved
+                ? 1
+                : 0
+              );
       allow delete: if false;
     }
 
