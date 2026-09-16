@@ -80,6 +80,7 @@ class HomeFeedController extends ChangeNotifier {
       return;
     }
 
+    await _eventQueue.initialize();
     await _runtime.initialize();
     final restored = await _runtime.restoreSession();
     _restoredScrollOffset = restored?.scrollOffset.clamp(0, double.infinity) ?? 0;
@@ -385,7 +386,6 @@ class HomeFeedController extends ChangeNotifier {
 
   Future<void> setManagedTopics(List<String> topics) async {
     await _runtime.setManagedTopics(topics);
-    await refresh();
     notifyListeners();
   }
 
