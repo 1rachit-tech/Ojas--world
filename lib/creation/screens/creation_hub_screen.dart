@@ -45,19 +45,46 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
 
       if (files.isEmpty || !mounted) return;
 
-      final first = files.first;
-      final isVideo = _isVideoPath(first.path);
-      final file = File(first.path);
-      final size = await file.length();
+      final assets = <CreationMediaAsset>[];
+      for (final selected in files) {
+        final file = File(selected.path);
+        final size = await file.length();
+        final isVideo = _isVideoPath(selected.path);
+        assets.add(
+          CreationMediaAsset(
+            assetId: '${DateTime.now().microsecondsSinceEpoch}_${assets.length}',
+            localUri: selected.path,
+            type: isVideo ? 'video' : 'image',
+            mimeType: isVideo ? 'video/*' : 'image/*',
+            sizeBytes: size,
+          ),
+        );
+      }
 
-      final project = CreationProject.createForAsset(
+      final projectId = '${_ownerId}_${DateTime.now().microsecondsSinceEpoch}';
+      final now = DateTime.now();
+      final timeline = <CreationTimelineClip>[];
+      for (var index = 0; index < assets.length; index++) {
+        final asset = assets[index];
+        timeline.add(
+          CreationTimelineClip(
+            clipId: '${projectId}_clip_$index',
+            sourceId: asset.assetId,
+            startMs: 0,
+            endMs: asset.durationMs ?? 0,
+          ),
+        );
+      }
+
+      final project = CreationProject(
+        projectId: projectId,
         ownerId: _ownerId,
-        localUri: first.path,
-        isVideo: isVideo,
-        sizeBytes: size,
+        createdAt: now,
+        updatedAt: now,
         creationType: CreationType.post,
-      ).copyWith(
         status: CreationProjectStatus.editing,
+        mediaAssets: assets,
+        timeline: timeline,
       );
 
       await CreationProjectStore.instance.save(project);
@@ -125,7 +152,9 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 10),
                           itemBuilder: (_, index) {
                             final project = drafts[index];
-                            final asset = project.mediaAssets.firstOrNull;
+                            final asset = project.mediaAssets.isEmpty
+                                ? null
+                                : project.mediaAssets.first;
                             return ListTile(
                               tileColor: const Color(0xFFF7F7F8),
                               shape: RoundedRectangleBorder(
@@ -138,7 +167,7 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                '${project.status.name} • ${asset?.type ?? 'media'}',
+                                '${project.status.name} • ${project.mediaAssets.length} asset(s) • ${asset?.type ?? 'media'}',
                               ),
                               onTap: () async {
                                 Navigator.pop(sheetContext);
