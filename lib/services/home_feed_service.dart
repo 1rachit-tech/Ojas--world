@@ -78,12 +78,7 @@ class HomeFeedService {
         );
       case HomeFeedMode.following:
         final following = await _readFollowing(userId);
-        if (following.isEmpty) {
-          return _runQuery(
-            _reels.orderBy('createdAt', descending: true),
-            cursor,
-          );
-        }
+        if (following.isEmpty) return _emptySnapshot();
         final ids = following.take(maxWhereInIds).toList(growable: false);
         return _runQuery(
           _reels
@@ -93,27 +88,28 @@ class HomeFeedService {
         );
       case HomeFeedMode.favorites:
         final savedIds = await _readSavedContentIds(userId);
-        if (savedIds.isEmpty) {
-          return _emptySnapshot();
-        }
+        if (savedIds.isEmpty) return _emptySnapshot();
         return _runQuery(
           _reels
-              .where(FieldPath.documentId, whereIn: savedIds.take(maxWhereInIds).toList())
+              .where(
+                FieldPath.documentId,
+                whereIn: savedIds.take(maxWhereInIds).toList(),
+              )
               .orderBy('createdAt', descending: true),
           cursor,
         );
       case HomeFeedMode.personalized:
+        // Until a trusted server-side ranker exists, fetch fresh candidates and
+        // rank them only with non-authoritative public engagement/freshness
+        // signals. Never trust a client-visible algorithmScore as final rank.
         return _runQuery(
-          _reels.orderBy('algorithmScore', descending: true),
+          _reels.orderBy('createdAt', descending: true),
           cursor,
         );
       case HomeFeedMode.friends:
-        // A friend graph is not present in the verified schema yet. Do not
-        // invent one; personalized candidates are used as a safe fallback.
-        return _runQuery(
-          _reels.orderBy('algorithmScore', descending: true),
-          cursor,
-        );
+        // A verified friend graph is not present in the repository schema yet.
+        // Returning an empty set is safer than silently showing unrelated posts.
+        return _emptySnapshot();
     }
   }
 
@@ -135,7 +131,10 @@ class HomeFeedService {
     final data = snapshot.data() ?? const <String, dynamic>{};
     final values = data['following'];
     if (values is! List) return const <String>[];
-    return values.whereType<String>().where((id) => id.isNotEmpty).toList(growable: false);
+    return values
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<List<String>> _readSavedContentIds(String userId) async {
@@ -147,7 +146,10 @@ class HomeFeedService {
           .where('saved', isEqualTo: true)
           .limit(maxWhereInIds)
           .get();
-      return snapshot.docs.map((doc) => doc.id).where((id) => id.isNotEmpty).toList(growable: false);
+      return snapshot.docs
+          .map((doc) => doc.id)
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false);
     } catch (_) {
       return const <String>[];
     }
@@ -172,10 +174,12 @@ class HomeFeedService {
         (reel.shares * 3.0);
     final avgWatchMs = reel.views <= 0 ? 0 : reel.watchTimeMs / reel.views;
     final watchQuality = (avgWatchMs / 60000).clamp(0.0, 1.0);
-    final score = (reel.algorithmScore * 0.45) +
-        (freshness * 0.20) +
-        ((engagement / 100000).clamp(0.0, 1.0) * 0.20) +
-        (watchQuality * 0.15);
+
+    // This is a temporary client fallback only. The eventual personalized
+    // ranker must run server-side; algorithmScore is intentionally excluded.
+    final score = (freshness * 0.45) +
+        ((engagement / 100000).clamp(0.0, 1.0) * 0.35) +
+        (watchQuality * 0.20);
 
     final eligibility = _readEligibility(data, reel, userId);
     final mediaSources = _readStringList(data['mediaSources']);
@@ -217,7 +221,6 @@ class HomeFeedService {
         'freshness': freshness,
         'engagement': (engagement / 100000).clamp(0.0, 1.0),
         'watchQuality': watchQuality,
-        'candidateScore': reel.algorithmScore,
       },
       trackingToken: '${context.sessionId}:${reel.id}',
       visibility: (data['visibility'] as String?) ?? 'public',
@@ -310,14 +313,17 @@ class HomeFeedService {
       case HomeFeedMode.latest:
         return 'Recently published';
       case HomeFeedMode.friends:
-        return 'From your community';
+        return null;
       case HomeFeedMode.personalized:
-        return 'Related to your interests';
+        return null;
     }
   }
 
   List<String> _readStringList(Object? value) {
     if (value is! List) return const <String>[];
-    return value.whereType<String>().where((value) => value.isNotEmpty).toList(growable: false);
+    return value
+        .whereType<String>()
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 }
