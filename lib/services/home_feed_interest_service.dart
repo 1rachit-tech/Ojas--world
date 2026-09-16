@@ -64,6 +64,24 @@ class HomeFeedInterestService {
     }
   }
 
+  Future<void> setManagedTopics(List<String> topics) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    final cleaned = topics
+        .map((topic) => topic.trim())
+        .where((topic) => topic.isNotEmpty)
+        .take(30)
+        .toSet();
+    final affinity = <String, double>{
+      for (final topic in cleaned) topic: 2.0,
+    };
+    final ref = _firestore.collection('users').doc(uid).collection('feedProfile').doc('interest');
+    await ref.set(<String, dynamic>{
+      'topicAffinity': affinity,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   double _deltaFor(HomeFeedEventType type) {
     switch (type) {
       case HomeFeedEventType.completion:
