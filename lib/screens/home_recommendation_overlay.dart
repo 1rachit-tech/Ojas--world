@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/home_feed_controller.dart';
+import '../services/home_feed_interaction_service.dart';
 import '../widgets/home_recommendation_controls_sheet.dart';
 import 'home_feed_dynamic_screen.dart';
 import 'home_manage_topics_screen.dart';
@@ -15,11 +16,13 @@ class HomeRecommendationOverlay extends StatefulWidget {
 
 class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
   late final HomeFeedController _controller;
+  late final HomeFeedInteractionService _interactions;
 
   @override
   void initState() {
     super.initState();
     _controller = HomeFeedController()..addListener(_refresh);
+    _interactions = HomeFeedInteractionService();
     _controller.initialize();
   }
 
@@ -50,11 +53,18 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
   }
 
   Future<void> _openMuted() async {
+    final persistedIds = await _interactions.loadMutedCreatorIds();
+    final mergedIds = <String>{
+      ...persistedIds,
+      ..._controller.mutedCreatorIds,
+    }.toList(growable: false);
+
+    if (!mounted) return;
     await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => HomeMutedCreatorsScreen(
-          creatorIds: _controller.mutedCreatorIds,
+          creatorIds: mergedIds,
           onUnmute: _controller.unmuteCreator,
         ),
       ),
