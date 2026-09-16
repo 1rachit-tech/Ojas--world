@@ -53,6 +53,11 @@ class HomeFeedRuntimeService {
     await _interests.record(item: item, type: type);
   }
 
+  Future<void> setManagedTopics(List<String> topics) async {
+    await _interests.setManagedTopics(topics);
+    interest = await _interests.load();
+  }
+
   HomeFeedExperimentVariant assignExperiment() {
     return _experiments.assign(
       userId: _auth.currentUser?.uid ?? '',
