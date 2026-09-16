@@ -39,12 +39,15 @@ class HomeFeedRuntimeService {
     interest = results[1] as HomeFeedInterestProfile;
   }
 
-  Future<HomeFeedSessionSnapshot?> restoreSession() => _sessions.read();
+  Future<HomeFeedSessionSnapshot?> restoreSession() {
+    return _sessions.read(_auth.currentUser?.uid ?? '');
+  }
 
   Future<void> saveSession(HomeSessionState session, double offset) =>
       _sessions.save(session, offset);
 
-  Future<void> clearSession() => _sessions.clear();
+  Future<void> clearSession() =>
+      _sessions.clear(_auth.currentUser?.uid ?? '');
 
   Future<void> learn(HomeFeedItem item, HomeFeedEventType type) async {
     await _interests.record(item: item, type: type);
