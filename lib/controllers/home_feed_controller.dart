@@ -45,6 +45,7 @@ class HomeFeedController extends ChangeNotifier {
 
   HomeSessionState? _session;
   HomeFeedMode _mode = HomeFeedMode.personalized;
+  double _restoredScrollOffset = 0;
   bool _loading = false;
   bool _refreshing = false;
   bool _hasMore = true;
@@ -58,6 +59,7 @@ class HomeFeedController extends ChangeNotifier {
   bool get hasMore => _hasMore;
   Object? get error => _error;
   HomeSessionState? get session => _session;
+  double get restoredScrollOffset => _restoredScrollOffset;
   HomeFeedRemoteConfig get remoteConfig => _runtime.config;
   HomeFeedExperimentVariant get experimentVariant => _runtime.assignExperiment();
   bool isLiked(String id) => _liked.contains(id);
@@ -78,7 +80,8 @@ class HomeFeedController extends ChangeNotifier {
     _mode = restoredMode == HomeFeedMode.friends && !_runtime.config.enableFriendsMode
         ? HomeFeedMode.personalized
         : restoredMode;
-    _startSession(uid, _mode, sessionId: restored?.sessionId);
+    _restoredScrollOffset = (restored?.scrollOffset ?? 0).clamp(0, double.infinity);
+    _startSession(uid, _mode, sessionId: restored?.sessionId, restored: restored);
     await _loadCache();
     await refresh();
   }
@@ -91,8 +94,11 @@ class HomeFeedController extends ChangeNotifier {
     _mode = mode;
     final uid = _auth.currentUser?.uid ?? '';
     if (uid.isEmpty) return;
+    _restoredScrollOffset = 0;
     _startSession(uid, mode);
     _items.clear();
+    _seen.clear();
+    _impressionsSent.clear();
     notifyListeners();
     await refresh();
   }
@@ -104,6 +110,7 @@ class HomeFeedController extends ChangeNotifier {
     _error = null;
     _hasMore = true;
     _cursor = null;
+    _impressionsSent.clear();
     notifyListeners();
 
     try {
@@ -114,7 +121,7 @@ class HomeFeedController extends ChangeNotifier {
         userId: session.userId,
         mode: _mode,
         startedAt: session.startedAt,
-        seenContentIds: const <String>{},
+        seenContentIds: _seen,
         negativeContentIds: _negativeContent,
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
@@ -123,8 +130,6 @@ class HomeFeedController extends ChangeNotifier {
       _items
         ..clear()
         ..addAll(page.items);
-      _seen.clear();
-      _impressionsSent.clear();
       _appendSession(page.items);
       _hasMore = page.hasMore && page.items.isNotEmpty;
       _cursor = page.cursor;
@@ -333,10 +338,14 @@ class HomeFeedController extends ChangeNotifier {
   Future<void> saveSession(double scrollOffset) async {
     final session = _session;
     if (session == null) return;
-    await _runtime.saveSession(session, scrollOffset);
+    _restoredScrollOffset = scrollOffset.clamp(0, double.infinity);
+    await _runtime.saveSession(session, _restoredScrollOffset);
   }
 
-  Future<void> clearSavedSession() => _runtime.clearSession();
+  Future<void> clearSavedSession() async {
+    _restoredScrollOffset = 0;
+    await _runtime.clearSession();
+  }
 
   Future<void> flushEvents() => _eventQueue.flush();
 
@@ -346,7 +355,12 @@ class HomeFeedController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _startSession(String uid, HomeFeedMode mode, {String? sessionId}) {
+  void _startSession(
+    String uid,
+    HomeFeedMode mode, {
+    String? sessionId,
+    HomeFeedSessionSnapshot? restored,
+  }) {
     final now = DateTime.now().toUtc();
     _session = HomeSessionState(
       sessionId: sessionId ?? '${uid}_${now.microsecondsSinceEpoch}',
@@ -354,6 +368,11 @@ class HomeFeedController extends ChangeNotifier {
       mode: mode,
       startedAt: now,
     );
+    if (restored != null) {
+      _session!
+        ..servedItems.addAll(restored.servedItemIds)
+        ..seenItems.addAll(restored.seenItemIds);
+    }
   }
 
   Future<void> _loadCache() async {
