@@ -5,7 +5,7 @@ import '../models/home_feed_models.dart';
 abstract interface class HomePlaybackHandle {
   Future<void> play();
   Future<void> pause();
-  Future<void> dispose();
+  Future<void> release();
 }
 
 class HomePlaybackCoordinator {
@@ -50,7 +50,7 @@ class HomePlaybackCoordinator {
     final retained = retainedIds.toSet();
     final disposable = _handles.keys.where((id) => !retained.contains(id)).toList(growable: false);
     for (final id in disposable) {
-      await _handles[id]?.dispose();
+      await _handles[id]?.release();
       _handles.remove(id);
       _activeIds.remove(id);
     }
@@ -58,7 +58,7 @@ class HomePlaybackCoordinator {
 
   Future<void> disposeAll() async {
     for (final handle in _handles.values) {
-      await handle.dispose();
+      await handle.release();
     }
     _handles.clear();
     _activeIds.clear();
