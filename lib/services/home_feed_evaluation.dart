@@ -47,11 +47,15 @@ class HomeFeedEvaluation {
       if (!relevantIds.contains(entry.value.contentId)) return sum;
       return sum + (1 / (1 + _log2(entry.key + 2)));
     });
-    final idealHits = relevantIds.length.clamp(0, top.length);
+    final idealHits = relevantIds.length.clamp(0, top.length).toInt();
     final idealDcg = List<int>.generate(idealHits, (index) => index)
         .fold<double>(0, (sum, index) => sum + (1 / (1 + _log2(index + 2))));
     final ndcg = idealDcg == 0 ? 0 : dcg / idealDcg;
-    final uniqueCreators = top.map((item) => item.creatorId).where((id) => id.isNotEmpty).toSet().length;
+    final uniqueCreators = top
+        .map((item) => item.creatorId)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .length;
     final diversity = uniqueCreators / top.length;
     final freshness = top.fold<double>(0, (sum, item) {
       final ageHours = DateTime.now().toUtc().difference(item.createdAt.toUtc()).inHours;
@@ -68,7 +72,9 @@ class HomeFeedEvaluation {
     );
   }
 
-  double _log2(num value) => value <= 1 ? 0 : (value.toDouble().log() / 2.302585092994046);
+  double _log2(num value) => value <= 1
+      ? 0
+      : (value.toDouble().log() / 2.302585092994046);
 }
 
 extension on double {
