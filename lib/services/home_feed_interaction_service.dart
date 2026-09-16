@@ -80,4 +80,47 @@ class HomeFeedInteractionService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  Future<void> resetRecommendationControls() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    final interestRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('feedProfile')
+        .doc('interest');
+    final snapshot = await interestRef.get();
+    if (!snapshot.exists) return;
+    await interestRef.set(<String, dynamic>{
+      'creatorAffinity': <String, double>{},
+      'topicAffinity': <String, double>{},
+      'hashtagAffinity': <String, double>{},
+      'soundAffinity': <String, double>{},
+      'contentTypeAffinity': <String, double>{},
+      'negativeAffinity': <String, double>{},
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> removeNegativeFeedbackForCreator({
+    required String creatorId,
+    required String type,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty || creatorId.isEmpty) return;
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('feedFeedback')
+        .where('creatorId', isEqualTo: creatorId)
+        .where('type', isEqualTo: type)
+        .limit(50)
+        .get();
+    if (snapshot.docs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
 }
