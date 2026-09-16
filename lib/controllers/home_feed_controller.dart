@@ -5,9 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/home_feed_models.dart';
+import '../models/home_feed_runtime_models.dart';
 import '../services/home_feed_cache_service.dart';
 import '../services/home_feed_event_queue.dart';
 import '../services/home_feed_interaction_service.dart';
+import '../services/home_feed_runtime_service.dart';
 import '../services/home_feed_service.dart';
 
 class HomeFeedController extends ChangeNotifier {
@@ -16,17 +18,20 @@ class HomeFeedController extends ChangeNotifier {
     HomeFeedEventQueue? eventQueue,
     HomeFeedCacheService? cache,
     HomeFeedInteractionService? interactions,
+    HomeFeedRuntimeService? runtime,
     FirebaseAuth? auth,
   })  : _service = service ?? HomeFeedService(),
         _eventQueue = eventQueue ?? HomeFeedEventQueue(),
         _cache = cache ?? HomeFeedCacheService(),
         _interactions = interactions ?? HomeFeedInteractionService(),
+        _runtime = runtime ?? HomeFeedRuntimeService(),
         _auth = auth ?? FirebaseAuth.instance;
 
   final HomeFeedService _service;
   final HomeFeedEventQueue _eventQueue;
   final HomeFeedCacheService _cache;
   final HomeFeedInteractionService _interactions;
+  final HomeFeedRuntimeService _runtime;
   final FirebaseAuth _auth;
 
   final List<HomeFeedItem> _items = <HomeFeedItem>[];
@@ -53,6 +58,8 @@ class HomeFeedController extends ChangeNotifier {
   bool get hasMore => _hasMore;
   Object? get error => _error;
   HomeSessionState? get session => _session;
+  HomeFeedRemoteConfig get remoteConfig => _runtime.config;
+  HomeFeedExperimentVariant get experimentVariant => _runtime.assignExperiment();
   bool isLiked(String id) => _liked.contains(id);
   bool isSaved(String id) => _saved.contains(id);
 
@@ -64,13 +71,23 @@ class HomeFeedController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _startSession(uid, _mode);
+
+    await _runtime.initialize();
+    final restored = await _runtime.restoreSession();
+    final restoredMode = restored?.mode ?? _mode;
+    _mode = restoredMode == HomeFeedMode.friends && !_runtime.config.enableFriendsMode
+        ? HomeFeedMode.personalized
+        : restoredMode;
+    _startSession(uid, _mode, sessionId: restored?.sessionId);
     await _loadCache();
     await refresh();
   }
 
   Future<void> setMode(HomeFeedMode mode) async {
     if (_mode == mode && _session != null) return;
+    if (mode == HomeFeedMode.friends && !_runtime.config.enableFriendsMode) {
+      mode = HomeFeedMode.personalized;
+    }
     _mode = mode;
     final uid = _auth.currentUser?.uid ?? '';
     if (uid.isEmpty) return;
@@ -185,6 +202,9 @@ class HomeFeedController extends ChangeNotifier {
       position: position,
       watchTimeMs: watchTimeMs,
     ));
+    if (eventType == HomeFeedEventType.completion || eventType == HomeFeedEventType.rewatch) {
+      unawaited(_runtime.learn(item, eventType));
+    }
   }
 
   Future<void> toggleLike(HomeFeedItem item) async {
@@ -195,7 +215,7 @@ class HomeFeedController extends ChangeNotifier {
       _liked.remove(item.contentId);
     }
     notifyListeners();
-    markInteraction(item, next ? HomeFeedEventType.like : HomeFeedEventType.like);
+    markInteraction(item, HomeFeedEventType.like);
     try {
       await _interactions.setLike(contentId: item.contentId, liked: next);
     } catch (_) {
@@ -216,7 +236,7 @@ class HomeFeedController extends ChangeNotifier {
       _saved.remove(item.contentId);
     }
     notifyListeners();
-    markInteraction(item, next ? HomeFeedEventType.save : HomeFeedEventType.save);
+    markInteraction(item, HomeFeedEventType.save);
     try {
       await _interactions.setSave(
         contentId: item.contentId,
@@ -241,6 +261,17 @@ class HomeFeedController extends ChangeNotifier {
       eventType: type,
       createdAt: DateTime.now().toUtc(),
     ));
+    if (type == HomeFeedEventType.like ||
+        type == HomeFeedEventType.save ||
+        type == HomeFeedEventType.share ||
+        type == HomeFeedEventType.follow ||
+        type == HomeFeedEventType.notInterested ||
+        type == HomeFeedEventType.hide ||
+        type == HomeFeedEventType.mute ||
+        type == HomeFeedEventType.block ||
+        type == HomeFeedEventType.report) {
+      unawaited(_runtime.learn(item, type));
+    }
   }
 
   void notInterested(HomeFeedItem item) {
@@ -299,6 +330,14 @@ class HomeFeedController extends ChangeNotifier {
     ));
   }
 
+  Future<void> saveSession(double scrollOffset) async {
+    final session = _session;
+    if (session == null) return;
+    await _runtime.saveSession(session, scrollOffset);
+  }
+
+  Future<void> clearSavedSession() => _runtime.clearSession();
+
   Future<void> flushEvents() => _eventQueue.flush();
 
   @override
@@ -307,10 +346,10 @@ class HomeFeedController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _startSession(String uid, HomeFeedMode mode) {
+  void _startSession(String uid, HomeFeedMode mode, {String? sessionId}) {
     final now = DateTime.now().toUtc();
     _session = HomeSessionState(
-      sessionId: '${uid}_${now.microsecondsSinceEpoch}',
+      sessionId: sessionId ?? '${uid}_${now.microsecondsSinceEpoch}',
       userId: uid,
       mode: mode,
       startedAt: now,
@@ -325,9 +364,7 @@ class HomeFeedController extends ChangeNotifier {
         ..clear()
         ..addAll(cached);
       notifyListeners();
-    } catch (_) {
-      // Cache is an accelerator, never a source of fatal errors.
-    }
+    } catch (_) {}
   }
 
   void _appendPage(HomeFeedPage page) {
