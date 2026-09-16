@@ -15,6 +15,24 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(request.auth.uid)/interactions/$(contentId);
     }
 
+    function currentLiked(contentId) {
+      return exists(interactionPath(contentId))
+          && get(interactionPath(contentId)).data.liked == true;
+    }
+
+    function currentSaved(contentId) {
+      return exists(interactionPath(contentId))
+          && get(interactionPath(contentId)).data.saved == true;
+    }
+
+    function afterLiked(contentId) {
+      return getAfter(interactionPath(contentId)).data.liked == true;
+    }
+
+    function afterSaved(contentId) {
+      return getAfter(interactionPath(contentId)).data.saved == true;
+    }
+
     function validParticipants(data) {
       return data.participants is list
           && data.participants.size() == 2
@@ -266,9 +284,6 @@ service cloud.firestore {
           && request.resource.data.watchTimeMs == 0
           && request.resource.data.completions == 0;
 
-      // Engagement counters are writable only as part of the user's own
-      // interaction state transition. This prevents arbitrary counter edits
-      // while allowing the existing optimistic interaction flow to persist.
       allow update: if signedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'likes',
@@ -280,28 +295,12 @@ service cloud.firestore {
           && request.resource.data.saves >= 0
           && request.resource.data.likes
               == resource.data.likes
-              + (
-                getAfter(interactionPath(reelId)).data.liked
-                ? 1
-                : 0
-              )
-              - (
-                get(interactionPath(reelId)).data.liked
-                ? 1
-                : 0
-              )
+              + (afterLiked(reelId) ? 1 : 0)
+              - (currentLiked(reelId) ? 1 : 0)
           && request.resource.data.saves
               == resource.data.saves
-              + (
-                getAfter(interactionPath(reelId)).data.saved
-                ? 1
-                : 0
-              )
-              - (
-                get(interactionPath(reelId)).data.saved
-                ? 1
-                : 0
-              );
+              + (afterSaved(reelId) ? 1 : 0)
+              - (currentSaved(reelId) ? 1 : 0);
       allow delete: if false;
     }
 
