@@ -5,13 +5,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/home_feed_models.dart';
 import '../models/reel_model.dart';
+import '../models/home_feed_runtime_models.dart';
+import 'ranking/home_feed_ranker.dart';
 
 class HomeFeedService {
   HomeFeedService({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
+    HomeFeedRanker? ranker,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+        _auth = auth ?? FirebaseAuth.instance,
+        _ranker = ranker ?? const DefaultHomeFeedRanker();
 
   static const int candidatePageSize = 20;
   static const int finalPageSize = 10;
@@ -19,12 +23,14 @@ class HomeFeedService {
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final HomeFeedRanker _ranker;
 
   CollectionReference<Map<String, dynamic>> get _reels =>
       _firestore.collection('reels');
 
   Future<HomeFeedPage> fetchPage({
     required HomeFeedContext context,
+    required HomeFeedInterestProfile interest,
     DocumentSnapshot<Map<String, dynamic>>? cursor,
   }) async {
     final userId = context.userId.isNotEmpty
@@ -42,11 +48,7 @@ class HomeFeedService {
 
     final candidates = <HomeFeedItem>[];
     for (final doc in snapshot.docs) {
-      final item = _toFeedItem(
-        doc,
-        context,
-        userId,
-      );
+      final item = _toFeedItem(doc, context, userId);
       if (item.eligibility != HomeEligibilityStatus.eligible) continue;
       if (context.seenContentIds.contains(item.contentId)) continue;
       if (context.negativeContentIds.contains(item.contentId)) continue;
@@ -55,7 +57,11 @@ class HomeFeedService {
       candidates.add(item);
     }
 
-    final ranked = _rerank(candidates, context.mode);
+    final ranked = _ranker.rank(
+      candidates: candidates,
+      interest: interest,
+      mode: context.mode,
+    );
     final selected = ranked.take(finalPageSize).toList(growable: false);
 
     return HomeFeedPage(
@@ -99,9 +105,8 @@ class HomeFeedService {
           cursor,
         );
       case HomeFeedMode.personalized:
-        // Until a trusted server-side ranker exists, fetch fresh candidates and
-        // rank them only with non-authoritative public engagement/freshness
-        // signals. Never trust a client-visible algorithmScore as final rank.
+        // Candidate generation is intentionally broad. Ranking happens through
+        // the dedicated ranker and never trusts client-visible algorithmScore.
         return _runQuery(
           _reels.orderBy('createdAt', descending: true),
           cursor,
@@ -175,12 +180,6 @@ class HomeFeedService {
     final avgWatchMs = reel.views <= 0 ? 0 : reel.watchTimeMs / reel.views;
     final watchQuality = (avgWatchMs / 60000).clamp(0.0, 1.0);
 
-    // This is a temporary client fallback only. The eventual personalized
-    // ranker must run server-side; algorithmScore is intentionally excluded.
-    final score = (freshness * 0.45) +
-        ((engagement / 100000).clamp(0.0, 1.0) * 0.35) +
-        (watchQuality * 0.20);
-
     final eligibility = _readEligibility(data, reel, userId);
     final mediaSources = _readStringList(data['mediaSources']);
     final hashtags = _readStringList(data['hashtags']);
@@ -200,7 +199,7 @@ class HomeFeedService {
       createdAt: reel.createdAt,
       source: _sourceFor(context.mode),
       eligibility: eligibility,
-      rankingScore: score,
+      rankingScore: 0,
       mediaSources: mediaSources.isEmpty && reel.hlsUrl.isNotEmpty
           ? <String>[reel.hlsUrl]
           : mediaSources,
@@ -248,40 +247,6 @@ class HomeFeedService {
     }
     if (data['spam'] == true) return HomeEligibilityStatus.rejected;
     return HomeEligibilityStatus.eligible;
-  }
-
-  List<HomeFeedItem> _rerank(
-    List<HomeFeedItem> candidates,
-    HomeFeedMode mode,
-  ) {
-    final sorted = [...candidates]
-      ..sort((a, b) {
-        final score = b.rankingScore.compareTo(a.rankingScore);
-        if (score != 0) return score;
-        return b.createdAt.compareTo(a.createdAt);
-      });
-
-    final result = <HomeFeedItem>[];
-    final creatorCounts = <String, int>{};
-    final topicCounts = <String, int>{};
-    final deferred = <HomeFeedItem>[];
-
-    for (final item in sorted) {
-      final creatorCount = creatorCounts[item.creatorId] ?? 0;
-      final topic = item.hashtags.isEmpty ? '__none__' : item.hashtags.first;
-      final topicCount = topicCounts[topic] ?? 0;
-      final tooRepetitive = creatorCount >= 2 || (topic != '__none__' && topicCount >= 3);
-      if (tooRepetitive) {
-        deferred.add(item);
-        continue;
-      }
-      result.add(item);
-      creatorCounts[item.creatorId] = creatorCount + 1;
-      topicCounts[topic] = topicCount + 1;
-    }
-
-    result.addAll(deferred);
-    return result;
   }
 
   HomeFeedSource _sourceFor(HomeFeedMode mode) {
