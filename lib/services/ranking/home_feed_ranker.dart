@@ -83,11 +83,12 @@ class DefaultHomeFeedRanker implements HomeFeedRanker {
     return (raw.clamp(0.0, 5.0) / 5.0).clamp(0.0, 1.0);
   }
 
-  // negativeAffinity stores the magnitude of negative feedback as a
-  // positive value (0..5), so convert that magnitude directly into a penalty.
+  // Current interest storage keeps negativeAffinity as a positive magnitude.
+  // Accept the legacy negative-sign representation too, so old profiles remain
+  // meaningful after the ranking semantic correction.
   double _negativePenalty(double? value) {
     final raw = value ?? 0.0;
-    return (raw.clamp(0.0, 5.0) / 5.0).clamp(0.0, 1.0);
+    return (raw.abs().clamp(0.0, 5.0) / 5.0).clamp(0.0, 1.0);
   }
 
   List<HomeFeedItem> _diversify(List<_ScoredItem> sorted) {
