@@ -81,6 +81,26 @@ class HomeFeedInteractionService {
     }, SetOptions(merge: true));
   }
 
+  Future<List<String>> loadMutedCreatorIds() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return const <String>[];
+    final snapshot = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('feedFeedback')
+        .where('type', isEqualTo: 'mute_creator')
+        .limit(100)
+        .get();
+    final ids = <String>{};
+    for (final doc in snapshot.docs) {
+      final creatorId = doc.data()['creatorId'] as String?;
+      if (creatorId != null && creatorId.trim().isNotEmpty) {
+        ids.add(creatorId.trim());
+      }
+    }
+    return ids.toList(growable: false);
+  }
+
   Future<void> resetRecommendationControls() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty) return;
