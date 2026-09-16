@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'home_feed_remote_config_service.dart';
+
 enum HomeFeedEventType {
   impression,
   open,
@@ -92,48 +94,65 @@ class HomeFeedEvent {
   }
 }
 
-/// Local-first telemetry queue. Remote Firestore upload remains disabled by
-/// default because feed telemetry is a potentially high-volume workload.
-/// Events are persisted locally so disabling upload does not silently discard
-/// user signals. Upload can be enabled later through remote configuration.
+/// Local-first telemetry queue.
+///
+/// Remote upload is disabled by default. When appConfig/homeFeed enables it,
+/// events are uploaded in batches. Local storage is scoped to the signed-in
+/// account so one account can never reuse another account's pending signals.
 class HomeFeedEventQueue {
   HomeFeedEventQueue({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
+    HomeFeedRemoteConfigService? remoteConfig,
     this.flushThreshold = 12,
     this.enabled = false,
     this.maxStoredEvents = 500,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
-
-  static const String _storageKey = 'ojas_home_feed_event_queue_v1';
+        _auth = auth ?? FirebaseAuth.instance,
+        _remoteConfig = remoteConfig ?? HomeFeedRemoteConfigService();
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  final HomeFeedRemoteConfigService _remoteConfig;
   final int flushThreshold;
-  final bool enabled;
+  bool enabled;
   final int maxStoredEvents;
   final List<HomeFeedEvent> _pending = <HomeFeedEvent>[];
   Timer? _timer;
   Future<void> _persistChain = Future<void>.value();
-  bool _flushing = false;
+  Future<void> _initializeFuture = Future<void>.value();
   bool _initialized = false;
+  bool _initializing = false;
+  bool _flushing = false;
 
   int get pendingCount => _pending.length;
 
-  Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
+  String get _storageKey {
+    final uid = _auth.currentUser?.uid ?? 'signed_out';
+    return 'ojas_home_feed_event_queue_v1_$uid';
+  }
+
+  Future<void> initialize() {
+    if (_initialized) return Future<void>.value();
+    if (_initializing) return _initializeFuture;
+    _initializing = true;
+    _initializeFuture = _loadPersistedState();
+    return _initializeFuture;
+  }
+
+  Future<void> _loadPersistedState() async {
     try {
       final preferences = await SharedPreferences.getInstance();
       final raw = preferences.getString(_storageKey);
-      if (raw == null || raw.isEmpty) return;
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      for (final value in decoded) {
-        if (value is! Map) continue;
-        final event = HomeFeedEvent.fromLocalMap(Map<String, dynamic>.from(value));
-        if (event != null && event.contentId.isNotEmpty) _pending.add(event);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          for (final value in decoded) {
+            if (value is! Map) continue;
+            final event = HomeFeedEvent.fromLocalMap(Map<String, dynamic>.from(value));
+            if (event != null && event.contentId.isNotEmpty) _pending.add(event);
+          }
+        }
       }
       if (_pending.length > maxStoredEvents) {
         _pending.removeRange(0, _pending.length - maxStoredEvents);
@@ -141,13 +160,28 @@ class HomeFeedEventQueue {
     } catch (_) {
       _pending.clear();
     }
+
+    // The default remains false. Only an explicit, signed-in remote config can
+    // opt telemetry into Firestore uploads.
+    if (_auth.currentUser != null) {
+      try {
+        enabled = enabled || (await _remoteConfig.load()).enableTelemetryUpload;
+      } catch (_) {
+        // Keep the safe local-only default.
+      }
+    }
+
+    _initialized = true;
+    _initializing = false;
   }
 
   void enqueue(HomeFeedEvent event) {
     if (!_initialized) {
-      // Keep the current event even if a caller emits before controller bootstrap.
+      // Do not silently discard an early event. Persist it under the current
+      // account; the controller initializes before normal Home rendering.
       _initialized = true;
     }
+    if (event.contentId.isEmpty) return;
     _pending.add(event);
     if (_pending.length > maxStoredEvents) {
       _pending.removeRange(0, _pending.length - maxStoredEvents);
