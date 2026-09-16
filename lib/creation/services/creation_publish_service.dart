@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/creation_project.dart';
+import '../models/creation_publish_state.dart';
+import 'creation_azure_media_service.dart';
 import 'creation_project_store.dart';
+import 'creation_publish_state_store.dart';
 import 'creation_validation_service.dart';
 
 class CreationPublishResult {
@@ -24,13 +26,16 @@ class CreationPublishService {
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
+    CreationAzureMediaService? azureMedia,
   })  : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+        _storage = storage ?? FirebaseStorage.instance,
+        _azureMedia = azureMedia ?? CreationAzureMediaService(auth: auth);
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final CreationAzureMediaService _azureMedia;
 
   Future<CreationPublishResult> publish(CreationProject project) async {
     final user = _auth.currentUser;
@@ -38,47 +43,139 @@ class CreationPublishService {
       throw const CreationPublishException('Please sign in again before posting.');
     }
 
+    const maxCaptionLength = 2200;
     final validation = await CreationValidationService.validateProject(project);
     if (!validation.isValid) {
       throw CreationPublishException(validation.message);
     }
+    if (project.caption.length > maxCaptionLength) {
+      throw const CreationPublishException('Caption is too long.');
+    }
 
     if (project.mediaAssets.length != 1 || project.mediaAssets.first.type != 'video') {
       throw const CreationPublishException(
-        'This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready until an existing post schema is verified.',
+        'This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready until the existing post schema is extended.',
       );
     }
 
-    final source = File(project.mediaAssets.first.localUri);
+    final asset = project.mediaAssets.first;
     final postRef = _firestore.collection('reels').doc(project.projectId);
     final publishState = project.publishState;
-    final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
-    final recommendRequested = publishState['recommend'] is bool ? publishState['recommend'] as bool : true;
+    final publishRequestId = publishState['publishRequestId'] as String? ??
+        'creation:${project.projectId}';
+    final allowComments = publishState['allowComments'] is bool
+        ? publishState['allowComments'] as bool
+        : true;
+    final recommendRequested = publishState['recommend'] is bool
+        ? publishState['recommend'] as bool
+        : true;
     final isPublic = project.privacy.toLowerCase() == 'public';
     final recommendationEligible = isPublic && recommendRequested;
 
     final existing = await postRef.get();
     if (existing.exists) {
       final existingUrl = existing.data()?['videoUrl'] as String? ?? '';
-      return CreationPublishResult(
-        postId: postRef.id,
-        mediaUrl: existingUrl,
+      if (existingUrl.isNotEmpty) {
+        await _saveState(
+          project.projectId,
+          CreationPublishStage.published,
+          requestId: publishRequestId,
+        );
+        return CreationPublishResult(
+          postId: postRef.id,
+          mediaUrl: existingUrl,
+        );
+      }
+    }
+
+    await _saveState(
+      project.projectId,
+      CreationPublishStage.validating,
+      requestId: publishRequestId,
+    );
+
+    String downloadUrl;
+    String? storagePath;
+
+    await _saveState(
+      project.projectId,
+      CreationPublishStage.preparing,
+      requestId: publishRequestId,
+    );
+
+    if (_azureMedia.isConfigured) {
+      await _saveState(
+        project.projectId,
+        CreationPublishStage.uploading,
+        requestId: publishRequestId,
+        totalBytes: asset.sizeBytes,
+      );
+
+      final azureResult = await _azureMedia.uploadVideo(
+        projectId: project.projectId,
+        assetId: asset.assetId,
+        localPath: asset.localUri,
+        contentType: asset.mimeType == 'video/*' ? 'video/mp4' : asset.mimeType,
+        onProgress: (uploaded, total) {
+          _saveState(
+            project.projectId,
+            CreationPublishStage.uploading,
+            requestId: publishRequestId,
+            bytesUploaded: uploaded,
+            totalBytes: total,
+          );
+        },
+      );
+
+      if (azureResult == null) {
+        throw const CreationPublishException('Azure media service returned no upload result.');
+      }
+      downloadUrl = azureResult.mediaUrl;
+      storagePath = azureResult.storagePath;
+    } else {
+      final source = File(asset.localUri);
+      final storageReference = _storage
+          .ref()
+          .child('reels')
+          .child(user.uid)
+          .child('${project.projectId}.mp4');
+      await _saveState(
+        project.projectId,
+        CreationPublishStage.uploading,
+        requestId: publishRequestId,
+        totalBytes: asset.sizeBytes,
+      );
+      final uploadTask = await storageReference.putFile(
+        source,
+        SettableMetadata(contentType: 'video/mp4'),
+      );
+      downloadUrl = await uploadTask.ref.getDownloadURL();
+      storagePath = storageReference.fullPath;
+      await _saveState(
+        project.projectId,
+        CreationPublishStage.uploading,
+        requestId: publishRequestId,
+        bytesUploaded: asset.sizeBytes,
+        totalBytes: asset.sizeBytes,
       );
     }
 
-    final storageReference = _storage
-        .ref()
-        .child('reels')
-        .child(user.uid)
-        .child('${project.projectId}.mp4');
-
-    final uploadTask = await storageReference.putFile(
-      source,
-      SettableMetadata(contentType: 'video/mp4'),
+    await _saveState(
+      project.projectId,
+      CreationPublishStage.processing,
+      requestId: publishRequestId,
+      bytesUploaded: asset.sizeBytes,
+      totalBytes: asset.sizeBytes,
     );
-    final downloadUrl = await uploadTask.ref.getDownloadURL();
 
-    final publishRequestId = const Uuid().v4();
+    final mediaHash = await _computeLocalFileHash(asset.localUri);
+
+    await _saveState(
+      project.projectId,
+      CreationPublishStage.publishing,
+      requestId: publishRequestId,
+    );
+
     await postRef.set(<String, dynamic>{
       'creatorId': user.uid,
       'projectId': project.projectId,
@@ -91,6 +188,11 @@ class CreationPublishService {
       'visibility': project.privacy.toLowerCase(),
       'recommendationEligible': recommendationEligible,
       'allowComments': allowComments,
+      'mediaStoragePath': storagePath,
+      'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
+      'mediaProcessingVersion': 1,
+      'aiGeneratedDisclosure': publishState['aiGeneratedDisclosure'] == true,
+      'copyrightConfirmed': publishState['copyrightConfirmed'] == true,
       'createdAt': FieldValue.serverTimestamp(),
       'likesCount': 0,
       'commentsCount': 0,
@@ -105,27 +207,81 @@ class CreationPublishService {
       'shopItemIds': const <String>[],
       'algorithmScore': 0.0,
       'audioTrackId': '',
-      'mediaHash': '',
-    });
+      'mediaHash': mediaHash,
+    }, SetOptions(merge: true));
 
     final published = project.copyWith(
-      status: CreationProjectStatus.published,
+      status: _azureMedia.isConfigured
+          ? CreationProjectStatus.processing
+          : CreationProjectStatus.published,
       publishState: <String, dynamic>{
         ...publishState,
         'postId': postRef.id,
         'mediaUrl': downloadUrl,
+        'mediaStoragePath': storagePath,
         'publishedAt': DateTime.now().toIso8601String(),
         'publishRequestId': publishRequestId,
         'allowComments': allowComments,
         'recommend': recommendationEligible,
+        'processingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
+        'mediaHash': mediaHash,
       },
     );
     await CreationProjectStore.instance.save(published);
+
+    await _saveState(
+      project.projectId,
+      _azureMedia.isConfigured
+          ? CreationPublishStage.processing
+          : CreationPublishStage.published,
+      requestId: publishRequestId,
+      bytesUploaded: asset.sizeBytes,
+      totalBytes: asset.sizeBytes,
+    );
 
     return CreationPublishResult(
       postId: postRef.id,
       mediaUrl: downloadUrl,
     );
+  }
+
+  Future<void> _saveState(
+    String projectId,
+    CreationPublishStage stage, {
+    String? requestId,
+    int bytesUploaded = 0,
+    int totalBytes = 0,
+  }) async {
+    try {
+      await CreationPublishStateStore.instance.save(
+        CreationPublishState(
+          projectId: projectId,
+          stage: stage,
+          requestId: requestId,
+          bytesUploaded: bytesUploaded,
+          totalBytes: totalBytes,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    } catch (_) {
+      // Publish progress persistence must never make publishing crash.
+    }
+  }
+
+  Future<String> _computeLocalFileHash(String path) async {
+    try {
+      final bytes = await File(path).readAsBytes();
+      // A deterministic local fingerprint is sufficient here; the server remains
+      // authoritative for media identity and validation.
+      var hash = 0x811C9DC5;
+      for (final byte in bytes.take(1024 * 1024)) {
+        hash ^= byte;
+        hash = (hash * 0x01000193) & 0xFFFFFFFF;
+      }
+      return hash.toRadixString(16).padLeft(8, '0');
+    } catch (_) {
+      return '';
+    }
   }
 }
 
