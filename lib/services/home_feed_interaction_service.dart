@@ -89,8 +89,6 @@ class HomeFeedInteractionService {
         .doc(uid)
         .collection('feedProfile')
         .doc('interest');
-    final snapshot = await interestRef.get();
-    if (!snapshot.exists) return;
     await interestRef.set(<String, dynamic>{
       'creatorAffinity': <String, double>{},
       'topicAffinity': <String, double>{},
@@ -100,6 +98,29 @@ class HomeFeedInteractionService {
       'negativeAffinity': <String, double>{},
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    final feedbackSnapshot = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('feedFeedback')
+        .limit(100)
+        .get();
+    final resettableTypes = <String>{
+      'not_interested',
+      'hide',
+      'mute_creator',
+    };
+    final resettableDocs = feedbackSnapshot.docs.where(
+      (doc) => resettableTypes.contains(doc.data()['type']),
+    );
+    final batch = _firestore.batch();
+    var count = 0;
+    for (final doc in resettableDocs) {
+      batch.delete(doc.reference);
+      count++;
+      if (count >= 100) break;
+    }
+    if (count > 0) await batch.commit();
   }
 
   Future<void> removeNegativeFeedbackForCreator({
@@ -113,14 +134,18 @@ class HomeFeedInteractionService {
         .doc(uid)
         .collection('feedFeedback')
         .where('creatorId', isEqualTo: creatorId)
-        .where('type', isEqualTo: type)
-        .limit(50)
+        .limit(100)
         .get();
-    if (snapshot.docs.isEmpty) return;
+    final matchingDocs = snapshot.docs.where(
+      (doc) => doc.data()['type'] == type,
+    );
     final batch = _firestore.batch();
-    for (final doc in snapshot.docs) {
+    var count = 0;
+    for (final doc in matchingDocs) {
       batch.delete(doc.reference);
+      count++;
+      if (count >= 100) break;
     }
-    await batch.commit();
+    if (count > 0) await batch.commit();
   }
 }
