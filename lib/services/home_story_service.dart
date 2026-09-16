@@ -34,24 +34,33 @@ class HomeStoryService {
       }
       if (byCreator.isEmpty) return const <HomeStoryUser>[];
 
+      final viewedSnapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('storyViews')
+          .limit(500)
+          .get();
+      final viewedStoryIds = viewedSnapshot.docs.map((doc) => doc.id).toSet();
+
       final users = <HomeStoryUser>[];
       for (final entry in byCreator.entries) {
         final profile = await _firestore.collection('publicProfiles').doc(entry.key).get();
         final data = profile.data() ?? const <String, dynamic>{};
         final name = (data['displayName'] as String?)?.trim();
         final avatar = data['avatarUrl'] as String?;
+        final stories = entry.value
+            .map((story) => story.copyWith(viewed: viewedStoryIds.contains(story.id)))
+            .toList(growable: false);
         users.add(HomeStoryUser(
           creatorId: entry.key,
           displayName: name == null || name.isEmpty ? entry.key : name,
           avatarUrl: avatar,
-          stories: entry.value,
-          hasUnread: entry.value.any((story) => !story.viewed),
+          stories: stories,
+          hasUnread: stories.any((story) => !story.viewed),
         ));
       }
       return users;
     } catch (_) {
-      // Story backend may not be enabled on an existing deployment yet.
-      // Returning an empty list keeps Home functional without fake stories.
       return const <HomeStoryUser>[];
     }
   }
@@ -69,8 +78,6 @@ class HomeStoryService {
         'storyId': storyId,
         'viewedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-    } catch (_) {
-      // Viewing a story must not interrupt the story viewer.
-    }
+    } catch (_) {}
   }
 }
