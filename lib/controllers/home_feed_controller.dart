@@ -89,6 +89,9 @@ class HomeFeedController extends ChangeNotifier {
         : restoredMode;
     _startSession(uid, _mode, sessionId: restored?.sessionId);
     _seen.addAll(restored?.seenItemIds ?? const <String>[]);
+    try {
+      _mutedCreators.addAll(await _interactions.loadMutedCreatorIds());
+    } catch (_) {}
     await _loadCache();
     await refresh();
   }
@@ -130,7 +133,10 @@ class HomeFeedController extends ChangeNotifier {
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
       );
-      final page = await _service.fetchPage(context: context);
+      final page = await _service.fetchPage(
+        context: context,
+        interest: _runtime.interest,
+      );
       _items
         ..clear()
         ..addAll(page.items);
@@ -169,7 +175,11 @@ class HomeFeedController extends ChangeNotifier {
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
       );
-      final page = await _service.fetchPage(context: context, cursor: _cursor);
+      final page = await _service.fetchPage(
+        context: context,
+        interest: _runtime.interest,
+        cursor: _cursor,
+      );
       _appendPage(page);
       await _cache.save(_items);
     } catch (error) {
@@ -375,6 +385,7 @@ class HomeFeedController extends ChangeNotifier {
 
   Future<void> setManagedTopics(List<String> topics) async {
     await _runtime.setManagedTopics(topics);
+    await refresh();
     notifyListeners();
   }
 
