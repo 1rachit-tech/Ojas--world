@@ -19,13 +19,14 @@ class HomeFeedInteractionService {
   Future<void> setLike({
     required String contentId,
     required bool liked,
+    required bool saved,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty || contentId.isEmpty) return;
     await _engagement.syncInteraction(
       reelId: contentId,
       liked: liked,
-      saved: false,
+      saved: saved,
       likeDelta: liked ? 1 : -1,
     );
   }
