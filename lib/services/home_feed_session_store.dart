@@ -50,23 +50,27 @@ class HomeFeedSessionSnapshot {
 }
 
 class HomeFeedSessionStore {
-  static const String _key = 'ojas_home_session_v1';
+  static const String _keyPrefix = 'ojas_home_session_v1_';
+
+  String _keyFor(String userId) => '$_keyPrefix$userId';
 
   Future<void> save(HomeSessionState session, double scrollOffset) async {
+    if (session.userId.isEmpty) return;
     final preferences = await SharedPreferences.getInstance();
     final snapshot = HomeFeedSessionSnapshot(
       sessionId: session.sessionId,
       mode: session.mode,
-      scrollOffset: scrollOffset,
+      scrollOffset: scrollOffset.clamp(0, double.infinity),
       servedItemIds: session.servedItems.toList(growable: false),
       seenItemIds: session.seenItems.toList(growable: false),
     );
-    await preferences.setString(_key, jsonEncode(snapshot.toMap()));
+    await preferences.setString(_keyFor(session.userId), jsonEncode(snapshot.toMap()));
   }
 
-  Future<HomeFeedSessionSnapshot?> read() async {
+  Future<HomeFeedSessionSnapshot?> read(String userId) async {
+    if (userId.isEmpty) return null;
     final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString(_key);
+    final raw = preferences.getString(_keyFor(userId));
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -77,8 +81,9 @@ class HomeFeedSessionStore {
     }
   }
 
-  Future<void> clear() async {
+  Future<void> clear(String userId) async {
+    if (userId.isEmpty) return;
     final preferences = await SharedPreferences.getInstance();
-    await preferences.remove(_key);
+    await preferences.remove(_keyFor(userId));
   }
 }
