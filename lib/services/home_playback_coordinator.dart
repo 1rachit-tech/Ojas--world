@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
 import '../models/home_feed_models.dart';
 
 abstract interface class HomePlaybackHandle {
@@ -10,23 +12,26 @@ abstract interface class HomePlaybackHandle {
 
 typedef HomeVisibilityProbe = double Function();
 
-class HomePlaybackCoordinator {
-  HomePlaybackCoordinator({this.maxActiveControllers = 1});
+class HomePlaybackCoordinator with WidgetsBindingObserver {
+  HomePlaybackCoordinator({this.maxActiveControllers = 1}) {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   final int maxActiveControllers;
   final Map<String, HomePlaybackHandle> _handles = <String, HomePlaybackHandle>{};
   final Map<String, HomeVisibilityProbe> _visibilityProbes = <String, HomeVisibilityProbe>{};
   final Set<String> _activeIds = <String>{};
+  bool _disposed = false;
 
   String? get activeContentId => _activeIds.isEmpty ? null : _activeIds.first;
 
   void register(String contentId, HomePlaybackHandle handle) {
-    if (contentId.isEmpty) return;
+    if (_disposed || contentId.isEmpty) return;
     _handles[contentId] = handle;
   }
 
   void registerVisibilityProbe(String contentId, HomeVisibilityProbe probe) {
-    if (contentId.isEmpty) return;
+    if (_disposed || contentId.isEmpty) return;
     _visibilityProbes[contentId] = probe;
   }
 
@@ -37,7 +42,7 @@ class HomePlaybackCoordinator {
   }
 
   Future<void> activate(String contentId) async {
-    if (!_handles.containsKey(contentId)) return;
+    if (_disposed || !_handles.containsKey(contentId)) return;
 
     for (final id in _activeIds.toList()) {
       if (id == contentId) continue;
@@ -56,11 +61,13 @@ class HomePlaybackCoordinator {
   }
 
   Future<void> pause(String contentId) async {
+    if (_disposed) return;
     await _handles[contentId]?.pause();
     _activeIds.remove(contentId);
   }
 
   Future<void> pauseAll() async {
+    if (_disposed) return;
     for (final id in _activeIds.toList()) {
       await _handles[id]?.pause();
     }
@@ -68,7 +75,7 @@ class HomePlaybackCoordinator {
   }
 
   Future<void> evaluateDominantVisibility({double activationThreshold = 0.60}) async {
-    if (_visibilityProbes.isEmpty) return;
+    if (_disposed || _visibilityProbes.isEmpty) return;
 
     String? dominantId;
     var dominantFraction = 0.0;
@@ -94,6 +101,7 @@ class HomePlaybackCoordinator {
   }
 
   Future<void> disposeDistant(Iterable<String> retainedIds) async {
+    if (_disposed) return;
     final retained = retainedIds.toSet();
     final disposable = _handles.keys.where((id) => !retained.contains(id)).toList(growable: false);
     for (final id in disposable) {
@@ -105,12 +113,25 @@ class HomePlaybackCoordinator {
   }
 
   Future<void> disposeAll() async {
+    if (_disposed) return;
+    _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     for (final handle in _handles.values) {
       await handle.release();
     }
     _handles.clear();
     _visibilityProbes.clear();
     _activeIds.clear();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_disposed) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(pauseAll());
+    }
   }
 
   HomePlaybackState stateFor(String contentId, HomePlaybackState fallback) {
