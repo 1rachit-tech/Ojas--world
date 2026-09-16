@@ -6,7 +6,7 @@ import 'package:flutter/material.dart' hide debugPrint;
 import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
-import 'screens/create_screen.dart';
+import 'creation/screens/creation_hub_screen.dart';
 import 'screens/ojs_feed_screen.dart';
 import 'screens/ojas_shop_screen.dart';
 import 'screens/you_hub_screen.dart';
@@ -319,7 +319,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
                       children: [
                         _buildFeed(context, isDesktop),
                         _buildOjsTab(),
-                        const CreateScreen(),
+                        const CreationHubScreen(),
                         const OjasShopScreen(),
                         const YouHubScreen(),
                       ],
