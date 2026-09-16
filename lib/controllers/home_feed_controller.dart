@@ -63,6 +63,11 @@ class HomeFeedController extends ChangeNotifier {
   HomeFeedExperimentVariant get experimentVariant => _runtime.assignExperiment();
   double get restoredScrollOffset => _restoredScrollOffset;
   List<String> get mutedCreatorIds => List.unmodifiable(_mutedCreators);
+  List<String> get managedTopics => List.unmodifiable(
+        _runtime.interest.topicAffinity.entries
+            .where((entry) => entry.value > 0)
+            .map((entry) => entry.key),
+      );
   bool isLiked(String id) => _liked.contains(id);
   bool isSaved(String id) => _saved.contains(id);
 
@@ -315,6 +320,16 @@ class HomeFeedController extends ChangeNotifier {
     ));
   }
 
+  Future<void> unmuteCreator(String creatorId) async {
+    if (creatorId.isEmpty) return;
+    _mutedCreators.remove(creatorId);
+    await _interactions.removeNegativeFeedbackForCreator(
+      creatorId: creatorId,
+      type: 'mute_creator',
+    );
+    notifyListeners();
+  }
+
   void blockCreator(HomeFeedItem item) {
     _blockedCreators.add(item.creatorId);
     _items.removeWhere((candidate) => candidate.creatorId == item.creatorId);
@@ -358,6 +373,11 @@ class HomeFeedController extends ChangeNotifier {
     }
   }
 
+  Future<void> setManagedTopics(List<String> topics) async {
+    await _runtime.setManagedTopics(topics);
+    notifyListeners();
+  }
+
   Future<void> resetRecommendations() async {
     _negativeContent.clear();
     _mutedCreators.clear();
@@ -376,12 +396,7 @@ class HomeFeedController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> clearMutedCreator(String creatorId) async {
-    if (creatorId.isEmpty) return;
-    _mutedCreators.remove(creatorId);
-    await _interactions.removeNegativeFeedbackForCreator(creatorId: creatorId, type: 'mute_creator');
-    notifyListeners();
-  }
+  Future<void> clearMutedCreator(String creatorId) => unmuteCreator(creatorId);
 
   Future<void> saveSession(double scrollOffset) async {
     final session = _session;
