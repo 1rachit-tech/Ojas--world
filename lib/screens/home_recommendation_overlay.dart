@@ -17,6 +17,7 @@ class HomeRecommendationOverlay extends StatefulWidget {
 class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
   late final HomeFeedController _controller;
   late final HomeFeedInteractionService _interactions;
+  Key _homeKey = UniqueKey();
 
   @override
   void initState() {
@@ -28,6 +29,11 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
 
   void _refresh() {
     if (mounted) setState(() {});
+  }
+
+  void _reloadVisibleHome() {
+    if (!mounted) return;
+    setState(() => _homeKey = UniqueKey());
   }
 
   Future<void> _showControls() async {
@@ -49,7 +55,10 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
         ),
       ),
     );
-    if (selected != null) await _controller.setManagedTopics(selected);
+    if (selected != null) {
+      await _controller.setManagedTopics(selected);
+      _reloadVisibleHome();
+    }
   }
 
   Future<void> _openMuted() async {
@@ -69,6 +78,7 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
         ),
       ),
     );
+    _reloadVisibleHome();
   }
 
   Future<void> _resetRecommendations() async {
@@ -94,6 +104,7 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
     );
     if (confirmed == true) {
       await _controller.resetRecommendations();
+      _reloadVisibleHome();
     }
   }
 
@@ -108,7 +119,7 @@ class _HomeRecommendationOverlayState extends State<HomeRecommendationOverlay> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        const DynamicHomeScreen(),
+        DynamicHomeScreen(key: _homeKey),
         SafeArea(
           child: Align(
             alignment: Alignment.topRight,
