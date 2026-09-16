@@ -2,9 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../controllers/home_feed_controller.dart';
 import '../models/home_feed_models.dart';
 import '../models/home_story_models.dart';
-import '../controllers/home_feed_controller.dart';
 import '../services/home_feed_event_queue.dart';
 import '../services/home_playback_coordinator.dart';
 import '../services/home_story_service.dart';
@@ -45,18 +45,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _controller.initialize(),
       _loadStories(),
     ]);
-    if (mounted) setState(() {});
   }
 
   Future<void> _loadStories() async {
     try {
       final stories = await _storyService.fetchActiveStories();
-      if (mounted) {
-        setState(() {
-          _stories = stories;
-          _storiesLoading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _stories = stories;
+        _storiesLoading = false;
+      });
     } catch (_) {
       if (mounted) setState(() => _storiesLoading = false);
     }
@@ -67,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onScroll() {
+    if (!_scrollController.hasClients) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 800) {
       _controller.loadMore();
@@ -76,8 +75,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _controller.dispose();
     _playback.disposeAll();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -138,10 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Divider(color: Color(0xFFE5E7EB), height: 18, thickness: 1),
             ),
             if (_controller.error != null && items.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildErrorState(),
-              )
+              SliverFillRemaining(hasScrollBody: false, child: _buildErrorState())
             else if (items.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -151,7 +147,6 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
-                    if (index >= items.length) return null;
                     final item = items[index];
                     return _HomeFeedCard(
                       key: ValueKey(item.contentId),
@@ -240,8 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           if (index == 0) return _buildOwnStoryButton();
-          final storyUser = _stories[index - 1];
-          return _buildStoryUser(storyUser);
+          return _buildStoryUser(_stories[index - 1]);
         },
       ),
     );
@@ -280,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildStoryUser(HomeStoryUser user) {
     final firstStory = user.stories.first;
     final color = _colorFor(user.creatorId);
+    final initial = user.displayName.isEmpty ? '?' : user.displayName.substring(0, 1);
     return GestureDetector(
       onTap: () async {
         await _storyService.markViewed(firstStory.id);
@@ -309,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundImage: user.avatarUrl == null ? null : NetworkImage(user.avatarUrl!),
               child: user.avatarUrl == null
                   ? Text(
-                      user.displayName.characters.first,
+                      initial,
                       style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.black87),
                     )
                   : null,
@@ -338,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Wrap(
           children: [
             const ListTile(
@@ -348,8 +343,8 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.camera_alt_rounded),
               title: const Text('Open Camera'),
               onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Opening Story Camera...')),
                 );
               },
@@ -358,8 +353,8 @@ class _HomeScreenState extends State<HomeScreen> {
               leading: const Icon(Icons.photo_library_rounded),
               title: const Text('Choose from Gallery'),
               onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(this.context).showSnackBar(
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Opening Gallery...')),
                 );
               },
@@ -392,12 +387,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Color _colorFor(String value) {
-    final palette = <Color>[
-      const Color(0xFFE5A87B),
-      const Color(0xFF93C5FD),
-      const Color(0xFFC5C6E9),
-      const Color(0xFFFFD36B),
-      const Color(0xFF86EFAC),
+    const palette = <Color>[
+      Color(0xFFE5A87B),
+      Color(0xFF93C5FD),
+      Color(0xFFC5C6E9),
+      Color(0xFFFFD36B),
+      Color(0xFF86EFAC),
     ];
     return palette[value.hashCode.abs() % palette.length];
   }
@@ -426,7 +421,6 @@ class _HomeFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    controller.markImpression(item, position);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       elevation: 0,
@@ -440,6 +434,7 @@ class _HomeFeedCard extends StatelessWidget {
         children: [
           ListTile(
             onTap: () {
+              controller.markInteraction(item, HomeFeedEventType.profileVisit);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -449,7 +444,6 @@ class _HomeFeedCard extends StatelessWidget {
                   ),
                 ),
               );
-              controller.markInteraction(item, HomeFeedEventType.profileVisit);
             },
             leading: CircleAvatar(
               backgroundColor: const Color(0xFFE5A87B),
@@ -556,10 +550,7 @@ class _HomeFeedCard extends StatelessWidget {
                   IconButton(
                     tooltip: 'Support Creator',
                     icon: const Icon(Icons.stars_rounded, color: Color(0xFFF59E0B)),
-                    onPressed: () => SuperThanksModal.show(
-                      context,
-                      creatorName: item.creatorId,
-                    ),
+                    onPressed: () => SuperThanksModal.show(context, creatorName: item.creatorId),
                   ),
               ],
             ),
@@ -624,8 +615,6 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
   bool _loading = false;
   bool _failed = false;
   DateTime? _startedAt;
-  bool _registered = false;
-
   String? get _videoUrl => widget.item.mediaUrl ??
       (widget.item.mediaSources.isEmpty ? null : widget.item.mediaSources.first);
 
@@ -633,7 +622,6 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
   void initState() {
     super.initState();
     widget.playback.register(widget.item.contentId, this);
-    _registered = true;
     if (widget.autoplay && _videoUrl != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.playback.activate(widget.item.contentId);
@@ -643,7 +631,7 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
 
   @override
   void dispose() {
-    if (_registered) widget.playback.pause(widget.item.contentId);
+    widget.playback.pause(widget.item.contentId);
     _videoController?.dispose();
     super.dispose();
   }
@@ -655,7 +643,7 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
     try {
       final controller = VideoPlayerController.networkUrl(Uri.parse(_videoUrl!));
       await controller.initialize();
-      controller.setLooping(true);
+      await controller.setLooping(true);
       controller.addListener(_onVideoChanged);
       _videoController = controller;
       _failed = false;
@@ -670,10 +658,7 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
   void _onVideoChanged() {
     final controller = _videoController;
     if (controller == null || !controller.value.isInitialized || !controller.value.isPlaying) return;
-    if (_startedAt == null) {
-      _startedAt = DateTime.now();
-      widget.onWatchEvent(HomeFeedEventType.playStart, 0);
-    }
+    _startedAt ??= DateTime.now();
   }
 
   @override
@@ -682,6 +667,7 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
     if (_videoController == null) return;
     await _videoController!.play();
     _startedAt ??= DateTime.now();
+    widget.onWatchEvent(HomeFeedEventType.playStart, 0);
     if (mounted) setState(() {});
   }
 
@@ -699,11 +685,11 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
   }
 
   @override
-  Future<void> dispose() async {
+  Future<void> release() async {
     final controller = _videoController;
     _videoController = null;
-    await controller?.dispose();
     _startedAt = null;
+    await controller?.dispose();
   }
 
   @override
@@ -747,8 +733,7 @@ class _HomeFeedMediaState extends State<_HomeFeedMedia> implements HomePlaybackH
                       child: VideoPlayer(_videoController!),
                     ),
                   ),
-                if (_loading)
-                  const Center(child: CircularProgressIndicator()),
+                if (_loading) const Center(child: CircularProgressIndicator()),
                 if (_failed)
                   const Center(
                     child: Icon(Icons.broken_image_outlined, size: 42, color: Colors.white),
