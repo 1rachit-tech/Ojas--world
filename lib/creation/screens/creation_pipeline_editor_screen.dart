@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/creation_project.dart';
+import '../services/creation_checkpoint_store.dart';
+import '../services/creation_pipeline_service.dart';
 import '../services/creation_project_store.dart';
 import 'creation_post_composer_screen.dart';
 
@@ -28,6 +30,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   late final TextEditingController _captionController;
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
+  double _lastSavedTrimStart = 0.0;
+  double _lastSavedTrimEnd = 1.0;
 
   @override
   void initState() {
@@ -44,7 +48,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       return;
     }
     try {
-      final controller = VideoPlayerController.file(File(_project.mediaAssets.first.localUri));
+      final source = _project.mediaAssets.first.localUri;
+      final controller = VideoPlayerController.file(File(source));
       _videoController = controller;
       await controller.initialize();
       await controller.setLooping(false);
@@ -68,8 +73,11 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _videoController;
     if (controller == null) return;
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       controller.pause();
+      _scheduleAutosave();
     }
   }
 
@@ -91,25 +99,47 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
   Future<void> _saveProject({required bool showFeedback}) async {
     if (_saving) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
-      _project = _project.copyWith(
+      final operations = <Map<String, dynamic>>[..._project.operations];
+      if (_trimStart != _lastSavedTrimStart || _trimEnd != _lastSavedTrimEnd) {
+        operations.add(<String, dynamic>{
+          'type': 'trim',
+          'start': _trimStart,
+          'end': _trimEnd,
+          'at': DateTime.now().toIso8601String(),
+        });
+      }
+
+      var next = _project.copyWith(
         status: CreationProjectStatus.autosaved,
         caption: _captionController.text,
         updatedAt: DateTime.now(),
-        operations: <Map<String, dynamic>>[
-          ..._project.operations,
-          <String, dynamic>{
-            'type': 'trim',
-            'start': _trimStart,
-            'end': _trimEnd,
-            'at': DateTime.now().toIso8601String(),
-          },
-        ],
+        operations: operations,
       );
-      await CreationProjectStore.instance.save(_project);
+      next = CreationPipelineService.markStage(
+        next,
+        CreationProjectStatus.autosaved,
+        stageName: 'draft_checkpoint',
+      );
+      await CreationProjectStore.instance.save(next);
+      await CreationCheckpointStore.instance.save(next);
+      _project = next;
+      _lastSavedTrimStart = _trimStart;
+      _lastSavedTrimEnd = _trimEnd;
+
       if (showFeedback && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Draft checkpoint saved locally.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Draft checkpoint saved locally.')),
+        );
+      }
+    } catch (error) {
+      debugPrint('Creation draft checkpoint failed: $error');
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save this checkpoint. Your current editor state is still open.')),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -124,7 +154,12 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       builder: (sheetContext) {
         final controller = TextEditingController(text: _captionController.text);
         return Padding(
-          padding: EdgeInsets.only(left: 20, right: 20, top: 18, bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 22),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 18,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 22,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -140,7 +175,10 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                   hintText: 'Tell people about this post…',
                   filled: true,
                   fillColor: const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -159,8 +197,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     );
     if (result == null || !mounted) return;
     _captionController.text = result;
-    _scheduleAutosave();
     setState(() {});
+    _scheduleAutosave();
   }
 
   Future<void> _openPrivacy() async {
@@ -175,11 +213,20 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Align(alignment: Alignment.centerLeft, child: Text('Audience', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Audience', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+                ),
                 const SizedBox(height: 12),
                 ...options.map(
                   (option) => ListTile(
-                    leading: Icon(option == 'Public' ? Icons.public : option == 'Followers' ? Icons.group : Icons.lock),
+                    leading: Icon(
+                      option == 'Public'
+                          ? Icons.public
+                          : option == 'Followers'
+                              ? Icons.group
+                              : Icons.lock,
+                    ),
                     title: Text(option),
                     trailing: _project.privacy == option ? const Icon(Icons.check_circle) : null,
                     onTap: () => Navigator.pop(sheetContext, option),
@@ -198,15 +245,24 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
   Future<void> _openPostComposer() async {
     if (_saving || _project.mediaAssets.isEmpty) return;
-    final readyProject = _project.copyWith(
+    var readyProject = _project.copyWith(
       status: CreationProjectStatus.ready,
       caption: _captionController.text.trim(),
       updatedAt: DateTime.now(),
     );
+    readyProject = CreationPipelineService.markStage(
+      readyProject,
+      CreationProjectStatus.ready,
+      stageName: 'post_composition',
+    );
     await CreationProjectStore.instance.save(readyProject);
+    await CreationCheckpointStore.instance.save(readyProject);
+    _project = readyProject;
     if (!mounted) return;
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => CreationPostComposerScreen(project: readyProject)),
+      MaterialPageRoute<void>(
+        builder: (_) => CreationPostComposerScreen(project: readyProject),
+      ),
     );
   }
 
@@ -220,20 +276,26 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     final controller = _videoController;
     if (controller != null && controller.value.isInitialized) {
       final duration = controller.value.duration;
-      await controller.seekTo(Duration(milliseconds: (duration.inMilliseconds * safeStart).round()));
+      await controller.seekTo(
+        Duration(milliseconds: (duration.inMilliseconds * safeStart).round()),
+      );
       await controller.pause();
     }
     _scheduleAutosave();
   }
 
   Widget _buildPreview() {
-    if (_project.mediaAssets.isEmpty) return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
+    if (_project.mediaAssets.isEmpty) {
+      return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
+    }
     final asset = _project.mediaAssets.first;
     if (asset.type != 'video') {
       return Image.file(
         File(asset.localUri),
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const Center(child: Text('Unable to load image', style: TextStyle(color: Colors.white))),
+        errorBuilder: (_, __, ___) => const Center(
+          child: Text('Unable to load image', style: TextStyle(color: Colors.white)),
+        ),
       );
     }
     if (_videoInitializing) return const Center(child: CircularProgressIndicator());
@@ -314,13 +376,28 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                       Text('${(_trimStart * 100).round()}% — ${(_trimEnd * 100).round()}%'),
                     ],
                   ),
-                  RangeSlider(values: RangeValues(_trimStart, _trimEnd), onChanged: (value) => _setTrim(value.start, value.end)),
+                  RangeSlider(
+                    values: RangeValues(_trimStart, _trimEnd),
+                    onChanged: (value) => _setTrim(value.start, value.end),
+                  ),
                 ],
                 Row(
                   children: [
-                    Expanded(child: _ComposerTile(icon: Icons.subtitles_rounded, title: _captionController.text.isEmpty ? 'Caption' : 'Caption added', onTap: _openCaption)),
+                    Expanded(
+                      child: _ComposerTile(
+                        icon: Icons.subtitles_rounded,
+                        title: _captionController.text.isEmpty ? 'Caption' : 'Caption added',
+                        onTap: _openCaption,
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Expanded(child: _ComposerTile(icon: Icons.visibility_outlined, title: _project.privacy, onTap: _openPrivacy)),
+                    Expanded(
+                      child: _ComposerTile(
+                        icon: Icons.visibility_outlined,
+                        title: _project.privacy,
+                        onTap: _openPrivacy,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -359,7 +436,13 @@ class _ToolButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Column(children: [Icon(icon, color: Colors.white, size: 19), const SizedBox(height: 3), Text(label, style: const TextStyle(color: Colors.white, fontSize: 10))]),
+            child: Column(
+              children: [
+                Icon(icon, color: Colors.white, size: 19),
+                const SizedBox(height: 3),
+                Text(label, style: const TextStyle(color: Colors.white, fontSize: 10)),
+              ],
+            ),
           ),
         ),
       ),
@@ -379,7 +462,10 @@ class _ComposerTile extends StatelessWidget {
       onPressed: onTap,
       icon: Icon(icon, size: 18),
       label: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 46),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
     );
   }
 }
