@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ojas/creation/models/creation_publish_state.dart';
-import 'package:ojas/creation/models/creation_post_composer.dart';
+import 'package:ojas_app/creation/models/creation_publish_state.dart';
+import 'package:ojas_app/creation/models/creation_post_composer.dart';
 
 void main() {
   test('publish state clamps upload progress and round-trips', () {
