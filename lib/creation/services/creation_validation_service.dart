@@ -17,6 +17,24 @@ class CreationValidationResult {
 class CreationValidationService {
   const CreationValidationService._();
 
+  static const int maxVideoBytes = 512 * 1024 * 1024;
+  static const int maxImageBytes = 10 * 1024 * 1024;
+
+  static const Set<String> supportedVideoMimeTypes = <String>{
+    'video/mp4',
+    'video/quicktime',
+    'video/webm',
+    'video/x-m4v',
+    'video/*',
+  };
+
+  static const Set<String> supportedImageMimeTypes = <String>{
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/*',
+  };
+
   static Future<CreationValidationResult> validateProject(
     CreationProject project,
   ) async {
@@ -33,6 +51,9 @@ class CreationValidationService {
     }
 
     for (final asset in project.mediaAssets) {
+      if (asset.assetId.isEmpty) {
+        errors.add('A media asset is missing its ID.');
+      }
       if (asset.localUri.isEmpty) {
         errors.add('A media asset has no source file.');
         continue;
@@ -49,11 +70,28 @@ class CreationValidationService {
         errors.add('A selected media file is empty or corrupt.');
       }
 
-      if (asset.type == 'video' && size > 50 * 1024 * 1024) {
-        errors.add('A video is larger than the current 50 MB upload limit.');
-      }
-      if (asset.type == 'image' && size > 10 * 1024 * 1024) {
-        errors.add('An image is larger than the current 10 MB upload limit.');
+      if (asset.type == 'video') {
+        if (size > maxVideoBytes) {
+          errors.add('A video is larger than the current 512 MB creation limit.');
+        }
+        if (!supportedVideoMimeTypes.contains(asset.mimeType)) {
+          errors.add('This video format is not supported for creation uploads.');
+        }
+        if (asset.width != null && asset.width! <= 0 || asset.height != null && asset.height! <= 0) {
+          errors.add('Video dimensions are invalid.');
+        }
+        if (asset.durationMs != null && asset.durationMs! <= 0) {
+          errors.add('Video duration is invalid.');
+        }
+      } else if (asset.type == 'image') {
+        if (size > maxImageBytes) {
+          errors.add('An image is larger than the current 10 MB creation limit.');
+        }
+        if (!supportedImageMimeTypes.contains(asset.mimeType)) {
+          errors.add('This image format is not supported for creation uploads.');
+        }
+      } else {
+        errors.add('Unsupported creation media type: ${asset.type}.');
       }
     }
 
@@ -63,6 +101,10 @@ class CreationValidationService {
 
     if (project.timeline.any((clip) => clip.endMs < clip.startMs)) {
       errors.add('Timeline contains an invalid clip range.');
+    }
+
+    if (project.timeline.any((clip) => clip.sourceId.isEmpty)) {
+      errors.add('Timeline contains a clip without a source asset.');
     }
 
     return CreationValidationResult(
