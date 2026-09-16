@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import '../controllers/home_feed_controller.dart';
 import '../models/home_feed_models.dart';
 import '../models/home_story_models.dart';
+import '../services/engagement_service.dart';
 import '../services/home_feed_event_queue.dart';
 import '../services/home_playback_coordinator.dart';
 import '../services/home_story_service.dart';
@@ -46,7 +47,17 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> with WidgetsBindi
 
   Future<void> _bootstrap() async {
     await Future.wait<void>([_controller.initialize(), _loadStories()]);
-    _schedulePlaybackEvaluation();
+    final offset = _controller.restoredScrollOffset;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scrollController.hasClients && offset > 0) {
+        final safeOffset = offset
+            .clamp(0.0, _scrollController.position.maxScrollExtent)
+            .toDouble();
+        _scrollController.jumpTo(safeOffset);
+      }
+      unawaited(_playback.evaluateDominantVisibility());
+    });
   }
 
   Future<void> _loadStories() async {
@@ -451,6 +462,7 @@ class _FeedCard extends StatelessWidget {
               onSelected: (value) => _menu(context, value),
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'why', child: Text('Why am I seeing this?')),
+                PopupMenuItem(value: 'follow', child: Text('Follow creator')),
                 PopupMenuItem(value: 'not_interested', child: Text('Not Interested')),
                 PopupMenuItem(value: 'hide', child: Text('Hide this post')),
                 PopupMenuItem(value: 'mute', child: Text('Mute creator')),
@@ -559,6 +571,13 @@ class _FeedCard extends StatelessWidget {
           onNotInterested: () => controller.notInterested(item),
         );
         break;
+      case 'follow':
+        controller.markInteraction(item, HomeFeedEventType.follow);
+        unawaited(EngagementService().syncFollow(creatorId: item.creatorId, following: true));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Following ${item.creatorId}')),
+        );
+        break;
       case 'not_interested':
         controller.notInterested(item);
         break;
@@ -610,6 +629,8 @@ class _FeedMediaState extends State<_FeedMedia> implements HomePlaybackHandle {
   bool _loading = false;
   bool _failed = false;
   DateTime? _startedAt;
+  int _lastPositionMs = 0;
+  bool _completedCurrentLoop = false;
 
   String? get _url => widget.item.mediaUrl ??
       (widget.item.mediaSources.isEmpty ? null : widget.item.mediaSources.first);
@@ -640,10 +661,31 @@ class _FeedMediaState extends State<_FeedMedia> implements HomePlaybackHandle {
     return visible / renderObject.size.height;
   }
 
+  void _onVideoProgress() {
+    final controller = _controller;
+    if (!mounted || controller == null || !controller.value.isInitialized) return;
+    final durationMs = controller.value.duration.inMilliseconds;
+    final positionMs = controller.value.position.inMilliseconds;
+    if (durationMs <= 0) return;
+
+    if (_lastPositionMs > (durationMs * 0.8).round() && positionMs < 500 && _completedCurrentLoop) {
+      _completedCurrentLoop = false;
+      widget.onWatchEvent(HomeFeedEventType.rewatch, positionMs);
+    }
+
+    if (positionMs >= durationMs - 300 && !_completedCurrentLoop) {
+      _completedCurrentLoop = true;
+      widget.onWatchEvent(HomeFeedEventType.completion, positionMs);
+    }
+
+    _lastPositionMs = positionMs;
+  }
+
   @override
   void dispose() {
     widget.playback.unregister(widget.item.contentId);
     unawaited(widget.playback.pause(widget.item.contentId));
+    _controller?.removeListener(_onVideoProgress);
     _controller?.dispose();
     super.dispose();
   }
@@ -656,6 +698,7 @@ class _FeedMediaState extends State<_FeedMedia> implements HomePlaybackHandle {
       final controller = VideoPlayerController.networkUrl(Uri.parse(_url!));
       await controller.initialize();
       await controller.setLooping(true);
+      controller.addListener(_onVideoProgress);
       _controller = controller;
       _failed = false;
     } catch (_) {
@@ -696,6 +739,7 @@ class _FeedMediaState extends State<_FeedMedia> implements HomePlaybackHandle {
     final controller = _controller;
     _controller = null;
     _startedAt = null;
+    controller?.removeListener(_onVideoProgress);
     await controller?.dispose();
   }
 
