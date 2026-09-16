@@ -5,20 +5,28 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/home_feed_models.dart';
+import '../services/home_feed_cache_service.dart';
 import '../services/home_feed_event_queue.dart';
+import '../services/home_feed_interaction_service.dart';
 import '../services/home_feed_service.dart';
 
 class HomeFeedController extends ChangeNotifier {
   HomeFeedController({
     HomeFeedService? service,
     HomeFeedEventQueue? eventQueue,
+    HomeFeedCacheService? cache,
+    HomeFeedInteractionService? interactions,
     FirebaseAuth? auth,
   })  : _service = service ?? HomeFeedService(),
         _eventQueue = eventQueue ?? HomeFeedEventQueue(),
+        _cache = cache ?? HomeFeedCacheService(),
+        _interactions = interactions ?? HomeFeedInteractionService(),
         _auth = auth ?? FirebaseAuth.instance;
 
   final HomeFeedService _service;
   final HomeFeedEventQueue _eventQueue;
+  final HomeFeedCacheService _cache;
+  final HomeFeedInteractionService _interactions;
   final FirebaseAuth _auth;
 
   final List<HomeFeedItem> _items = <HomeFeedItem>[];
@@ -27,6 +35,8 @@ class HomeFeedController extends ChangeNotifier {
   final Set<String> _negativeContent = <String>{};
   final Set<String> _mutedCreators = <String>{};
   final Set<String> _blockedCreators = <String>{};
+  final Set<String> _liked = <String>{};
+  final Set<String> _saved = <String>{};
 
   HomeSessionState? _session;
   HomeFeedMode _mode = HomeFeedMode.personalized;
@@ -43,6 +53,8 @@ class HomeFeedController extends ChangeNotifier {
   bool get hasMore => _hasMore;
   Object? get error => _error;
   HomeSessionState? get session => _session;
+  bool isLiked(String id) => _liked.contains(id);
+  bool isSaved(String id) => _saved.contains(id);
 
   Future<void> initialize() async {
     if (_session != null) return;
@@ -53,6 +65,7 @@ class HomeFeedController extends ChangeNotifier {
       return;
     }
     _startSession(uid, _mode);
+    await _loadCache();
     await refresh();
   }
 
@@ -62,6 +75,8 @@ class HomeFeedController extends ChangeNotifier {
     final uid = _auth.currentUser?.uid ?? '';
     if (uid.isEmpty) return;
     _startSession(uid, mode);
+    _items.clear();
+    notifyListeners();
     await refresh();
   }
 
@@ -70,9 +85,6 @@ class HomeFeedController extends ChangeNotifier {
     _refreshing = true;
     _loading = true;
     _error = null;
-    _items.clear();
-    _seen.clear();
-    _impressionsSent.clear();
     _hasMore = true;
     _cursor = null;
     notifyListeners();
@@ -85,13 +97,21 @@ class HomeFeedController extends ChangeNotifier {
         userId: session.userId,
         mode: _mode,
         startedAt: session.startedAt,
-        seenContentIds: _seen,
+        seenContentIds: const <String>{},
         negativeContentIds: _negativeContent,
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
       );
       final page = await _service.fetchPage(context: context);
-      _appendPage(page);
+      _items
+        ..clear()
+        ..addAll(page.items);
+      _seen.clear();
+      _impressionsSent.clear();
+      _appendSession(page.items);
+      _hasMore = page.hasMore && page.items.isNotEmpty;
+      _cursor = page.cursor;
+      await _cache.save(_items);
     } catch (error) {
       _error = error;
     } finally {
@@ -121,11 +141,9 @@ class HomeFeedController extends ChangeNotifier {
         mutedCreatorIds: _mutedCreators,
         blockedCreatorIds: _blockedCreators,
       );
-      final page = await _service.fetchPage(
-        context: context,
-        cursor: _cursor,
-      );
+      final page = await _service.fetchPage(context: context, cursor: _cursor);
       _appendPage(page);
+      await _cache.save(_items);
     } catch (error) {
       _error = error;
     } finally {
@@ -169,6 +187,52 @@ class HomeFeedController extends ChangeNotifier {
     ));
   }
 
+  Future<void> toggleLike(HomeFeedItem item) async {
+    final next = !_liked.contains(item.contentId);
+    if (next) {
+      _liked.add(item.contentId);
+    } else {
+      _liked.remove(item.contentId);
+    }
+    notifyListeners();
+    markInteraction(item, next ? HomeFeedEventType.like : HomeFeedEventType.like);
+    try {
+      await _interactions.setLike(contentId: item.contentId, liked: next);
+    } catch (_) {
+      if (next) {
+        _liked.remove(item.contentId);
+      } else {
+        _liked.add(item.contentId);
+      }
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleSave(HomeFeedItem item) async {
+    final next = !_saved.contains(item.contentId);
+    if (next) {
+      _saved.add(item.contentId);
+    } else {
+      _saved.remove(item.contentId);
+    }
+    notifyListeners();
+    markInteraction(item, next ? HomeFeedEventType.save : HomeFeedEventType.save);
+    try {
+      await _interactions.setSave(
+        contentId: item.contentId,
+        saved: next,
+        liked: _liked.contains(item.contentId),
+      );
+    } catch (_) {
+      if (next) {
+        _saved.remove(item.contentId);
+      } else {
+        _saved.add(item.contentId);
+      }
+      notifyListeners();
+    }
+  }
+
   void markInteraction(HomeFeedItem item, HomeFeedEventType type) {
     _session?.markInteraction(item.contentId);
     _eventQueue.enqueue(HomeFeedEvent(
@@ -184,12 +248,22 @@ class HomeFeedController extends ChangeNotifier {
     _session?.markSkipped(item.contentId);
     _removeItem(item.contentId);
     markInteraction(item, HomeFeedEventType.notInterested);
+    unawaited(_interactions.recordNegativeFeedback(
+      contentId: item.contentId,
+      type: 'not_interested',
+      creatorId: item.creatorId,
+    ));
   }
 
   void hide(HomeFeedItem item) {
     _negativeContent.add(item.contentId);
     _removeItem(item.contentId);
     markInteraction(item, HomeFeedEventType.hide);
+    unawaited(_interactions.recordNegativeFeedback(
+      contentId: item.contentId,
+      type: 'hide',
+      creatorId: item.creatorId,
+    ));
   }
 
   void muteCreator(HomeFeedItem item) {
@@ -197,6 +271,11 @@ class HomeFeedController extends ChangeNotifier {
     _items.removeWhere((candidate) => candidate.creatorId == item.creatorId);
     notifyListeners();
     markInteraction(item, HomeFeedEventType.mute);
+    unawaited(_interactions.recordNegativeFeedback(
+      contentId: item.contentId,
+      type: 'mute_creator',
+      creatorId: item.creatorId,
+    ));
   }
 
   void blockCreator(HomeFeedItem item) {
@@ -204,10 +283,20 @@ class HomeFeedController extends ChangeNotifier {
     _items.removeWhere((candidate) => candidate.creatorId == item.creatorId);
     notifyListeners();
     markInteraction(item, HomeFeedEventType.block);
+    unawaited(_interactions.recordNegativeFeedback(
+      contentId: item.contentId,
+      type: 'block_creator',
+      creatorId: item.creatorId,
+    ));
   }
 
   void report(HomeFeedItem item) {
     markInteraction(item, HomeFeedEventType.report);
+    unawaited(_interactions.recordNegativeFeedback(
+      contentId: item.contentId,
+      type: 'report',
+      creatorId: item.creatorId,
+    ));
   }
 
   Future<void> flushEvents() => _eventQueue.flush();
@@ -220,25 +309,39 @@ class HomeFeedController extends ChangeNotifier {
 
   void _startSession(String uid, HomeFeedMode mode) {
     final now = DateTime.now().toUtc();
-    final sessionId = '${uid}_${now.microsecondsSinceEpoch}';
     _session = HomeSessionState(
-      sessionId: sessionId,
+      sessionId: '${uid}_${now.microsecondsSinceEpoch}',
       userId: uid,
       mode: mode,
       startedAt: now,
     );
   }
 
+  Future<void> _loadCache() async {
+    try {
+      final cached = await _cache.read();
+      if (cached.isEmpty) return;
+      _items
+        ..clear()
+        ..addAll(cached);
+      notifyListeners();
+    } catch (_) {
+      // Cache is an accelerator, never a source of fatal errors.
+    }
+  }
+
   void _appendPage(HomeFeedPage page) {
     final existing = _items.map((item) => item.contentId).toSet();
     for (final item in page.items) {
-      if (existing.add(item.contentId)) {
-        _items.add(item);
-      }
+      if (existing.add(item.contentId)) _items.add(item);
     }
     _hasMore = page.hasMore && page.items.isNotEmpty;
     _cursor = page.cursor;
-    _session?.markServed(page.items);
+    _appendSession(page.items);
+  }
+
+  void _appendSession(Iterable<HomeFeedItem> pageItems) {
+    _session?.markServed(pageItems);
   }
 
   void _removeItem(String contentId) {
