@@ -19,7 +19,7 @@ class DefaultHomeFeedRanker implements HomeFeedRanker {
     required HomeFeedMode mode,
   }) {
     final scored = candidates.map((item) {
-      final affinity = _personalizationScore(item, interest);
+      final personalization = _personalizationScore(item, interest);
       final freshness = item.rankingContext['freshness'] ?? 0.0;
       final engagement = item.rankingContext['engagement'] ?? 0.0;
       final watchQuality = item.rankingContext['watchQuality'] ?? 0.0;
@@ -31,7 +31,7 @@ class DefaultHomeFeedRanker implements HomeFeedRanker {
       final score = (freshness * 0.18) +
           (engagement * 0.16) +
           (watchQuality * 0.14) +
-          (affinity * 0.52) +
+          (personalization * 0.52) +
           relationshipBoost +
           favoriteBoost +
           latestBoost;
@@ -53,18 +53,20 @@ class DefaultHomeFeedRanker implements HomeFeedRanker {
     HomeFeedItem item,
     HomeFeedInterestProfile interest,
   ) {
-    final creator = _normalize(interest.creatorAffinity[item.creatorId]);
+    final creator = _positiveAffinity(interest.creatorAffinity[item.creatorId]);
     final topic = item.hashtags.fold<double>(0.0, (best, tag) {
-      final score = _normalize(interest.hashtagAffinity[tag]);
-      final topicScore = _normalize(interest.topicAffinity[tag]);
-      return score > best ? score : (topicScore > best ? topicScore : best);
+      final hashtagScore = _positiveAffinity(interest.hashtagAffinity[tag]);
+      final topicScore = _positiveAffinity(interest.topicAffinity[tag]);
+      return hashtagScore > best
+          ? hashtagScore
+          : (topicScore > best ? topicScore : best);
     });
     final sound = item.soundId == null
         ? 0.0
-        : _normalize(interest.soundAffinity[item.soundId]);
-    final type = _normalize(interest.contentTypeAffinity[item.contentType.name]);
+        : _positiveAffinity(interest.soundAffinity[item.soundId]);
+    final type = _positiveAffinity(interest.contentTypeAffinity[item.contentType.name]);
     final negative = item.hashtags.fold<double>(0.0, (sum, tag) {
-      return sum + _normalize(interest.negativeAffinity[tag]);
+      return sum + _negativePenalty(interest.negativeAffinity[tag]);
     });
     final negativePenalty = negative.clamp(0.0, 1.0);
 
@@ -76,9 +78,14 @@ class DefaultHomeFeedRanker implements HomeFeedRanker {
         .clamp(0.0, 1.0);
   }
 
-  double _normalize(double? value) {
+  double _positiveAffinity(double? value) {
     final raw = value ?? 0.0;
-    return ((raw + 5.0) / 10.0).clamp(0.0, 1.0);
+    return (raw.clamp(0.0, 5.0) / 5.0).clamp(0.0, 1.0);
+  }
+
+  double _negativePenalty(double? value) {
+    final raw = value ?? 0.0;
+    return ((-raw).clamp(0.0, 5.0) / 5.0).clamp(0.0, 1.0);
   }
 
   List<HomeFeedItem> _diversify(List<_ScoredItem> sorted) {
