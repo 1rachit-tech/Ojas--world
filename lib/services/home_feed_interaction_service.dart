@@ -37,10 +37,11 @@ class HomeFeedInteractionService {
         savedState = false;
       }
     }
+    final bool savedForSync = savedState ?? false;
     await _engagement.syncInteraction(
       reelId: contentId,
       liked: liked,
-      saved: savedState,
+      saved: savedForSync,
       likeDelta: liked ? 1 : -1,
     );
   }
