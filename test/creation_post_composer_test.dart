@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ojas/creation/models/creation_project.dart';
-import 'package:ojas/creation/screens/creation_post_composer_screen.dart';
+import 'package:ojas_app/creation/models/creation_project.dart';
+import 'package:ojas_app/creation/screens/creation_post_composer_screen.dart';
 
 void main() {
   testWidgets('post composer renders publish controls for a video project', (tester) async {
