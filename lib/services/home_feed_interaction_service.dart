@@ -19,14 +19,28 @@ class HomeFeedInteractionService {
   Future<void> setLike({
     required String contentId,
     required bool liked,
-    required bool saved,
+    bool? saved,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null || uid.isEmpty || contentId.isEmpty) return;
+    var savedState = saved;
+    if (savedState == null) {
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('interactions')
+            .doc(contentId)
+            .get();
+        savedState = snapshot.data()?['saved'] as bool? ?? false;
+      } catch (_) {
+        savedState = false;
+      }
+    }
     await _engagement.syncInteraction(
       reelId: contentId,
       liked: liked,
-      saved: saved,
+      saved: savedState,
       likeDelta: liked ? 1 : -1,
     );
   }
