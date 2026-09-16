@@ -25,6 +25,20 @@ class HomeStoryItem {
 
   bool get isExpired => DateTime.now().toUtc().isAfter(expiresAt.toUtc());
 
+  HomeStoryItem copyWith({bool? viewed}) {
+    return HomeStoryItem(
+      id: id,
+      creatorId: creatorId,
+      mediaUrl: mediaUrl,
+      thumbnailUrl: thumbnailUrl,
+      caption: caption,
+      createdAt: createdAt,
+      expiresAt: expiresAt,
+      viewed: viewed ?? this.viewed,
+      mediaType: mediaType,
+    );
+  }
+
   factory HomeStoryItem.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
   ) {
