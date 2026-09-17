@@ -145,20 +145,6 @@ class CreationPublishService {
         deferProcessing: true,
         resumeBytes: resumeBytes,
         resumeStoragePath: resumeStoragePath,
-        onProgress: (uploaded, total) {
-          _saveState(
-            project.projectId,
-            CreationPublishStage.uploading,
-            requestId: publishRequestId,
-            bytesUploaded: uploaded,
-            totalBytes: total,
-            uploadStoragePath: resumeStoragePath,
-            uploadSourceFingerprint: uploadFingerprint,
-            uploadBytes: uploaded,
-            uploadTotalBytes: total,
-            uploadBlockSize: CreationAzureMediaService.chunkSize,
-          );
-        },
         onCheckpoint: (uploaded, total, checkpointStoragePath) {
           _saveState(
             project.projectId,
