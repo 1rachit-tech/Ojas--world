@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../services/media_hash_service.dart';
@@ -41,6 +42,9 @@ class CreationPublishService {
     if (!validation.isValid) throw CreationPublishException(validation.message);
     if (project.mediaAssets.length != 1 || project.mediaAssets.first.type != 'video') {
       throw const CreationPublishException('This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready.');
+    }
+    if (project.audio.isNotEmpty && !_azureMedia.isConfigured) {
+      throw const CreationPublishException('Audio tracks require the server media processor. Configure the OJAS Azure media broker before publishing audio edits.');
     }
 
     final asset = project.mediaAssets.first;
@@ -96,7 +100,7 @@ class CreationPublishService {
 
     await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     final mediaHash = await _computeMediaHash(asset.localUri);
-    final editGraph = _boundedEditGraph(project);
+    final editGraph = await _prepareEditGraph(project, user.uid);
     await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
     await postRef.set(<String, dynamic>{
@@ -161,19 +165,88 @@ class CreationPublishService {
     return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
   }
 
-  Map<String, dynamic> _boundedEditGraph(CreationProject project) {
+  Future<Map<String, dynamic>> _prepareEditGraph(CreationProject project, String uid) async {
     List<Map<String, dynamic>> bounded(List<Map<String, dynamic>> input, int maxItems) => input.take(maxItems).map((item) => Map<String, dynamic>.from(item)).toList(growable: false);
     final timeline = project.timeline.take(32).map((clip) => clip.toMap()).toList(growable: false);
+    final audioLayers = <Map<String, dynamic>>[];
+
+    for (final raw in project.audio.take(32)) {
+      final layer = Map<String, dynamic>.from(raw);
+      final rawUri = layer['uri'];
+      final localUri = rawUri is String ? rawUri.trim() : '';
+      final layerId = layer['id'] is String && (layer['id'] as String).trim().isNotEmpty
+          ? (layer['id'] as String).trim()
+          : 'audio_${DateTime.now().microsecondsSinceEpoch}';
+
+      if (localUri.startsWith('creation_audio/')) {
+        layer
+          ..remove('uri')
+          ..['storagePath'] = localUri
+          ..['id'] = layerId;
+        audioLayers.add(layer);
+        continue;
+      }
+
+      final file = File(localUri);
+      if (!await file.exists()) {
+        throw CreationPublishException('Audio file is no longer available: ${layer['title'] ?? layerId}.');
+      }
+      final size = await file.length();
+      if (size <= 0 || size > 10 * 1024 * 1024) {
+        throw const CreationPublishException('Each creation audio track must be between 1 byte and 10 MB.');
+      }
+
+      final fileName = localUri.split(RegExp(r'[\\/]')).last;
+      final extensionIndex = fileName.lastIndexOf('.');
+      final extension = extensionIndex >= 0 && extensionIndex < fileName.length - 1
+          ? fileName.substring(extensionIndex).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '')
+          : '.bin';
+      final safeExtension = extension.length <= 8 ? extension : '.bin';
+      final storageReference = _storage.ref()
+          .child('creation_audio')
+          .child(uid)
+          .child(project.projectId)
+          .child('$layerId$safeExtension');
+      final metadata = SettableMetadata(contentType: _audioContentType(safeExtension));
+      await storageReference.putFile(file, metadata);
+
+      layer
+        ..remove('uri')
+        ..['storagePath'] = storageReference.fullPath
+        ..['id'] = layerId;
+      audioLayers.add(layer);
+    }
+
     return <String, dynamic>{
       'version': 2,
       'timeline': timeline,
-      'audio': bounded(project.audio, 32),
+      'audio': audioLayers,
+      'audioStorageBucket': Firebase.app().options.storageBucket ?? '',
       'textLayers': bounded(project.textLayers, 64),
       'stickerLayers': bounded(project.stickerLayers, 64),
       'effectLayers': bounded(project.effectLayers, 32),
       'operations': bounded(project.operations, 256),
       'accessibility': Map<String, dynamic>.from(project.accessibility),
     };
+  }
+
+  String _audioContentType(String extension) {
+    switch (extension.toLowerCase()) {
+      case '.mp3':
+        return 'audio/mpeg';
+      case '.wav':
+        return 'audio/wav';
+      case '.m4a':
+        return 'audio/mp4';
+      case '.aac':
+        return 'audio/aac';
+      case '.ogg':
+        return 'audio/ogg';
+      case '.opus':
+        return 'audio/opus';
+      default:
+        return 'audio/*';
+    }
   }
 
   Future<void> _saveState(String projectId, CreationPublishStage stage, {String? requestId, int bytesUploaded = 0, int totalBytes = 0}) async {
