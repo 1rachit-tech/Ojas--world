@@ -54,6 +54,7 @@ jobs:
           lib/services/home_feed_service.dart
           lib/services/video_compression_service.dart
           lib/services/video_compression_service_io.dart
+          lib/services/video_compression_service_web.dart
           lib/creation/screens/creation_hub_screen.dart
           lib/creation/screens/published_shows_screen.dart
           lib/creation/screens/creation_pipeline_editor_screen.dart
@@ -62,5 +63,10 @@ jobs:
           lib/creation/services/published_show_edit_service.dart
           lib/services/azure_media_playback_service.dart
 
-      - name: Run creation regression tests
-        run: flutter test test/creation_publish_state_test.dart test/creation_post_composer_test.dart test/creation_edit_engine_test.dart
+      - name: Run creation and media regression tests
+        run: >-
+          flutter test
+          test/creation_publish_state_test.dart
+          test/creation_post_composer_test.dart
+          test/creation_edit_engine_test.dart
+          test/video_compression_policy_test.dart
