@@ -45,7 +45,7 @@ void main() {
     expect(restored.uploadBlockSize, 8 * 1024 * 1024);
   });
 
-  test('invalid upload checkpoint is not considered resumable', () {
+  test('misaligned upload checkpoint is rejected as resumable state', () {
     final state = CreationPublishState(
       projectId: 'project-1',
       stage: CreationPublishStage.uploading,
@@ -57,7 +57,7 @@ void main() {
       uploadBlockSize: 8 * 1024 * 1024,
     );
 
-    expect(state.hasUploadCheckpoint, isTrue);
+    expect(state.hasUploadCheckpoint, isFalse);
     expect(state.uploadProgress, closeTo(7 / 24, 0.0001));
   });
 
