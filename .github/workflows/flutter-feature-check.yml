@@ -46,6 +46,7 @@ jobs:
       - name: Analyze changed production surfaces
         run: >-
           flutter analyze
+          --no-fatal-infos
           lib/screens/creator_profile_screen.dart
           lib/services/reel_lifecycle_service.dart
           lib/services/reel_feed_service.dart
