@@ -187,10 +187,11 @@ class CreationPublishService {
         'mediaStoragePath': storagePath,
         'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
         'mediaProcessingVersion': 4,
-        'mediaProcessingMode': _azureMedia.isConfigured ? 'device-compressed-validate' : 'device-compressed-local',
+        'mediaProcessingMode': _azureMedia.isConfigured ? 'device-delivery-validate' : 'device-delivery-local',
         'editGraphVersion': 2,
         'editGraph': editGraph,
         'deviceCompressed': compression['applied'] == true,
+        'deviceDeliveryReady': compression['deliveryReady'] == true,
         'deviceCompressionProfile': compression['profile'],
         'deviceOriginalBytes': compression['originalBytes'],
         'deviceUploadBytes': compression['uploadBytes'],
@@ -228,6 +229,7 @@ class CreationPublishService {
         storagePath: storagePath ?? '',
         contentLength: uploadBytes,
         deviceCompressed: compression['applied'] == true,
+        deviceDeliveryReady: compression['deliveryReady'] == true,
       );
     }
 
@@ -312,6 +314,7 @@ class CreationPublishService {
 
     final compression = <String, dynamic>{
       'applied': result.compressionApplied,
+      'deliveryReady': result.deliveryReady,
       'profile': result.profileName,
       'originalBytes': result.originalBytes,
       'uploadBytes': result.compressedBytes,
@@ -325,7 +328,7 @@ class CreationPublishService {
       'outputHeight': result.outputHeight,
       'durationMs': result.durationMs,
       'engine': 'device-video-compress-3.1.4',
-      'version': 2,
+      'version': 3,
     };
 
     final checkpointed = project.copyWith(
@@ -347,6 +350,7 @@ class CreationPublishService {
     required String storagePath,
     required int contentLength,
     required bool deviceCompressed,
+    required bool deviceDeliveryReady,
   }) async {
     if (storagePath.isEmpty) throw const CreationPublishException('Media storage path is missing.');
     await _firestore.collection('creationMedia').doc(assetId).set(<String, dynamic>{
@@ -357,6 +361,7 @@ class CreationPublishService {
       'contentLength': contentLength,
       'contentType': 'video/mp4',
       'deviceCompressed': deviceCompressed,
+      'deviceDeliveryReady': deviceDeliveryReady,
       'status': 'uploaded',
       'processingStatus': 'queued',
       'queuedAt': FieldValue.serverTimestamp(),
