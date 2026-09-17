@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import subprocess
 import tempfile
 import uuid
@@ -170,13 +169,7 @@ def _atempo_chain(speed: float) -> str:
 
 def _escape_drawtext_text(value: str) -> str:
     compact = ' '.join(value.replace('\n', ' ').split())[:MAX_TEXT_CHARS]
-    return (
-        compact
-        .replace('\\', '\\\\')
-        .replace(':', '\\:')
-        .replace("'", "\\'")
-        .replace('%', '\\%')
-    )
+    return compact.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'").replace('%', '\\%')
 
 
 def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[float, float] | None:
@@ -209,12 +202,7 @@ def _effect_expression(effect: dict[str, Any]) -> str | None:
     return None
 
 
-def _append_visual_layers(
-    filter_parts: list[str],
-    input_label: str,
-    edit_graph: dict[str, Any],
-    duration_ms: int,
-) -> str:
+def _append_visual_layers(filter_parts: list[str], input_label: str, edit_graph: dict[str, Any], duration_ms: int) -> str:
     current = input_label
     effects = edit_graph.get('effectLayers')
     if isinstance(effects, list):
@@ -270,9 +258,11 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
     filter_parts: list[str] = []
     concat_inputs: list[str] = []
     has_audio = bool(metadata.get('hasAudio'))
+    rendered_duration_ms = 0
 
     for index, clip in enumerate(clips):
         trim_in, trim_out, speed, rotation = _bounded_clip(clip, metadata['durationMs'])
+        rendered_duration_ms += round((trim_out - trim_in) / speed)
         video_label = f'v{index}'
         video_filters = [
             f'trim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f}',
@@ -299,7 +289,7 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
             concat_inputs.append(f'[{video_label}]')
 
     if len(clips) == 1:
-        filter_parts.append(f'[v0]null[preout]')
+        filter_parts.append('[v0]null[preout]')
         final_video_input = 'preout'
         final_audio = 'a0' if has_audio else None
     else:
@@ -312,7 +302,7 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
             final_video_input = 'basev'
             final_audio = None
 
-    final_video = _append_visual_layers(filter_parts, final_video_input, edit_graph, metadata['durationMs'])
+    final_video = _append_visual_layers(filter_parts, final_video_input, edit_graph, rendered_duration_ms)
 
     command = [
         'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source,
@@ -322,14 +312,9 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
     if final_audio:
         command.extend(['-map', f'[{final_audio}]', '-c:a', 'aac', '-b:a', '96k'])
     command.extend([
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
-        '-maxrate', '2M',
-        '-bufsize', '4M',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', '+faststart',
-        output,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart', output,
     ])
     _run(command)
     return 'edit-graph-v2-render'
@@ -389,10 +374,8 @@ def process_job(job: dict[str, Any]) -> None:
         worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph)
 
         _run([
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-            '-ss', '0', '-i', str(processed),
-            '-frames:v', '1', '-q:v', '2',
-            '-vf', "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
+            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-ss', '0', '-i', str(processed),
+            '-frames:v', '1', '-q:v', '2', '-vf', "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
             str(thumb),
         ])
 
