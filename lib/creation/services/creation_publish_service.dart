@@ -110,6 +110,7 @@ class CreationPublishService {
       'shaderUsed': 'Natural',
       'visibility': project.privacy.toLowerCase(),
       'recommendationEligible': recommendationEligible,
+      'moderationStatus': 'pending',
       'allowComments': allowComments,
       'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
       'mediaStoragePath': storagePath,
