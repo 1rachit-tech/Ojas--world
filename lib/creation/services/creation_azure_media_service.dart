@@ -45,7 +45,7 @@ class CreationAzureMediaService {
     int resumeBytes = 0,
     String? resumeStoragePath,
     void Function(int uploaded, int total)? onProgress,
-    void Function(int uploaded, int total, String storagePath)? onCheckpoint,
+    Future<void> Function(int uploaded, int total, String storagePath)? onCheckpoint,
   }) async {
     if (!isConfigured) return null;
 
@@ -103,7 +103,10 @@ class CreationAzureMediaService {
       resumeStoragePath: resumeStoragePath,
       currentStoragePath: storagePath,
     );
-    if (uploaded != resumeBytes) onCheckpoint?.call(uploaded, totalBytes, storagePath);
+    if (uploaded != resumeBytes) {
+      final checkpoint = onCheckpoint;
+      if (checkpoint != null) await checkpoint(uploaded, totalBytes, storagePath);
+    }
 
     final blockIds = <String>[];
     final completedBlockCount = uploaded == 0 ? 0 : (uploaded + chunkSize - 1) ~/ chunkSize;
@@ -164,7 +167,8 @@ class CreationAzureMediaService {
         blockIds.add(blockId);
         uploaded += bytes.length;
         onProgress?.call(uploaded, totalBytes);
-        onCheckpoint?.call(uploaded, totalBytes, storagePath);
+        final checkpoint = onCheckpoint;
+        if (checkpoint != null) await checkpoint(uploaded, totalBytes, storagePath);
         blockIndex++;
       }
     } finally {
