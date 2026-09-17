@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OJAS_ENABLE_HLS=false
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && apt-get install -y --no-install-recommends ffmpeg ca-certificates fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
