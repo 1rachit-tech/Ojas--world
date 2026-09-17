@@ -6,6 +6,9 @@ type CallableResult = Record<string, unknown>;
 type ReelSnapshot = {data: () => Record<string, unknown> | undefined; ref: {set: (data: Record<string, unknown>, options?: {merge?: boolean}) => Promise<unknown>}; params: {reelId: string}};
 
 const MAX_CAPTION_LENGTH = 2200;
+const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
+const MAX_STORAGE_PATH = 512;
+const SAFE_STORAGE_SEGMENT = /^[A-Za-z0-9._-]+$/;
 const SAFE_VISIBILITIES = new Set(['public', 'followers', 'only me']);
 const SAFE_REUSE_POLICIES = new Set(['allowed', 'followers', 'public']);
 const MAX_TIMELINE_CLIPS = 32;
@@ -41,8 +44,16 @@ function normalizeReusePolicy(value: unknown, fallback = 'allowed'): string {
 function finiteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 function isBoundedString(value: unknown, maxLength: number): boolean { return typeof value === 'string' && value.length <= maxLength; }
 
+function validStoragePath(path: string, ownerId: string, projectId: string, assetId: string): boolean {
+  const prefix = `creation/${ownerId}/${projectId}/${assetId}/`;
+  const segments = path.split('/');
+  return path.startsWith(prefix)
+      && path.length <= MAX_STORAGE_PATH
+      && segments.length === 5
+      && segments.every((segment) => segment.length > 0 && segment.length <= 128 && SAFE_STORAGE_SEGMENT.test(segment));
+}
+
 function validEditGraph(value: unknown, ownerId?: string, projectId?: string): boolean {
-  // Older Shows may predate the edit-graph contract; keep them searchable and playable.
   if (value == null) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const graph = value as Record<string, unknown>;
@@ -94,7 +105,6 @@ function validEditGraph(value: unknown, ownerId?: string, projectId?: string): b
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
     const item = layer as Record<string, unknown>;
     if (!isBoundedString(item.id, 128)) return false;
-    // Published edit graphs must never persist a device-local URI. Audio is staged in Azure only.
     if (item.uri != null) return false;
     const storagePath = typeof item.storagePath === 'string' ? item.storagePath.trim() : '';
     const expectedPrefix = ownerId && projectId ? `creation-audio/${ownerId}/${projectId}/` : '';
@@ -102,10 +112,10 @@ function validEditGraph(value: unknown, ownerId?: string, projectId?: string): b
     const hasSafeStoragePath = Boolean(expectedPrefix)
         && item.storageProvider === 'azure'
         && storagePath.startsWith(expectedPrefix)
-        && storagePath.length <= 512
+        && storagePath.length <= MAX_STORAGE_PATH
         && !storagePath.includes('..')
         && segments.length === 5
-        && segments.every((segment) => segment.length > 0 && segment.length <= 128 && /^[A-Za-z0-9._-]+$/.test(segment));
+        && segments.every((segment) => segment.length > 0 && segment.length <= 128 && SAFE_STORAGE_SEGMENT.test(segment));
     if (!hasSafeStoragePath) return false;
     if (item.volume != null && (!finiteNumber(item.volume) || item.volume < 0 || item.volume > 2)) return false;
     if (item.muted != null && typeof item.muted !== 'boolean') return false;
@@ -127,7 +137,7 @@ function validEditGraph(value: unknown, ownerId?: string, projectId?: string): b
 export async function manageReelLifecycle(request: CallableRequest): Promise<CallableResult> {
   const uid = requireUid(request);
   const data = requestData(request);
-  const operation = typeof data.operation === 'string' ? data.operation : '';
+  const operation = typeof data.operation === 'string' ? data.operation.trim().toLowerCase() : '';
   const postId = typeof data.postId === 'string' ? data.postId.trim() : '';
   if (!postId) throw new HttpsError('invalid-argument', 'Post ID is required.');
 
@@ -148,18 +158,123 @@ export async function manageReelLifecycle(request: CallableRequest): Promise<Cal
     await reelRef.update({caption, visibility, allowComments, recommendationEligible, reusePolicy, moderationStatus: 'pending', updatedAt: FieldValue.serverTimestamp(), editedAt: FieldValue.serverTimestamp()});
     return {ok: true, operation: 'edit', postId};
   }
+
+  if (operation === 'replace-media') {
+    const mediaProvider = typeof data.mediaProvider === 'string' ? data.mediaProvider.trim().toLowerCase() : '';
+    const mediaAssetId = typeof data.mediaAssetId === 'string' ? data.mediaAssetId.trim() : '';
+    const mediaStoragePath = typeof data.mediaStoragePath === 'string' ? data.mediaStoragePath.trim() : '';
+    const videoUrl = typeof data.videoUrl === 'string' ? data.videoUrl.trim() : '';
+    const contentLength = data.contentLength;
+    const editGraph = data.editGraph;
+    const mediaHash = typeof data.mediaHash === 'string' ? data.mediaHash.trim().toLowerCase() : '';
+    if (mediaProvider !== 'azure') throw new HttpsError('failed-precondition', 'Published Show editing requires the OJAS Azure media pipeline.');
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(mediaAssetId)) throw new HttpsError('invalid-argument', 'Invalid media asset ID.');
+    if (!validStoragePath(mediaStoragePath, uid, postId, mediaAssetId)) throw new HttpsError('invalid-argument', 'Invalid media storage path.');
+    if (!videoUrl || videoUrl.length > 2048) throw new HttpsError('invalid-argument', 'Invalid media URL.');
+    if (!Number.isInteger(contentLength) || Number(contentLength) <= 0 || Number(contentLength) > MAX_VIDEO_BYTES) throw new HttpsError('invalid-argument', 'Invalid processed media size.');
+    if (!/^[a-f0-9]{64}$/.test(mediaHash)) throw new HttpsError('invalid-argument', 'Invalid media hash.');
+    if (!validEditGraph(editGraph, uid, postId)) throw new HttpsError('invalid-argument', 'Invalid edit graph.');
+
+    const previousAssetId = typeof reel.mediaAssetId === 'string' ? reel.mediaAssetId.trim() : '';
+    const previousAudioPaths: string[] = [];
+    const previousGraph = reel.editGraph;
+    if (previousGraph && typeof previousGraph === 'object' && !Array.isArray(previousGraph)) {
+      const rawAudio = (previousGraph as Record<string, unknown>).audio;
+      if (Array.isArray(rawAudio)) {
+        for (const raw of rawAudio.slice(0, MAX_AUDIO_LAYERS)) {
+          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+          const value = (raw as Record<string, unknown>).storagePath;
+          if (typeof value === 'string') {
+            const path = value.trim();
+            if (path.startsWith(`creation-audio/${uid}/${postId}/`) && path.length <= MAX_STORAGE_PATH && !path.includes('..')) previousAudioPaths.push(path);
+          }
+        }
+      }
+    }
+
+    const caption = cleanCaption(data.caption ?? reel.caption);
+    const visibility = normalizeVisibility(data.visibility ?? reel.visibility);
+    const allowComments = typeof data.allowComments === 'boolean' ? data.allowComments : reel.allowComments === true;
+    const recommendationEligible = visibility === 'public' && data.recommendationEligible === true;
+    const reusePolicy = normalizeReusePolicy(data.reusePolicy ?? reel.reusePolicy, 'allowed');
+
+    await reelRef.update({
+      mediaAssetId,
+      mediaProvider,
+      mediaStoragePath,
+      videoUrl,
+      hlsUrl: videoUrl,
+      mediaProcessingStatus: 'queued',
+      mediaProcessingVersion: 3,
+      mediaProcessingMode: 'edit-graph-v5-render',
+      moderationStatus: 'pending',
+      caption,
+      visibility,
+      recommendationEligible,
+      allowComments,
+      reusePolicy,
+      editGraphVersion: 2,
+      editGraph,
+      aiGeneratedDisclosure: data.aiGeneratedDisclosure === true,
+      copyrightConfirmed: data.copyrightConfirmed === true,
+      mediaHash,
+      serverMediaHash: FieldValue.delete(),
+      serverMediaHashAt: FieldValue.delete(),
+      thumbnailUrl: '',
+      updatedAt: FieldValue.serverTimestamp(),
+      editedAt: FieldValue.serverTimestamp(),
+      ...(previousAssetId && previousAssetId !== mediaAssetId ? {
+        mediaReplacementCleanupAssetId: previousAssetId,
+        mediaReplacementCleanupAudioPaths: previousAudioPaths,
+        mediaReplacementCleanupStatus: 'pending',
+      } : {}),
+    });
+
+    await db.collection('creationMedia').doc(mediaAssetId).set({
+      assetId: mediaAssetId,
+      projectId: postId,
+      ownerId: uid,
+      storagePath: mediaStoragePath,
+      contentLength: Number(contentLength),
+      contentType: 'video/mp4',
+      status: 'uploaded',
+      processingStatus: 'queued',
+      queuedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+    return {ok: true, operation: 'replace-media', postId, mediaAssetId, processingStatus: 'queued'};
+  }
+
   if (operation === 'delete') {
     await reelRef.update({deletedAt: FieldValue.serverTimestamp(), deletedBy: uid, visibility: 'only me', recommendationEligible: false, moderationStatus: 'deleted', updatedAt: FieldValue.serverTimestamp()});
     return {ok: true, operation: 'delete', postId};
   }
+
   if (operation === 'reuse') {
+    if (uid === reel.creatorId) throw new HttpsError('failed-precondition', 'You cannot request reuse of your own Show.');
     const sourceVisibility = typeof reel.visibility === 'string' ? reel.visibility.toLowerCase() : '';
     const reusePolicy = typeof reel.reusePolicy === 'string' ? reel.reusePolicy.toLowerCase() : 'allowed';
-    if (sourceVisibility !== 'public' || !SAFE_REUSE_POLICIES.has(reusePolicy) || reusePolicy === 'followers') throw new HttpsError('permission-denied', 'Reuse is not allowed for this post.');
+    if (sourceVisibility !== 'public' || !SAFE_REUSE_POLICIES.has(reusePolicy)) throw new HttpsError('permission-denied', 'Reuse is not allowed for this post.');
+    if (reusePolicy === 'followers') {
+      const creatorSnapshot = await db.collection('publicProfiles').doc(reel.creatorId as string).get();
+      const followers = creatorSnapshot.data()?.followers;
+      if (!Array.isArray(followers) || !followers.includes(uid)) throw new HttpsError('permission-denied', 'Only followers can request reuse of this Show.');
+    }
+    const existing = await db.collection('reelReuseRequests')
+        .where('sourcePostId', '==', postId)
+        .where('requesterId', '==', uid)
+        .limit(10)
+        .get();
+    for (const doc of existing.docs) {
+      const status = typeof doc.data().status === 'string' ? doc.data().status : '';
+      if (status === 'requested' || status === 'accepted') return {ok: true, operation: 'reuse', requestId: doc.id, sourcePostId: postId, existing: true, status};
+    }
     const requestRef = db.collection('reelReuseRequests').doc();
     await requestRef.set({requestId: requestRef.id, sourcePostId: postId, sourceCreatorId: reel.creatorId, requesterId: uid, status: 'requested', createdAt: FieldValue.serverTimestamp()});
-    return {ok: true, operation: 'reuse', requestId: requestRef.id, sourcePostId: postId};
+    return {ok: true, operation: 'reuse', requestId: requestRef.id, sourcePostId: postId, status: 'requested'};
   }
+
   throw new HttpsError('invalid-argument', 'Unsupported post operation.');
 }
 
@@ -172,6 +287,7 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   const visibility = typeof data.visibility === 'string' ? data.visibility.toLowerCase() : '';
   const rightsConfirmed = data.copyrightConfirmed === true;
   const mediaHash = typeof data.mediaHash === 'string' ? data.mediaHash : '';
+  const serverMediaHash = typeof data.serverMediaHash === 'string' ? data.serverMediaHash.trim() : '';
   const mediaProvider = typeof data.mediaProvider === 'string' ? data.mediaProvider.toLowerCase() : '';
   const mediaProcessingStatus = typeof data.mediaProcessingStatus === 'string' ? data.mediaProcessingStatus.toLowerCase() : '';
   const deleted = data.deletedAt != null || data.moderationStatus === 'deleted';
@@ -186,8 +302,11 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   if (!creatorId) problems.push('missing_creator');
   if (caption.length > MAX_CAPTION_LENGTH) problems.push('caption_too_long');
   if (!rightsConfirmed) problems.push('rights_unconfirmed');
-  if (mediaHash.length !== 64) problems.push('invalid_media_hash');
-  if (mediaProvider === 'azure' && !['ready', 'published'].includes(mediaProcessingStatus)) problems.push('media_not_ready');
+  if (!/^[a-f0-9]{64}$/i.test(mediaHash)) problems.push('invalid_media_hash');
+  if (mediaProvider === 'azure') {
+    if (!['ready', 'published'].includes(mediaProcessingStatus)) problems.push('media_not_ready');
+    if (!/^[a-f0-9]{64}$/i.test(serverMediaHash)) problems.push('server_media_hash_pending');
+  }
   if (!validEditGraph(data.editGraph, creatorId, reelId)) problems.push('invalid_edit_graph');
 
   const moderationStatus = problems.length === 0 ? 'approved' : 'review';
@@ -201,6 +320,6 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
 }
 
 export function shouldReprocessReel(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
-  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph', 'reusePolicy'];
+  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'serverMediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph', 'reusePolicy'];
   return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }
