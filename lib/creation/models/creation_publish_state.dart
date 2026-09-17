@@ -62,7 +62,8 @@ class CreationPublishState {
       uploadBytes > 0 &&
       uploadTotalBytes > 0 &&
       uploadBlockSize > 0 &&
-      uploadBytes <= uploadTotalBytes;
+      uploadBytes <= uploadTotalBytes &&
+      (uploadBytes == uploadTotalBytes || uploadBytes % uploadBlockSize == 0);
 
   bool get isTerminal =>
       stage == CreationPublishStage.published ||
