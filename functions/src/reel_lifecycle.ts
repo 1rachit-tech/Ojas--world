@@ -10,7 +10,7 @@ type CallableResult = Record<string, unknown>;
 type ReelSnapshot = {
   data: () => Record<string, unknown> | undefined;
   ref: {set: (data: Record<string, unknown>, options?: {merge?: boolean}) => Promise<unknown>};
-  params: {reelId: string};
+  params: {reelId: string };
 };
 
 const MAX_CAPTION_LENGTH = 2200;
@@ -54,7 +54,7 @@ function isBoundedString(value: unknown, maxLength: number): boolean {
 function validEditGraph(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const graph = value as Record<string, unknown>;
-  if (graph.version !== 1) return false;
+  if (graph.version !== 1 && graph.version !== 2) return false;
 
   const timeline = graph.timeline;
   const textLayers = graph.textLayers;
@@ -96,11 +96,18 @@ function validEditGraph(value: unknown): boolean {
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
     const item = layer as Record<string, unknown>;
     if (!isBoundedString(item.id, 128) || !isBoundedString(item.text, 5000)) return false;
+    if (item.x != null && (!finiteNumber(item.x) || item.x < -0.4 || item.x > 1.4)) return false;
+    if (item.y != null && (!finiteNumber(item.y) || item.y < -0.2 || item.y > 1.2)) return false;
+    if (item.fontSize != null && (!finiteNumber(item.fontSize) || item.fontSize < 8 || item.fontSize > 120)) return false;
+    if (item.startMs != null && !Number.isInteger(item.startMs)) return false;
+    if (item.endMs != null && !Number.isInteger(item.endMs)) return false;
   }
   for (const layer of audio) {
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
     const item = layer as Record<string, unknown>;
     if (!isBoundedString(item.id, 128) || !isBoundedString(item.uri, 2048)) return false;
+    if (item.volume != null && (!finiteNumber(item.volume) || item.volume < 0 || item.volume > 2)) return false;
+    if (item.muted != null && typeof item.muted !== 'boolean') return false;
   }
   for (const layer of stickers) {
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
@@ -197,17 +204,6 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
 }
 
 export function shouldReprocessReel(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
-  const fields = [
-    'caption',
-    'creatorId',
-    'visibility',
-    'copyrightConfirmed',
-    'mediaHash',
-    'mediaProvider',
-    'mediaProcessingStatus',
-    'recommendationEligible',
-    'deletedAt',
-    'editGraph',
-  ];
+  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph'];
   return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }
