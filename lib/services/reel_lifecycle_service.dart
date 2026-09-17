@@ -19,7 +19,7 @@ class ReelLifecycleService {
     if (token == null || token.isEmpty) throw const ReelLifecycleException('Authentication token is unavailable.');
 
     final projectId = Firebase.app().options.projectId;
-    final region = 'asia-south1';
+    const region = 'asia-south1';
     final uri = Uri.parse('https://$region-$projectId.cloudfunctions.net/$functionName');
     final response = await http.post(
       uri,
@@ -51,6 +51,7 @@ class ReelLifecycleService {
     String? visibility,
     bool? allowComments,
     bool? recommendationEligible,
+    String? reusePolicy,
   }) async {
     await _call('manageReel', <String, dynamic>{
       'operation': 'edit',
@@ -59,6 +60,7 @@ class ReelLifecycleService {
       if (visibility != null) 'visibility': visibility,
       if (allowComments != null) 'allowComments': allowComments,
       if (recommendationEligible != null) 'recommendationEligible': recommendationEligible,
+      if (reusePolicy != null) 'reusePolicy': reusePolicy,
     });
   }
 
@@ -85,7 +87,10 @@ class ReelLifecycleService {
     final result = await _call('searchReels', <String, dynamic>{'query': query});
     final raw = result['results'];
     if (raw is! List) return const <Map<String, dynamic>>[];
-    return raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList(growable: false);
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 }
 
