@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import '../../services/media_hash_service.dart';
 import '../models/creation_project.dart';
 import '../models/creation_publish_state.dart';
 import 'creation_azure_media_service.dart';
@@ -15,10 +16,12 @@ class CreationPublishResult {
   const CreationPublishResult({
     required this.postId,
     required this.mediaUrl,
+    required this.isProcessing,
   });
 
   final String postId;
   final String mediaUrl;
+  final bool isProcessing;
 }
 
 class CreationPublishService {
@@ -74,16 +77,27 @@ class CreationPublishService {
 
     final existing = await postRef.get();
     if (existing.exists) {
-      final existingUrl = existing.data()?['videoUrl'] as String? ?? '';
+      final data = existing.data() ?? const <String, dynamic>{};
+      final existingUrl = data['videoUrl'] as String? ?? '';
       if (existingUrl.isNotEmpty) {
+        final existingStatus =
+            (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
+        final existingProvider =
+            (data['mediaProvider'] as String? ?? '').toLowerCase();
+        final processing = existingProvider == 'azure' &&
+            existingStatus != 'ready' &&
+            existingStatus != 'published';
         await _saveState(
           project.projectId,
-          CreationPublishStage.published,
+          processing
+              ? CreationPublishStage.processing
+              : CreationPublishStage.published,
           requestId: publishRequestId,
         );
         return CreationPublishResult(
           postId: postRef.id,
           mediaUrl: existingUrl,
+          isProcessing: processing,
         );
       }
     }
@@ -168,7 +182,7 @@ class CreationPublishService {
       totalBytes: asset.sizeBytes,
     );
 
-    final mediaHash = await _computeLocalFingerprint(asset.localUri);
+    final mediaHash = await _computeMediaHash(asset.localUri);
 
     await _saveState(
       project.projectId,
@@ -188,6 +202,7 @@ class CreationPublishService {
       'visibility': project.privacy.toLowerCase(),
       'recommendationEligible': recommendationEligible,
       'allowComments': allowComments,
+      'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
       'mediaStoragePath': storagePath,
       'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
       'mediaProcessingVersion': 1,
@@ -210,8 +225,9 @@ class CreationPublishService {
       'mediaHash': mediaHash,
     }, SetOptions(merge: true));
 
+    final processing = _azureMedia.isConfigured;
     final published = project.copyWith(
-      status: _azureMedia.isConfigured
+      status: processing
           ? CreationProjectStatus.processing
           : CreationProjectStatus.published,
       publishState: <String, dynamic>{
@@ -223,7 +239,7 @@ class CreationPublishService {
         'publishRequestId': publishRequestId,
         'allowComments': allowComments,
         'recommend': recommendationEligible,
-        'processingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
+        'processingStatus': processing ? 'queued' : 'uploaded',
         'mediaHash': mediaHash,
       },
     );
@@ -231,9 +247,7 @@ class CreationPublishService {
 
     await _saveState(
       project.projectId,
-      _azureMedia.isConfigured
-          ? CreationPublishStage.processing
-          : CreationPublishStage.published,
+      processing ? CreationPublishStage.processing : CreationPublishStage.published,
       requestId: publishRequestId,
       bytesUploaded: asset.sizeBytes,
       totalBytes: asset.sizeBytes,
@@ -242,6 +256,7 @@ class CreationPublishService {
     return CreationPublishResult(
       postId: postRef.id,
       mediaUrl: downloadUrl,
+      isProcessing: processing,
     );
   }
 
@@ -268,28 +283,13 @@ class CreationPublishService {
     }
   }
 
-  Future<String> _computeLocalFingerprint(String path) async {
-    RandomAccessFile? handle;
+  Future<String> _computeMediaHash(String path) async {
     try {
-      handle = await File(path).open(mode: FileMode.read);
-      const sampleLimit = 1024 * 1024;
-      const readSize = 64 * 1024;
-      var remaining = sampleLimit;
-      var hash = 0x811C9DC5;
-      while (remaining > 0) {
-        final bytes = await handle.read(remaining > readSize ? readSize : remaining);
-        if (bytes.isEmpty) break;
-        for (final byte in bytes) {
-          hash ^= byte;
-          hash = (hash * 0x01000193) & 0xFFFFFFFF;
-        }
-        remaining -= bytes.length;
-      }
-      return hash.toRadixString(16).padLeft(8, '0');
+      return MediaHashService.instance.normalize(
+        await MediaHashService.instance.sha256File(File(path)),
+      );
     } catch (_) {
       return '';
-    } finally {
-      await handle?.close();
     }
   }
 }
