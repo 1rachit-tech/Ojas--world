@@ -123,6 +123,38 @@ service cloud.firestore {
           );
     }
 
+    function reelDeleted(data) {
+      return ('deletedAt' in data && data.deletedAt != null)
+          || ('moderationStatus' in data && data.moderationStatus == 'deleted');
+    }
+
+    function canReadReel(data) {
+      return signedIn()
+          && data.creatorId is string
+          && (
+            data.creatorId == request.auth.uid
+            || (
+              !reelDeleted(data)
+              && (
+                !('visibility' in data)
+                || data.visibility == 'public'
+                || (
+                  data.visibility == 'followers'
+                  && get(/databases/$(database)/documents/publicProfiles/$(data.creatorId)).data.followers is list
+                  && request.auth.uid in get(/databases/$(database)/documents/publicProfiles/$(data.creatorId)).data.followers
+                )
+              )
+            )
+          );
+    }
+
+    function canListPublicReel(data) {
+      return signedIn()
+          && data.creatorId is string
+          && !reelDeleted(data)
+          && (!('visibility' in data) || data.visibility == 'public');
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
@@ -257,7 +289,8 @@ service cloud.firestore {
     }
 
     match /reels/{reelId} {
-      allow get, list: if signedIn();
+      allow get: if canReadReel(resource.data);
+      allow list: if canListPublicReel(resource.data);
       allow create: if signedIn()
           && request.resource.data.creatorId == request.auth.uid
           && request.resource.data.videoUrl is string
