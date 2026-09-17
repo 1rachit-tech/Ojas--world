@@ -21,8 +21,8 @@ class WorkerEditGraphTests(unittest.TestCase):
         self.assertEqual(rotation, 90)
 
     def test_atempo_chain_handles_extreme_supported_speed(self):
-        self.assertEqual(_atempo_chain(4), 'atempo=2.0,atempo=2.0')
-        self.assertEqual(_atempo_chain(0.25), 'atempo=0.5,atempo=0.5')
+        self.assertEqual(_atempo_chain(4), 'atempo=2.0,atempo=2.00000')
+        self.assertEqual(_atempo_chain(0.25), 'atempo=0.5,atempo=0.50000')
 
     def test_effect_mapping_is_bounded(self):
         self.assertTrue(_effect_expression({'effectId': 'warm', 'intensity': 0.5}))
