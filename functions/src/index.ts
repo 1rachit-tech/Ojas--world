@@ -4,9 +4,9 @@ import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
 import {setGlobalOptions} from 'firebase-functions/v2';
 import {onCall} from 'firebase-functions/v2/https';
-import {onDocumentCreated} from 'firebase-functions/v2/firestore';
+import {onDocumentCreated, onDocumentUpdated} from 'firebase-functions/v2/firestore';
 import {defineSecret} from 'firebase-functions/params';
-import {manageReelLifecycle, moderateAndIndexReel} from './reel_lifecycle';
+import {manageReelLifecycle, moderateAndIndexReel, shouldReprocessReel} from './reel_lifecycle';
 import {searchPublicReels} from './reel_search';
 
 initializeApp();
@@ -138,5 +138,11 @@ export const searchReels = onCall(async (request) => searchPublicReels(request))
 export const moderateAndIndexReelOnCreate = onDocumentCreated('reels/{reelId}', async (event) => {
   const snapshot = event.data;
   if (!snapshot) return;
+  await moderateAndIndexReel({data: () => snapshot.data() as Record<string, unknown>, ref: snapshot.ref, params: event.params});
+});
+
+export const moderateAndIndexReelOnUpdate = onDocumentUpdated('reels/{reelId}', async (event) => {
+  if (!shouldReprocessReel(event.data.before.data() as Record<string, unknown>, event.data.after.data() as Record<string, unknown>)) return;
+  const snapshot = event.data.after;
   await moderateAndIndexReel({data: () => snapshot.data() as Record<string, unknown>, ref: snapshot.ref, params: event.params});
 });
