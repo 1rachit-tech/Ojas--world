@@ -21,7 +21,8 @@ class CreationPublishRecoveryItem {
       state.stage == CreationPublishStage.processing ||
       state.stage == CreationPublishStage.publishing;
 
-  double get progress => state.uploadProgress > 0 ? state.uploadProgress : state.progress;
+  double get progress =>
+      state.uploadProgress > 0 ? state.uploadProgress : state.progress;
 }
 
 /// Connects crash/interruption recovery to the Create hub without introducing
@@ -51,6 +52,18 @@ class CreationPublishRecoveryService {
     for (final project in byProjectId.values) {
       final state = await CreationPublishStateStore.instance.load(project.projectId);
       if (state == null || !state.needsAttention()) continue;
+
+      // Once a post document exists, the server owns the processing lifecycle.
+      // Keep queued/processing states out of the retry card unless the project
+      // has no published post id at all.
+      final postId = project.publishState['postId'];
+      final hasPublishedPost = postId is String && postId.trim().isNotEmpty;
+      if (hasPublishedPost &&
+          state.stage != CreationPublishStage.failed &&
+          state.stage != CreationPublishStage.uploading) {
+        continue;
+      }
+
       items.add(CreationPublishRecoveryItem(project: project, state: state));
     }
 
