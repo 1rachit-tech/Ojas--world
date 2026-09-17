@@ -39,6 +39,31 @@ class ReelModel {
   final DateTime createdAt;
   final String audioTrackId;
 
+  ReelModel copyWith({
+    String? thumbnailUrl,
+    String? hlsUrl,
+  }) {
+    return ReelModel(
+      id: id,
+      creatorId: creatorId,
+      caption: caption,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      hlsUrl: hlsUrl ?? this.hlsUrl,
+      mediaHash: mediaHash,
+      views: views,
+      watchTimeMs: watchTimeMs,
+      completions: completions,
+      likes: likes,
+      comments: comments,
+      saves: saves,
+      shares: shares,
+      shopItemIds: shopItemIds,
+      algorithmScore: algorithmScore,
+      createdAt: createdAt,
+      audioTrackId: audioTrackId,
+    );
+  }
+
   factory ReelModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
   ) {

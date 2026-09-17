@@ -1,0 +1,40 @@
+name: Creation Pipeline Check
+
+on:
+  pull_request:
+    paths:
+      - 'lib/creation/**'
+      - 'test/creation_*.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/creation-pipeline-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creation-pipeline-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze creation pipeline
+        run: flutter analyze lib/creation test/creation_*.dart
+
+      - name: Run creation tests
+        run: flutter test test/creation_publish_state_test.dart test/creation_post_composer_test.dart
