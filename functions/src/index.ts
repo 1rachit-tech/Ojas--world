@@ -17,7 +17,7 @@ const AZURE_PROCESSING_QUEUE = 'ojas-media-processing';
 
 interface ConversationData { participants?: unknown; participantProfiles?: unknown; }
 interface MessageData { senderId?: unknown; text?: unknown; type?: unknown; isDeleted?: unknown; }
-interface CreationMediaData { assetId?: unknown; projectId?: unknown; ownerId?: unknown; storagePath?: unknown; contentLength?: unknown; contentType?: unknown; processingStatus?: unknown; }
+interface CreationMediaData { assetId?: unknown; projectId?: unknown; ownerId?: unknown; storagePath?: unknown; contentLength?: unknown; contentType?: unknown; processingStatus?: unknown; queueEnqueuedAt?: unknown; }
 
 const RATE_WINDOW_MS = 60_000;
 const MAX_MESSAGES_PER_INSTANCE_PER_MINUTE = 30;
@@ -62,6 +62,32 @@ function getMediaQueueClient(connectionString: string) {
   if (!trimmed) return null;
   const service = QueueServiceClient.fromConnectionString(trimmed);
   return service.getQueueClient(AZURE_PROCESSING_QUEUE);
+}
+
+function readCreationMediaJob(media: CreationMediaData, fallbackAssetId: string) {
+  const assetId = typeof media.assetId === 'string' ? media.assetId.trim() : fallbackAssetId;
+  const projectId = typeof media.projectId === 'string' ? media.projectId.trim() : '';
+  const ownerId = typeof media.ownerId === 'string' ? media.ownerId.trim() : '';
+  const storagePath = typeof media.storagePath === 'string' ? media.storagePath.trim() : '';
+  const contentType = typeof media.contentType === 'string' ? media.contentType.trim() : '';
+  const contentLength = typeof media.contentLength === 'number' ? media.contentLength : 0;
+  return {assetId, projectId, ownerId, storagePath, contentType, contentLength};
+}
+
+async function enqueueCreationMediaJob(snapshot: FirebaseFirestore.DocumentSnapshot, media: CreationMediaData, connectionString: string, fallbackAssetId: string): Promise<void> {
+  const jobInfo = readCreationMediaJob(media, fallbackAssetId);
+  const processingStatus = typeof media.processingStatus === 'string' ? media.processingStatus.trim().toLowerCase() : '';
+  if (!jobInfo.assetId || !jobInfo.projectId || !jobInfo.ownerId || !jobInfo.storagePath || !jobInfo.contentType || jobInfo.contentLength <= 0 || processingStatus !== 'queued') {
+    console.warn(`Ignoring invalid queued creationMedia job ${fallbackAssetId}.`);
+    return;
+  }
+
+  const queue = getMediaQueueClient(connectionString);
+  if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
+  const job = {schemaVersion: 1, kind: 'creation-video-transcode', assetId: jobInfo.assetId, projectId: jobInfo.projectId, ownerId: jobInfo.ownerId, storagePath: jobInfo.storagePath, contentLength: jobInfo.contentLength, contentType: jobInfo.contentType};
+  await queue.createIfNotExists();
+  await queue.sendMessage(Buffer.from(JSON.stringify(job), 'utf8').toString('base64'));
+  await snapshot.ref.set({queueEnqueuedAt: FieldValue.serverTimestamp(), queueName: AZURE_PROCESSING_QUEUE, updatedAt: FieldValue.serverTimestamp()}, {merge: true});
 }
 
 export const sendMessagePush = onDocumentCreated('conversations/{conversationId}/messages/{messageId}', async (event) => {
@@ -109,26 +135,20 @@ export const enqueueCreationMediaProcessing = onDocumentCreated({document: 'crea
   const snapshot = event.data;
   if (!snapshot) return;
   const media = snapshot.data() as CreationMediaData;
-  const assetId = typeof media.assetId === 'string' ? media.assetId.trim() : event.params.assetId;
-  const projectId = typeof media.projectId === 'string' ? media.projectId.trim() : '';
-  const ownerId = typeof media.ownerId === 'string' ? media.ownerId.trim() : '';
-  const storagePath = typeof media.storagePath === 'string' ? media.storagePath.trim() : '';
-  const contentType = typeof media.contentType === 'string' ? media.contentType.trim() : '';
-  const contentLength = typeof media.contentLength === 'number' ? media.contentLength : 0;
   const processingStatus = typeof media.processingStatus === 'string' ? media.processingStatus.trim().toLowerCase() : '';
-  if (!assetId || !projectId || !ownerId || !storagePath || !contentType || contentLength <= 0 || (processingStatus && processingStatus !== 'queued')) { console.warn(`Ignoring invalid creationMedia job ${event.params.assetId}.`); return; }
-  const queue = getMediaQueueClient(azureQueueConnectionString.value());
-  if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
-  const job = {schemaVersion: 1, kind: 'creation-video-transcode', assetId, projectId, ownerId, storagePath, contentLength, contentType};
-  try {
-    await queue.createIfNotExists();
-    await queue.sendMessage(Buffer.from(JSON.stringify(job), 'utf8').toString('base64'));
-    await snapshot.ref.set({processingStatus: 'queued', queueEnqueuedAt: FieldValue.serverTimestamp(), queueName: AZURE_PROCESSING_QUEUE}, {merge: true});
-  } catch (error) {
-    console.error(`Failed to enqueue creation media ${assetId}.`, error);
-    await snapshot.ref.set({processingStatus: 'enqueue_failed', enqueueError: String(error).slice(0, 500), updatedAt: FieldValue.serverTimestamp()}, {merge: true});
-    throw error;
-  }
+  if (processingStatus !== 'queued') return;
+  await enqueueCreationMediaJob(snapshot, media, azureQueueConnectionString.value(), event.params.assetId);
+});
+
+export const enqueueCreationMediaProcessingOnQueue = onDocumentUpdated({document: 'creationMedia/{assetId}', secrets: [azureQueueConnectionString]}, async (event) => {
+  const change = event.data;
+  if (!change) return;
+  const before = change.before.data() as CreationMediaData;
+  const after = change.after.data() as CreationMediaData;
+  const beforeStatus = typeof before.processingStatus === 'string' ? before.processingStatus.trim().toLowerCase() : '';
+  const afterStatus = typeof after.processingStatus === 'string' ? after.processingStatus.trim().toLowerCase() : '';
+  if (beforeStatus === 'queued' || afterStatus !== 'queued') return;
+  await enqueueCreationMediaJob(change.after, after, azureQueueConnectionString.value(), event.params.assetId);
 });
 
 export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reels/{reelId}', secrets: [azureQueueConnectionString]}, async (event) => {
