@@ -19,10 +19,6 @@ class ReelModel {
     required this.algorithmScore,
     required this.createdAt,
     this.audioTrackId = '',
-    this.mediaProvider = '',
-    this.mediaStoragePath = '',
-    this.hlsStoragePath = '',
-    this.mediaProcessingStatus = '',
   });
 
   final String id;
@@ -42,10 +38,31 @@ class ReelModel {
   final double algorithmScore;
   final DateTime createdAt;
   final String audioTrackId;
-  final String mediaProvider;
-  final String mediaStoragePath;
-  final String hlsStoragePath;
-  final String mediaProcessingStatus;
+
+  ReelModel copyWith({
+    String? thumbnailUrl,
+    String? hlsUrl,
+  }) {
+    return ReelModel(
+      id: id,
+      creatorId: creatorId,
+      caption: caption,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      hlsUrl: hlsUrl ?? this.hlsUrl,
+      mediaHash: mediaHash,
+      views: views,
+      watchTimeMs: watchTimeMs,
+      completions: completions,
+      likes: likes,
+      comments: comments,
+      saves: saves,
+      shares: shares,
+      shopItemIds: shopItemIds,
+      algorithmScore: algorithmScore,
+      createdAt: createdAt,
+      audioTrackId: audioTrackId,
+    );
+  }
 
   factory ReelModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> snapshot,
@@ -71,41 +88,6 @@ class ReelModel {
       algorithmScore: (data['algorithmScore'] as num?)?.toDouble() ?? 0.0,
       createdAt: _readDateTime(data['createdAt']),
       audioTrackId: data['audioTrackId'] as String? ?? '',
-      mediaProvider: data['mediaProvider'] as String? ?? '',
-      mediaStoragePath: data['mediaStoragePath'] as String? ?? '',
-      hlsStoragePath: data['hlsStoragePath'] as String? ?? '',
-      mediaProcessingStatus: data['mediaProcessingStatus'] as String? ?? '',
-    );
-  }
-
-  ReelModel copyWith({
-    String? hlsUrl,
-    String? thumbnailUrl,
-    String? mediaProcessingStatus,
-  }) {
-    return ReelModel(
-      id: id,
-      creatorId: creatorId,
-      caption: caption,
-      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
-      hlsUrl: hlsUrl ?? this.hlsUrl,
-      mediaHash: mediaHash,
-      views: views,
-      watchTimeMs: watchTimeMs,
-      completions: completions,
-      likes: likes,
-      comments: comments,
-      saves: saves,
-      shares: shares,
-      shopItemIds: shopItemIds,
-      algorithmScore: algorithmScore,
-      createdAt: createdAt,
-      audioTrackId: audioTrackId,
-      mediaProvider: mediaProvider,
-      mediaStoragePath: mediaStoragePath,
-      hlsStoragePath: hlsStoragePath,
-      mediaProcessingStatus:
-          mediaProcessingStatus ?? this.mediaProcessingStatus,
     );
   }
 
@@ -132,9 +114,5 @@ class ReelModel {
     'algorithmScore': algorithmScore,
     'createdAt': Timestamp.fromDate(createdAt),
     'audioTrackId': audioTrackId,
-    'mediaProvider': mediaProvider,
-    'mediaStoragePath': mediaStoragePath,
-    'hlsStoragePath': hlsStoragePath,
-    'mediaProcessingStatus': mediaProcessingStatus,
   };
 }
