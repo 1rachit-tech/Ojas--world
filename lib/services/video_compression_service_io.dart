@@ -68,6 +68,17 @@ class VideoCompressionService {
     return VideoDeliveryTier.tier720;
   }
 
+  int _maxShortSide(VideoDeliveryTier tier) {
+    switch (tier) {
+      case VideoDeliveryTier.tier360:
+        return 360;
+      case VideoDeliveryTier.tier480:
+        return 480;
+      case VideoDeliveryTier.tier720:
+        return 720;
+    }
+  }
+
   int _videoBitrateBps(VideoDeliveryTier tier) {
     switch (tier) {
       case VideoDeliveryTier.tier360:
@@ -127,6 +138,7 @@ class VideoCompressionService {
     final sourceHeight = info?.height;
     final durationMs = info?.duration?.round();
     final profile = selectTier(width: sourceWidth, height: sourceHeight);
+    final targetShortSide = _maxShortSide(profile);
 
     final sourceShortSide = sourceWidth != null &&
             sourceHeight != null &&
@@ -186,9 +198,11 @@ class VideoCompressionService {
             outputHeight > 0
         ? (outputWidth < outputHeight ? outputWidth : outputHeight)
         : 0;
+    final outputExtension = output.path.split(RegExp(r'[\\/]')).last.toLowerCase();
     if (outputBytes <= 0 ||
         outputShortSide <= 0 ||
-        outputShortSide > maxDeliveryShortSide) {
+        outputShortSide > targetShortSide ||
+        !outputExtension.endsWith('.mp4')) {
       throw const VideoCompressionException(
         'Device compression produced an invalid delivery video. The original video was not uploaded.',
       );
