@@ -32,9 +32,7 @@ def _firebase() -> firestore.Client:
     if not firebase_admin._apps:
         service_account = os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON', '').strip()
         if service_account:
-            firebase_admin.initialize_app(
-                credentials.Certificate(json.loads(service_account)),
-            )
+            firebase_admin.initialize_app(credentials.Certificate(json.loads(service_account)))
         else:
             firebase_admin.initialize_app()
     return firestore.client()
@@ -45,10 +43,7 @@ def _blob_service() -> BlobServiceClient:
         return BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
     if not STORAGE_ACCOUNT:
         raise RuntimeError('AZURE_STORAGE_ACCOUNT_NAME is required.')
-    return BlobServiceClient(
-        account_url=f'https://{STORAGE_ACCOUNT}.blob.core.windows.net',
-        credential=DefaultAzureCredential(),
-    )
+    return BlobServiceClient(account_url=f'https://{STORAGE_ACCOUNT}.blob.core.windows.net', credential=DefaultAzureCredential())
 
 
 def _queue() -> QueueClient:
@@ -89,40 +84,28 @@ def _probe(source: str) -> dict[str, Any]:
     duration = float((data.get('format') or {}).get('duration') or 0.0)
     size = int(float((data.get('format') or {}).get('size') or 0.0))
     streams = data.get('streams') or []
-    video_stream = next((s for s in streams if s.get('codec_type') == 'video'), {})
+    video_stream = next((stream for stream in streams if stream.get('codec_type') == 'video'), {})
+    has_audio = any(stream.get('codec_type') == 'audio' for stream in streams)
     return {
         'durationMs': int(duration * 1000),
         'sizeBytes': size,
         'width': int(video_stream.get('width') or 0),
         'height': int(video_stream.get('height') or 0),
         'codec': str(video_stream.get('codec_name') or ''),
+        'hasAudio': has_audio,
     }
 
 
 def _upload_blob(service: BlobServiceClient, local_path: Path, storage_path: str, content_type: str) -> None:
     blob = service.get_blob_client(container=CONTAINER, blob=storage_path)
     with local_path.open('rb') as handle:
-        blob.upload_blob(
-            handle,
-            overwrite=True,
-            content_settings=ContentSettings(content_type=content_type),
-        )
+        blob.upload_blob(handle, overwrite=True, content_settings=ContentSettings(content_type=content_type))
 
 
 def _mark_failed(db: firestore.Client, asset_id: str, project_id: str, message: str) -> None:
-    update = {
-        'processingStatus': 'failed',
-        'processingError': message[:1000],
-        'updatedAt': firestore.SERVER_TIMESTAMP,
-    }
+    update = {'processingStatus': 'failed', 'processingError': message[:1000], 'updatedAt': firestore.SERVER_TIMESTAMP}
     db.collection('creationMedia').document(asset_id).set(update, merge=True)
-    db.collection('reels').document(project_id).set(
-        {
-            'mediaProcessingStatus': 'failed',
-            'mediaProcessingError': message[:1000],
-        },
-        merge=True,
-    )
+    db.collection('reels').document(project_id).set({'mediaProcessingStatus': 'failed', 'mediaProcessingError': message[:1000]}, merge=True)
 
 
 def _claim(db: firestore.Client, asset_id: str, job_id: str) -> bool:
@@ -136,19 +119,101 @@ def _claim(db: firestore.Client, asset_id: str, job_id: str) -> bool:
             return False
         data = snapshot.to_dict() or {}
         status = str(data.get('processingStatus', '')).lower()
-        if status == 'ready':
+        if status in {'ready', 'processing'}:
             return False
-        if status == 'processing':
-            return False
-        txn.update(ref, {
-            'processingStatus': 'processing',
-            'processingJobId': job_id,
-            'processingStartedAt': firestore.SERVER_TIMESTAMP,
-            'updatedAt': firestore.SERVER_TIMESTAMP,
-        })
+        txn.update(ref, {'processingStatus': 'processing', 'processingJobId': job_id, 'processingStartedAt': firestore.SERVER_TIMESTAMP, 'updatedAt': firestore.SERVER_TIMESTAMP})
         return True
 
     return apply_claim(transaction)
+
+
+def _bounded_clip(clip: dict[str, Any], source_duration_ms: int) -> tuple[int, int, float, int]:
+    trim_in = max(0, int(clip.get('trimInMs') or 0))
+    trim_out_raw = clip.get('trimOutMs')
+    trim_out = int(trim_out_raw) if isinstance(trim_out_raw, (int, float)) else source_duration_ms
+    trim_out = min(source_duration_ms, trim_out)
+    if trim_out <= trim_in:
+        raise ValueError('Edit graph contains an invalid trim range.')
+    speed = float(clip.get('speed') or 1.0)
+    if speed < 0.25 or speed > 4.0:
+        raise ValueError('Edit graph contains an invalid speed value.')
+    rotation = int(round(float(clip.get('rotation') or 0))) % 360
+    nearest = min((0, 90, 180, 270), key=lambda angle: abs(angle - rotation))
+    if abs(nearest - rotation) > 3:
+        raise ValueError('Edit graph rotation must be close to a 90 degree increment.')
+    return trim_in, trim_out, speed, nearest
+
+
+def _atempo_chain(speed: float) -> str:
+    filters: list[str] = []
+    remaining = speed
+    while remaining < 0.5:
+        filters.append('atempo=0.5')
+        remaining /= 0.5
+    while remaining > 2.0:
+        filters.append('atempo=2.0')
+        remaining /= 2.0
+    filters.append(f'atempo={remaining:.5f}')
+    return ','.join(filters)
+
+
+def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_graph: dict[str, Any]) -> str:
+    raw_timeline = edit_graph.get('timeline')
+    if not isinstance(raw_timeline, list) or not raw_timeline:
+        raw_timeline = [{'trimInMs': 0, 'trimOutMs': metadata['durationMs'], 'speed': 1.0, 'rotation': 0}]
+
+    clips = [item for item in raw_timeline[:32] if isinstance(item, dict)]
+    if not clips:
+        clips = [{'trimInMs': 0, 'trimOutMs': metadata['durationMs'], 'speed': 1.0, 'rotation': 0}]
+
+    filter_parts: list[str] = []
+    concat_inputs: list[str] = []
+    has_audio = bool(metadata.get('hasAudio'))
+
+    for index, clip in enumerate(clips):
+        trim_in, trim_out, speed, rotation = _bounded_clip(clip, metadata['durationMs'])
+        video_label = f'v{index}'
+        video_filters = [f'trim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f}', 'setpts=PTS-STARTPTS']
+        if rotation == 90:
+            video_filters.append('transpose=1')
+        elif rotation == 180:
+            video_filters.extend(['hflip', 'vflip'])
+        elif rotation == 270:
+            video_filters.append('transpose=2')
+        video_filters.append("scale='min(720,iw)':-2:force_original_aspect_ratio=decrease")
+        video_filters.append('setsar=1')
+        filter_parts.append(f'[0:v]{",".join(video_filters)}[{video_label}]')
+        if has_audio:
+            audio_label = f'a{index}'
+            filter_parts.append(f'[0:a]atrim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f},asetpts=PTS-STARTPTS,{_atempo_chain(speed)}[{audio_label}]')
+            concat_inputs.extend([f'[{video_label}][{audio_label}]'])
+        else:
+            concat_inputs.append(f'[{video_label}]')
+
+    if len(clips) == 1:
+        filter_parts.append(f'{concat_inputs[0]}null[vout]')
+        if has_audio:
+            filter_parts.append(f'{concat_inputs[0]}null[aout]') if False else None
+        command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-filter_complex', ';'.join(filter_parts)]
+        command.extend(['-map', '[vout]'])
+        if has_audio:
+            command.extend(['-map', '[a0]', '-c:a', 'aac', '-b:a', '96k'])
+        command.extend(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output])
+        _run(command)
+        return 'edit-graph-v1'
+
+    if has_audio:
+        concat = ''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=1[vout][aout]'
+    else:
+        concat = ''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=0[vout]'
+    filter_parts.append(concat)
+
+    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-filter_complex', ';'.join(filter_parts), '-map', '[vout]']
+    if has_audio:
+        command.extend(['-map', '[aout]', '-c:a', 'aac', '-b:a', '96k'])
+    command.extend(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output])
+    _run(command)
+    return 'edit-graph-v1'
 
 
 def process_job(job: dict[str, Any]) -> None:
@@ -171,6 +236,10 @@ def process_job(job: dict[str, Any]) -> None:
     if not _claim(db, asset_id, job_id):
         logging.info('Skipping already-claimed or completed media job %s.', asset_id)
         return
+
+    reel_snapshot = db.collection('reels').document(project_id).get()
+    reel_data = reel_snapshot.to_dict() if reel_snapshot.exists else {}
+    edit_graph = reel_data.get('editGraph') if isinstance(reel_data.get('editGraph'), dict) else {}
 
     service = _blob_service()
     container_client = service.get_container_client(CONTAINER)
@@ -198,19 +267,11 @@ def process_job(job: dict[str, Any]) -> None:
         if metadata['width'] <= 0 or metadata['height'] <= 0:
             raise ValueError('Unable to read video dimensions.')
 
-        _run([
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-            '-i', str(source),
-            '-vf', "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-            '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart',
-            str(processed),
-        ])
+        worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph)
 
         _run([
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-            '-ss', '0', '-i', str(source),
+            '-ss', '0', '-i', str(processed),
             '-frames:v', '1', '-q:v', '2',
             '-vf', "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
             str(thumb),
@@ -225,26 +286,21 @@ def process_job(job: dict[str, Any]) -> None:
         if ENABLE_HLS:
             hls_manifest = hls_dir / 'index.m3u8'
             _run([
-                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-                '-i', str(processed),
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', str(processed),
                 '-c', 'copy', '-hls_time', '4', '-hls_playlist_type', 'vod',
-                '-hls_segment_filename', str(hls_dir / 'segment%05d.ts'),
-                str(hls_manifest),
+                '-hls_segment_filename', str(hls_dir / 'segment%05d.ts'), str(hls_manifest),
             ])
             hls_base = f'creation/{owner_id}/{project_id}/{asset_id}/hls'
             for item in sorted(hls_dir.iterdir()):
                 if item.is_file():
-                    suffix = 'application/vnd.apple.mpegurl' if item.suffix == '.m3u8' else 'video/mp2t'
-                    _upload_blob(service, item, f'{hls_base}/{item.name}', suffix)
+                    mime = 'application/vnd.apple.mpegurl' if item.suffix == '.m3u8' else 'video/mp2t'
+                    _upload_blob(service, item, f'{hls_base}/{item.name}', mime)
             hls_path = f'{hls_base}/index.m3u8'
 
         processed_size = processed.stat().st_size
         processed_base = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{processed_path}'
         thumb_base = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{thumb_path}'
-        hls_base_url = (
-            f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{hls_path}'
-            if hls_path else ''
-        )
+        hls_base_url = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{hls_path}' if hls_path else ''
 
         db.collection('creationMedia').document(asset_id).set({
             'processingStatus': 'ready',
@@ -256,7 +312,8 @@ def process_job(job: dict[str, Any]) -> None:
             'width': metadata['width'],
             'height': metadata['height'],
             'codec': metadata['codec'],
-            'workerMode': 'ffmpeg-720p-mp4' if not ENABLE_HLS else 'ffmpeg-720p-mp4-hls',
+            'workerMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
+            'editGraphAppliedVersion': 1,
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
@@ -273,7 +330,8 @@ def process_job(job: dict[str, Any]) -> None:
             'mediaWidth': metadata['width'],
             'mediaHeight': metadata['height'],
             'mediaCodec': metadata['codec'],
-            'mediaProcessingMode': 'ffmpeg-720p-mp4' if not ENABLE_HLS else 'ffmpeg-720p-mp4-hls',
+            'mediaProcessingMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
+            'editGraphAppliedVersion': 1,
             'mediaProcessedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
@@ -296,12 +354,7 @@ def main() -> int:
         try:
             job = json.loads(message.content)
             db = _firebase()
-            _mark_failed(
-                db,
-                str(job.get('assetId', '')),
-                str(job.get('projectId', '')),
-                str(error),
-            )
+            _mark_failed(db, str(job.get('assetId', '')), str(job.get('projectId', '')), str(error))
         finally:
             raise
     else:
