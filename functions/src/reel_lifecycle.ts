@@ -10,7 +10,7 @@ type CallableResult = Record<string, unknown>;
 type ReelSnapshot = {
   data: () => Record<string, unknown> | undefined;
   ref: {set: (data: Record<string, unknown>, options?: {merge?: boolean}) => Promise<unknown>};
-  params: {reelId: string };
+  params: {reelId: string};
 };
 
 const MAX_CAPTION_LENGTH = 2200;
@@ -51,7 +51,7 @@ function isBoundedString(value: unknown, maxLength: number): boolean {
   return typeof value === 'string' && value.length <= maxLength;
 }
 
-function validEditGraph(value: unknown): boolean {
+function validEditGraph(value: unknown, ownerId?: string, projectId?: string): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const graph = value as Record<string, unknown>;
   if (graph.version !== 1 && graph.version !== 2) return false;
@@ -105,7 +105,15 @@ function validEditGraph(value: unknown): boolean {
   for (const layer of audio) {
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
     const item = layer as Record<string, unknown>;
-    if (!isBoundedString(item.id, 128) || !isBoundedString(item.uri, 2048)) return false;
+    if (!isBoundedString(item.id, 128)) return false;
+    const hasLocalUri = isBoundedString(item.uri, 2048) && String(item.uri).trim().length > 0;
+    const storagePath = typeof item.storagePath === 'string' ? item.storagePath.trim() : '';
+    const expectedPrefix = ownerId && projectId ? `creation_audio/${ownerId}/${projectId}/` : '';
+    const hasSafeStoragePath = Boolean(expectedPrefix) && storagePath.startsWith(expectedPrefix)
+      && storagePath.length <= 512
+      && !storagePath.includes('..')
+      && storagePath.split('/').length === 4;
+    if (!hasLocalUri && !hasSafeStoragePath) return false;
     if (item.volume != null && (!finiteNumber(item.volume) || item.volume < 0 || item.volume > 2)) return false;
     if (item.muted != null && typeof item.muted !== 'boolean') return false;
   }
@@ -189,7 +197,7 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   if (!rightsConfirmed) problems.push('rights_unconfirmed');
   if (mediaHash.length !== 64) problems.push('invalid_media_hash');
   if (mediaProvider === 'azure' && !['ready', 'published'].includes(mediaProcessingStatus)) problems.push('media_not_ready');
-  if (!validEditGraph(data.editGraph)) problems.push('invalid_edit_graph');
+  if (!validEditGraph(data.editGraph, creatorId, reelId)) problems.push('invalid_edit_graph');
 
   const moderationStatus = problems.length === 0 ? 'approved' : 'review';
   await snapshot.ref.set({moderationStatus, moderationIssues: problems, recommendationEligible: moderationStatus === 'approved' && visibility === 'public' && data.recommendationEligible === true, moderatedAt: FieldValue.serverTimestamp()}, {merge: true});
