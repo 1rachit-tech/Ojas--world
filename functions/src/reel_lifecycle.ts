@@ -16,6 +16,12 @@ type ReelSnapshot = {
 const MAX_CAPTION_LENGTH = 2200;
 const SAFE_VISIBILITIES = new Set(['public', 'followers', 'only me']);
 const SAFE_REUSE_POLICIES = new Set(['allowed', 'followers', 'public']);
+const MAX_TIMELINE_CLIPS = 32;
+const MAX_TEXT_LAYERS = 64;
+const MAX_AUDIO_LAYERS = 32;
+const MAX_STICKER_LAYERS = 64;
+const MAX_EFFECT_LAYERS = 32;
+const MAX_OPERATIONS = 256;
 
 function requireUid(request: CallableRequest): string {
   const uid = request.auth?.uid;
@@ -35,6 +41,78 @@ function cleanCaption(value: unknown): string {
 function normalizeVisibility(value: unknown): string {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : 'public';
   return SAFE_VISIBILITIES.has(normalized) ? normalized : 'public';
+}
+
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isBoundedString(value: unknown, maxLength: number): boolean {
+  return typeof value === 'string' && value.length <= maxLength;
+}
+
+function validEditGraph(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const graph = value as Record<string, unknown>;
+  if (graph.version !== 1) return false;
+
+  const timeline = graph.timeline;
+  const textLayers = graph.textLayers;
+  const audio = graph.audio;
+  const stickers = graph.stickerLayers;
+  const effects = graph.effectLayers;
+  const operations = graph.operations;
+  if (!Array.isArray(timeline) || timeline.length === 0 || timeline.length > MAX_TIMELINE_CLIPS) return false;
+  if (!Array.isArray(textLayers) || textLayers.length > MAX_TEXT_LAYERS) return false;
+  if (!Array.isArray(audio) || audio.length > MAX_AUDIO_LAYERS) return false;
+  if (!Array.isArray(stickers) || stickers.length > MAX_STICKER_LAYERS) return false;
+  if (!Array.isArray(effects) || effects.length > MAX_EFFECT_LAYERS) return false;
+  if (!Array.isArray(operations) || operations.length > MAX_OPERATIONS) return false;
+
+  for (const clip of timeline) {
+    if (!clip || typeof clip !== 'object' || Array.isArray(clip)) return false;
+    const item = clip as Record<string, unknown>;
+    if (!isBoundedString(item.clipId, 128) || !isBoundedString(item.sourceId, 128)) return false;
+    if (!Number.isInteger(item.startMs) || !Number.isInteger(item.endMs) || Number(item.endMs) <= Number(item.startMs)) return false;
+    if (!Number.isInteger(item.trimInMs) || Number(item.trimInMs) < 0) return false;
+    if (item.trimOutMs != null && (!Number.isInteger(item.trimOutMs) || Number(item.trimOutMs) <= Number(item.trimInMs))) return false;
+    if (!finiteNumber(item.speed) || item.speed < 0.25 || item.speed > 4) return false;
+    if (!finiteNumber(item.opacity) || item.opacity < 0 || item.opacity > 1) return false;
+    if (!finiteNumber(item.scale) || item.scale < 0.1 || item.scale > 5) return false;
+    if (!finiteNumber(item.x) || item.x < -1 || item.x > 1) return false;
+    if (!finiteNumber(item.y) || item.y < -1 || item.y > 1) return false;
+    if (!finiteNumber(item.rotation)) return false;
+    const rotation = ((item.rotation % 360) + 360) % 360;
+    if (![0, 90, 180, 270].some((angle) => Math.abs(rotation - angle) < 0.01)) return false;
+    for (const key of ['cropLeft', 'cropTop', 'cropRight', 'cropBottom']) {
+      if (!finiteNumber(item[key]) || item[key] < 0 || item[key] >= 1) return false;
+    }
+    if (Number(item.cropLeft) + Number(item.cropRight) >= 1) return false;
+    if (Number(item.cropTop) + Number(item.cropBottom) >= 1) return false;
+  }
+
+  for (const layer of textLayers) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
+    const item = layer as Record<string, unknown>;
+    if (!isBoundedString(item.id, 128) || !isBoundedString(item.text, 5000)) return false;
+  }
+  for (const layer of audio) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
+    const item = layer as Record<string, unknown>;
+    if (!isBoundedString(item.id, 128) || !isBoundedString(item.uri, 2048)) return false;
+  }
+  for (const layer of stickers) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
+    const item = layer as Record<string, unknown>;
+    if (!isBoundedString(item.id, 128) || !isBoundedString(item.stickerId, 256)) return false;
+  }
+  for (const layer of effects) {
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
+    const item = layer as Record<string, unknown>;
+    if (!isBoundedString(item.id, 128) || !isBoundedString(item.effectId, 128)) return false;
+    if (!finiteNumber(item.intensity) || item.intensity < 0 || item.intensity > 1) return false;
+  }
+  return true;
 }
 
 export async function manageReelLifecycle(request: CallableRequest): Promise<CallableResult> {
@@ -103,6 +181,7 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   if (!rightsConfirmed) problems.push('rights_unconfirmed');
   if (mediaHash.length !== 64) problems.push('invalid_media_hash');
   if (mediaProvider === 'azure' && !['ready', 'published'].includes(mediaProcessingStatus)) problems.push('media_not_ready');
+  if (!validEditGraph(data.editGraph)) problems.push('invalid_edit_graph');
 
   const moderationStatus = problems.length === 0 ? 'approved' : 'review';
   await snapshot.ref.set({moderationStatus, moderationIssues: problems, recommendationEligible: moderationStatus === 'approved' && visibility === 'public' && data.recommendationEligible === true, moderatedAt: FieldValue.serverTimestamp()}, {merge: true});
@@ -127,6 +206,7 @@ export function shouldReprocessReel(before: Record<string, unknown>, after: Reco
     'mediaProcessingStatus',
     'recommendationEligible',
     'deletedAt',
+    'editGraph',
   ];
   return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }
