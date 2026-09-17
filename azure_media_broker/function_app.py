@@ -22,7 +22,9 @@ _PLAYBACK_SAS_TTL_MINUTES = 15
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-_SAFE_CREATION_PATH = re.compile(r"^creation/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}/[^/]{1,512}$")
+_SAFE_CREATION_PATH = re.compile(
+    r"^creation/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}(?:/[^/]{1,512})?$"
+)
 _CREATION_VIDEO_TYPES = {
     "video/mp4",
     "video/quicktime",
@@ -399,7 +401,10 @@ def creation_playback_urls(req: func.HttpRequest) -> func.HttpResponse:
             continue
 
         storage_path = str(
-            data.get("hlsStoragePath") or data.get("mediaStoragePath") or "",
+            data.get("processedVideoStoragePath")
+            or data.get("hlsStoragePath")
+            or data.get("mediaStoragePath")
+            or "",
         ).strip()
         if (
             not storage_path
@@ -421,10 +426,35 @@ def creation_playback_urls(req: func.HttpRequest) -> func.HttpResponse:
                 expiry=expiry,
             )
             base = f"https://{_ACCOUNT_NAME}.blob.core.windows.net/{_CONTAINER}/{storage_path}"
-            result[reel_id] = {
+            response: dict[str, Any] = {
                 "playbackUrl": f"{base}?{sas}",
                 "expiresAt": expiry.isoformat(),
             }
+
+            thumbnail_path = str(data.get("thumbnailStoragePath", "")).strip()
+            if (
+                thumbnail_path
+                and ".." not in thumbnail_path
+                and _SAFE_CREATION_PATH.fullmatch(thumbnail_path)
+                and thumbnail_path.startswith(f"creation/{creator_id}/")
+            ):
+                try:
+                    thumb_blob = _get_blob_client(thumbnail_path)
+                    thumb_blob.get_blob_properties()
+                    thumb_sas = generate_blob_sas(
+                        account_name=_ACCOUNT_NAME,
+                        container_name=_CONTAINER,
+                        blob_name=thumbnail_path,
+                        account_key=_ACCOUNT_KEY,
+                        permission=BlobSasPermissions(read=True),
+                        expiry=expiry,
+                    )
+                    thumb_base = f"https://{_ACCOUNT_NAME}.blob.core.windows.net/{_CONTAINER}/{thumbnail_path}"
+                    response["thumbnailUrl"] = f"{thumb_base}?{thumb_sas}"
+                except Exception:
+                    logging.exception("Thumbnail URL generation failed for reel %s", reel_id)
+
+            result[reel_id] = response
         except Exception:
             logging.exception("Playback URL generation failed for reel %s", reel_id)
 
