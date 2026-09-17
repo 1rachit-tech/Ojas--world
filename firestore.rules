@@ -148,11 +148,16 @@ service cloud.firestore {
           );
     }
 
-    function canListPublicReel(data) {
+    function canListReel(data) {
       return signedIn()
           && data.creatorId is string
-          && !reelDeleted(data)
-          && (!('visibility' in data) || data.visibility == 'public');
+          && (
+            data.creatorId == request.auth.uid
+            || (
+              !reelDeleted(data)
+              && (!('visibility' in data) || data.visibility == 'public')
+            )
+          );
     }
 
     match /users/{userId} {
@@ -290,7 +295,7 @@ service cloud.firestore {
 
     match /reels/{reelId} {
       allow get: if canReadReel(resource.data);
-      allow list: if canListPublicReel(resource.data);
+      allow list: if canListReel(resource.data);
       allow create: if signedIn()
           && request.resource.data.creatorId == request.auth.uid
           && request.resource.data.videoUrl is string
