@@ -264,6 +264,13 @@ service cloud.firestore {
           && request.resource.data.videoUrl.size() > 0
           && request.resource.data.videoUrl.size() <= 2048
           && request.resource.data.hlsUrl == request.resource.data.videoUrl
+          && request.resource.data.moderationStatus == 'pending'
+          && request.resource.data.mediaProcessingStatus is string
+          && (
+            request.resource.data.mediaProcessingStatus == 'queued'
+            || request.resource.data.mediaProcessingStatus == 'uploaded'
+          )
+          && request.resource.data.copyrightConfirmed == true
           && request.resource.data.caption is string
           && request.resource.data.caption.size() <= 2200
           && request.resource.data.shaderUsed is string
