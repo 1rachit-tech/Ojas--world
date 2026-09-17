@@ -1,3 +1,4 @@
+import {QueueClient} from '@azure/storage-queue';
 import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
@@ -22,6 +23,16 @@ interface MessageData {
   text?: unknown;
   type?: unknown;
   isDeleted?: unknown;
+}
+
+interface CreationMediaData {
+  assetId?: unknown;
+  projectId?: unknown;
+  ownerId?: unknown;
+  storagePath?: unknown;
+  contentLength?: unknown;
+  contentType?: unknown;
+  processingStatus?: unknown;
 }
 
 const RATE_WINDOW_MS = 60_000;
@@ -91,6 +102,19 @@ function tokenListFromUserData(data: Record<string, unknown>): string[] {
   }
 
   return [];
+}
+
+function getMediaQueueClient(): QueueClient | null {
+  const connectionString = process.env.AZURE_STORAGE_QUEUE_CONNECTION_STRING?.trim();
+  const queueName = (
+    process.env.AZURE_STORAGE_PROCESSING_QUEUE ?? 'ojas-media-processing'
+  ).trim().toLowerCase();
+
+  if (!connectionString || !queueName) {
+    return null;
+  }
+
+  return QueueClient.fromConnectionString(connectionString, queueName);
 }
 
 export const sendMessagePush = onDocumentCreated(
@@ -212,5 +236,83 @@ export const sendMessagePush = onDocumentCreated(
     await userRef.update({
       fcmTokens: tokens.filter((token) => !invalidTokens.includes(token)),
     });
+  },
+);
+
+export const enqueueCreationMediaProcessing = onDocumentCreated(
+  'creationMedia/{assetId}',
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) {
+      return;
+    }
+
+    const media = snapshot.data() as CreationMediaData;
+    const assetId = typeof media.assetId === 'string' ? media.assetId.trim() : event.params.assetId;
+    const projectId = typeof media.projectId === 'string' ? media.projectId.trim() : '';
+    const ownerId = typeof media.ownerId === 'string' ? media.ownerId.trim() : '';
+    const storagePath = typeof media.storagePath === 'string' ? media.storagePath.trim() : '';
+    const contentType = typeof media.contentType === 'string' ? media.contentType.trim() : '';
+    const contentLength = typeof media.contentLength === 'number' ? media.contentLength : 0;
+    const processingStatus = typeof media.processingStatus === 'string'
+      ? media.processingStatus.trim().toLowerCase()
+      : '';
+
+    if (
+      !assetId ||
+      !projectId ||
+      !ownerId ||
+      !storagePath ||
+      !contentType ||
+      contentLength <= 0 ||
+      (processingStatus && processingStatus !== 'queued')
+    ) {
+      console.warn(`Ignoring invalid creationMedia job ${event.params.assetId}.`);
+      return;
+    }
+
+    const queue = getMediaQueueClient();
+    if (!queue) {
+      console.warn(
+        'Azure media processing queue is not configured; leaving media in queued state.',
+      );
+      return;
+    }
+
+    const job = {
+      schemaVersion: 1,
+      kind: 'creation-video-transcode',
+      assetId,
+      projectId,
+      ownerId,
+      storagePath,
+      contentLength,
+      contentType,
+    };
+
+    try {
+      await queue.createIfNotExists();
+      const message = Buffer.from(JSON.stringify(job), 'utf8').toString('base64');
+      await queue.sendMessage(message);
+      await snapshot.ref.set(
+        {
+          processingStatus: 'queued',
+          queueEnqueuedAt: FieldValue.serverTimestamp(),
+          queueName: queue.name,
+        },
+        {merge: true},
+      );
+    } catch (error) {
+      console.error(`Failed to enqueue creation media ${assetId}.`, error);
+      await snapshot.ref.set(
+        {
+          processingStatus: 'enqueue_failed',
+          enqueueError: String(error).slice(0, 500),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        {merge: true},
+      );
+      throw error;
+    }
   },
 );
