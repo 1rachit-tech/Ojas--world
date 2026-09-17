@@ -11,15 +11,17 @@ import firebase_admin
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from azure.storage.queue import QueueClient
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
 MAX_VIDEO_BYTES = 512 * 1024 * 1024
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_SOURCE_SECONDS = 15 * 60
 MAX_OUTPUT_WIDTH = 720
 MAX_TEXT_CHARS = 120
 MAX_TEXT_LAYERS = 64
+MAX_AUDIO_LAYERS = 32
 MAX_EFFECT_LAYERS = 32
 QUEUE_VISIBILITY_SECONDS = 3600
 
@@ -40,6 +42,12 @@ def _firebase() -> firestore.Client:
         else:
             firebase_admin.initialize_app()
     return firestore.client()
+
+
+def _firebase_bucket(bucket_name: str):
+    if not bucket_name:
+        raise RuntimeError('Creation audio storage bucket is not configured.')
+    return storage.bucket(bucket_name, app=firebase_admin.get_app())
 
 
 def _blob_service() -> BlobServiceClient:
@@ -64,6 +72,18 @@ def _safe_creation_path(path: str) -> bool:
         and all(part and part not in {'.', '..'} for part in parts[1:])
         and all(all(c.isalnum() or c in '_-' for c in part) for part in parts[1:3])
         and len(parts[3]) <= 512
+    )
+
+
+def _safe_audio_storage_path(path: str, owner_id: str, project_id: str) -> bool:
+    parts = path.split('/')
+    return (
+        len(parts) == 4
+        and parts[0] == 'creation_audio'
+        and parts[1] == owner_id
+        and parts[2] == project_id
+        and 1 <= len(parts[3]) <= 256
+        and all(char.isalnum() or char in '._-' for char in parts[3])
     )
 
 
@@ -172,7 +192,7 @@ def _escape_drawtext_text(value: str) -> str:
     return compact.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'").replace('%', '\\%')
 
 
-def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[float, float] | None:
+def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[int, int] | None:
     start_raw = layer.get('startMs', 0)
     end_raw = layer.get('endMs', duration_ms)
     if not isinstance(start_raw, (int, float)) or not isinstance(end_raw, (int, float)):
@@ -181,7 +201,7 @@ def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[float, fl
     end = max(start + 1, min(duration_ms, int(end_raw)))
     if end <= start:
         return None
-    return start / 1000.0, end / 1000.0
+    return start, end
 
 
 def _effect_expression(effect: dict[str, Any]) -> str | None:
@@ -225,7 +245,7 @@ def _append_visual_layers(filter_parts: list[str], input_label: str, edit_graph:
             timing = _safe_layer_time(raw, duration_ms)
             if not text or timing is None:
                 continue
-            start, end = timing
+            start_ms, end_ms = timing
             try:
                 x = max(-0.4, min(1.4, float(raw.get('x') or 0.0)))
                 y = max(-0.2, min(1.2, float(raw.get('y') or 0.0)))
@@ -238,15 +258,15 @@ def _append_visual_layers(filter_parts: list[str], input_label: str, edit_graph:
                 f"drawtext=fontfile='{FONT_FILE}':text='{escaped}':"
                 f'fontcolor=white:fontsize={font_size}:borderw=2:bordercolor=black@0.85:'
                 f'box=1:boxcolor=black@0.30:boxborderw=10:'
-                f"x='(w-text_w)/2+({x:.4f}*w)':y='({y:.4f}*h)':"
-                f"enable='between(t,{start:.3f},{end:.3f})'"
+                f"x='(w-text_w)/2+({x:.4f}*w)':y='({y / 1000.0 if False else y:.4f}*h)':"
+                f"enable='between(t,{start_ms / 1000.0:.3f},{end_ms / 1000.0:.3f})'"
             )
             filter_parts.append(f'[{current}]{drawtext}[{output_label}]')
             current = output_label
     return current
 
 
-def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_graph: dict[str, Any]) -> str:
+def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_graph: dict[str, Any], audio_files: list[tuple[dict[str, Any], Path]]) -> str:
     raw_timeline = edit_graph.get('timeline')
     if not isinstance(raw_timeline, list) or not raw_timeline:
         raw_timeline = [{'trimInMs': 0, 'trimOutMs': metadata['durationMs'], 'speed': 1.0, 'rotation': 0}]
@@ -302,13 +322,49 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
             final_video_input = 'basev'
             final_audio = None
 
+    if audio_files:
+        duration_sec = max(0.001, rendered_duration_ms / 1000.0)
+        mix_inputs: list[str] = []
+        if final_audio:
+            mix_inputs.append(final_audio)
+        else:
+            filter_parts.append(f'anullsrc=r=48000:cl=stereo:d={duration_sec:.3f}[base_silence]')
+            mix_inputs.append('base_silence')
+
+        for index, (layer, _) in enumerate(audio_files):
+            if layer.get('muted') is True:
+                continue
+            timing = _safe_layer_time(layer, rendered_duration_ms)
+            if timing is None:
+                continue
+            start_ms, end_ms = timing
+            clip_duration = max(0.001, (end_ms - start_ms) / 1000.0)
+            try:
+                volume = max(0.0, min(2.0, float(layer.get('volume') or 1.0)))
+            except (TypeError, ValueError):
+                volume = 1.0
+            input_index = index + 1
+            output_label = f'addaudio{index}'
+            filter_parts.append(
+                f'[{input_index}:a]atrim=start=0:end={clip_duration:.3f},'
+                f'asetpts=PTS-STARTPTS,volume={volume:.3f},'
+                f'aresample=async=1:first_pts=0,adelay={start_ms}|{start_ms},'
+                f'apad=whole_dur={duration_sec:.3f},atrim=end={duration_sec:.3f}[{output_label}]'
+            )
+            mix_inputs.append(output_label)
+
+        if len(mix_inputs) > 1:
+            filter_parts.append(''.join(f'[{label}]' for label in mix_inputs) + f'amix=inputs={len(mix_inputs)}:duration=first:dropout_transition=0,aresample=async=1:first_pts=0[audiomix]')
+            final_audio = 'audiomix'
+        elif mix_inputs:
+            final_audio = mix_inputs[0]
+
     final_video = _append_visual_layers(filter_parts, final_video_input, edit_graph, rendered_duration_ms)
 
-    command = [
-        'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source,
-        '-filter_complex', ';'.join(filter_parts),
-        '-map', f'[{final_video}]',
-    ]
+    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source]
+    for _, audio_path in audio_files:
+        command.extend(['-i', str(audio_path)])
+    command.extend(['-filter_complex', ';'.join(filter_parts), '-map', f'[{final_video}]'])
     if final_audio:
         command.extend(['-map', f'[{final_audio}]', '-c:a', 'aac', '-b:a', '96k'])
     command.extend([
@@ -317,7 +373,35 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
         '-movflags', '+faststart', output,
     ])
     _run(command)
-    return 'edit-graph-v2-render'
+    return 'edit-graph-v3-render'
+
+
+def _download_audio_layers(edit_graph: dict[str, Any], owner_id: str, project_id: str, root: Path) -> tuple[list[tuple[dict[str, Any], Path]], Any, list[str]]:
+    raw_audio = edit_graph.get('audio')
+    if not isinstance(raw_audio, list) or not raw_audio:
+        return [], None, []
+    bucket_name = edit_graph.get('audioStorageBucket')
+    if not isinstance(bucket_name, str) or not bucket_name.strip():
+        raise ValueError('Creation audio storage bucket is missing from the edit graph.')
+    bucket = _firebase_bucket(bucket_name.strip())
+    files: list[tuple[dict[str, Any], Path]] = []
+    paths: list[str] = []
+    for index, raw in enumerate(raw_audio[:MAX_AUDIO_LAYERS]):
+        if not isinstance(raw, dict) or raw.get('muted') is True:
+            continue
+        storage_path = raw.get('storagePath')
+        if not isinstance(storage_path, str) or not _safe_audio_storage_path(storage_path, owner_id, project_id):
+            raise ValueError('Creation audio asset path is invalid.')
+        target = root / f'audio_{index}'
+        blob = bucket.blob(storage_path)
+        blob.reload()
+        size = int(blob.size or 0)
+        if size <= 0 or size > MAX_AUDIO_BYTES:
+            raise ValueError('Creation audio asset exceeds the 10 MB limit.')
+        blob.download_to_filename(str(target))
+        files.append((raw, target))
+        paths.append(storage_path)
+    return files, bucket, paths
 
 
 def process_job(job: dict[str, Any]) -> None:
@@ -371,7 +455,8 @@ def process_job(job: dict[str, Any]) -> None:
         if metadata['width'] <= 0 or metadata['height'] <= 0:
             raise ValueError('Unable to read video dimensions.')
 
-        worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph)
+        audio_files, firebase_audio_bucket, audio_storage_paths = _download_audio_layers(edit_graph, owner_id, project_id, root)
+        worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph, audio_files)
 
         _run([
             'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-ss', '0', '-i', str(processed),
@@ -415,7 +500,8 @@ def process_job(job: dict[str, Any]) -> None:
             'height': metadata['height'],
             'codec': metadata['codec'],
             'workerMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 2,
+            'editGraphAppliedVersion': 3,
+            'audioLayersApplied': len(audio_files),
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
@@ -433,9 +519,17 @@ def process_job(job: dict[str, Any]) -> None:
             'mediaHeight': metadata['height'],
             'mediaCodec': metadata['codec'],
             'mediaProcessingMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 2,
+            'editGraphAppliedVersion': 3,
+            'audioLayersApplied': len(audio_files),
             'mediaProcessedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
+
+        if firebase_audio_bucket is not None:
+            for path in audio_storage_paths:
+                try:
+                    firebase_audio_bucket.blob(path).delete()
+                except Exception:
+                    logging.warning('Could not remove temporary creation audio asset %s.', path)
 
         logging.info('Creation media %s processed successfully.', asset_id)
 
