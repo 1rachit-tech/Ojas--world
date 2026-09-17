@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ojas_app/creation/models/creation_publish_state.dart';
 import 'package:ojas_app/creation/models/creation_post_composer.dart';
+import 'package:ojas_app/services/video_compression_service.dart';
 
 void main() {
   test('publish state clamps upload progress and round-trips', () {
@@ -37,5 +38,24 @@ void main() {
     expect(restored.mentions.single.userId, 'u1');
     expect(restored.hashtags.single.tag, 'ojas');
     expect(restored.aiGeneratedDisclosure, isTrue);
+  });
+
+  test('device delivery tier maps source short-side to 360p, 480p and 720p', () {
+    expect(
+      VideoCompressionService.selectTier(width: 360, height: 640),
+      VideoDeliveryTier.tier360,
+    );
+    expect(
+      VideoCompressionService.selectTier(width: 480, height: 854),
+      VideoDeliveryTier.tier480,
+    );
+    expect(
+      VideoCompressionService.selectTier(width: 1080, height: 1920),
+      VideoDeliveryTier.tier720,
+    );
+    expect(
+      VideoCompressionService.selectTier(width: 3840, height: 2160),
+      VideoDeliveryTier.tier720,
+    );
   });
 }
