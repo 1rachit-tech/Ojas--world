@@ -97,10 +97,14 @@ class CreationValidationService {
       if (clip.speed < 0.25 || clip.speed > 4.0) errors.add('Timeline contains an unsupported speed value.');
       if (clip.scale < 0.1 || clip.scale > 5.0) errors.add('Timeline contains an unsupported scale value.');
       if (clip.opacity < 0.0 || clip.opacity > 1.0) errors.add('Timeline contains an invalid opacity value.');
-      if (clip.rotation.isNaN || clip.rotation.isInfinite) errors.add('Timeline contains an invalid rotation value.');
-      final normalizedRotation = clip.rotation % 90;
-      if ((normalizedRotation.abs() > 0.01) && ((90 - normalizedRotation.abs()).abs() > 0.01)) {
-        errors.add('Timeline rotation must use 90° increments.');
+      if (clip.rotation.isNaN || clip.rotation.isInfinite) {
+        errors.add('Timeline contains an invalid rotation value.');
+      } else {
+        final normalizedRotation = clip.rotation % 360;
+        final nearestQuarterTurn = <double>[0, 90, 180, 270].reduce(
+          (best, angle) => (angle - normalizedRotation).abs() < (best - normalizedRotation).abs() ? angle : best,
+        );
+        if ((nearestQuarterTurn - normalizedRotation).abs() > 0.01) errors.add('Timeline rotation must use 90° increments.');
       }
       if (clip.x < -1.0 || clip.x > 1.0 || clip.y < -1.0 || clip.y > 1.0) {
         errors.add('Timeline transform position is outside the supported range.');
@@ -110,7 +114,13 @@ class CreationValidationService {
         errors.add('Timeline contains an invalid crop rectangle.');
       }
 
-      final source = project.mediaAssets.where((asset) => asset.assetId == clip.sourceId).firstOrNull;
+      CreationMediaAsset? source;
+      for (final asset in project.mediaAssets) {
+        if (asset.assetId == clip.sourceId) {
+          source = asset;
+          break;
+        }
+      }
       final sourceDuration = source?.durationMs;
       if (sourceDuration != null) {
         if (clip.trimInMs >= sourceDuration) errors.add('Timeline trim starts beyond the source duration.');
@@ -154,7 +164,7 @@ class CreationValidationService {
       final x = _doubleValue(layer['x']);
       final y = _doubleValue(layer['y']);
       if (scale != null && (scale < 0.1 || scale > 5)) errors.add('Sticker scale is outside the supported range.');
-      if (x != null && (x < -1 || x > 1) || y != null && (y < -1 || y > 1)) errors.add('Sticker position is outside the supported range.');
+      if ((x != null && (x < -1 || x > 1)) || (y != null && (y < -1 || y > 1))) errors.add('Sticker position is outside the supported range.');
     }
     for (final layer in project.effectLayers) {
       final intensity = _doubleValue(layer['intensity']);
