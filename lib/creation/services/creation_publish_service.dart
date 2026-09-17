@@ -121,8 +121,8 @@ class CreationPublishService {
           localUploadState.requestId == publishRequestId &&
           localUploadState.uploadSourceFingerprint == uploadFingerprint &&
           localUploadState.uploadTotalBytes == uploadBytes;
-      final resumeBytes = checkpointMatches ? localUploadState!.uploadBytes : 0;
-      final resumeStoragePath = checkpointMatches ? localUploadState!.uploadStoragePath : null;
+      final resumeBytes = checkpointMatches ? localUploadState.uploadBytes : 0;
+      final resumeStoragePath = checkpointMatches ? localUploadState.uploadStoragePath : null;
 
       await _saveState(
         project.projectId,
@@ -145,8 +145,8 @@ class CreationPublishService {
         deferProcessing: true,
         resumeBytes: resumeBytes,
         resumeStoragePath: resumeStoragePath,
-        onCheckpoint: (uploaded, total, checkpointStoragePath) {
-          _saveState(
+        onCheckpoint: (uploaded, total, checkpointStoragePath) async {
+          await _saveState(
             project.projectId,
             CreationPublishStage.uploading,
             requestId: publishRequestId,
@@ -189,7 +189,7 @@ class CreationPublishService {
         postId: postRef.id,
         mediaAssetId: asset.assetId,
         videoUrl: downloadUrl,
-        mediaStoragePath: storagePath ?? '',
+        mediaStoragePath: storagePath,
         contentLength: uploadBytes,
         mediaHash: mediaHash,
         editGraph: editGraph,
@@ -260,7 +260,7 @@ class CreationPublishService {
         assetId: asset.assetId,
         projectId: project.projectId,
         ownerId: user.uid,
-        storagePath: storagePath ?? '',
+        storagePath: storagePath,
         contentLength: uploadBytes,
         deviceCompressed: compression['applied'] == true,
         deviceDeliveryReady: compression['deliveryReady'] == true,
