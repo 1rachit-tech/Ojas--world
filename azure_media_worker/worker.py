@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -174,6 +175,51 @@ def _bounded_clip(clip: dict[str, Any], source_duration_ms: int) -> tuple[int, i
     return trim_in, trim_out, speed, nearest
 
 
+def _is_identity_edit_graph(edit_graph: dict[str, Any], duration_ms: int) -> bool:
+    for key in ('audio', 'textLayers', 'stickerLayers', 'effectLayers', 'operations'):
+        value = edit_graph.get(key)
+        if isinstance(value, list) and value:
+            return False
+
+    raw_timeline = edit_graph.get('timeline')
+    if raw_timeline is None:
+        return True
+    if not isinstance(raw_timeline, list) or len(raw_timeline) != 1:
+        return False
+    clip = raw_timeline[0]
+    if not isinstance(clip, dict):
+        return False
+
+    try:
+        trim_in = int(clip.get('trimInMs') or 0)
+        trim_out_raw = clip.get('trimOutMs')
+        trim_out = int(trim_out_raw) if isinstance(trim_out_raw, (int, float)) else duration_ms
+        speed = float(clip.get('speed') or 1.0)
+        rotation = int(round(float(clip.get('rotation') or 0))) % 360
+    except (TypeError, ValueError):
+        return False
+
+    if trim_in != 0 or trim_out != duration_ms or abs(speed - 1.0) > 0.001 or rotation != 0:
+        return False
+
+    # Reject explicit non-default per-clip transforms that are not rendered by
+    # the identity path. Unknown metadata is ignored for forward compatibility.
+    if 'opacity' in clip and abs(float(clip.get('opacity') or 1.0) - 1.0) > 0.001:
+        return False
+    for key in ('flipX', 'flipY'):
+        if clip.get(key) is True:
+            return False
+    return True
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _atempo_chain(speed: float) -> str:
     filters: list[str] = []
     remaining = speed
@@ -188,8 +234,8 @@ def _atempo_chain(speed: float) -> str:
 
 
 def _escape_drawtext_text(value: str) -> str:
-    compact = ' '.join(value.replace('\n', ' ').split())[:MAX_TEXT_CHARS]
-    return compact.replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'").replace('%', '\\%')
+    compact = ' '.join(value.replace('\\n', ' ').split())[:MAX_TEXT_CHARS]
+    return compact.replace('\\\\', '\\\\').replace(':', '\\:').replace("'", "\\'").replace('%', '\\%')
 
 
 def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[int, int] | None:
@@ -411,6 +457,7 @@ def process_job(job: dict[str, Any]) -> None:
     source_path = str(job.get('storagePath', '')).strip()
     content_type = str(job.get('contentType', '')).strip().lower()
     content_length = int(job.get('contentLength') or 0)
+    device_compressed = job.get('deviceCompressed') is True
 
     if not asset_id or not project_id or not owner_id or not _safe_creation_path(source_path):
         raise ValueError('Invalid creation processing job.')
@@ -455,25 +502,45 @@ def process_job(job: dict[str, Any]) -> None:
         if metadata['width'] <= 0 or metadata['height'] <= 0:
             raise ValueError('Unable to read video dimensions.')
 
-        audio_files, firebase_audio_bucket, audio_storage_paths = _download_audio_layers(edit_graph, owner_id, project_id, root)
-        worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph, audio_files)
+        delivery_source = source
+        audio_files: list[tuple[dict[str, Any], Path]] = []
+        firebase_audio_bucket = None
+        audio_storage_paths: list[str] = []
+        pass_through = (
+            device_compressed
+            and metadata['codec'].lower() == 'h264'
+            and max(metadata['width'], metadata['height']) <= 1280
+            and min(metadata['width'], metadata['height']) <= MAX_OUTPUT_WIDTH
+            and _is_identity_edit_graph(edit_graph, metadata['durationMs'])
+        )
+
+        if pass_through:
+            worker_mode = 'device-compressed-pass-through'
+            logging.info('Using device-compressed source directly; server video transcode skipped for %s.', asset_id)
+        else:
+            audio_files, firebase_audio_bucket, audio_storage_paths = _download_audio_layers(edit_graph, owner_id, project_id, root)
+            worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph, audio_files)
+            delivery_source = processed
 
         _run([
-            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-ss', '0', '-i', str(processed),
+            'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-ss', '0', '-i', str(delivery_source),
             '-frames:v', '1', '-q:v', '2', '-vf', "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease",
             str(thumb),
         ])
 
-        processed_path = f'creation/{owner_id}/{project_id}/{asset_id}/processed.mp4'
+        if pass_through:
+            processed_path = source_path
+        else:
+            processed_path = f'creation/{owner_id}/{project_id}/{asset_id}/processed.mp4'
+            _upload_blob(service, processed, processed_path, 'video/mp4')
         thumb_path = f'creation/{owner_id}/{project_id}/{asset_id}/thumbnail.jpg'
-        _upload_blob(service, processed, processed_path, 'video/mp4')
         _upload_blob(service, thumb, thumb_path, 'image/jpeg')
 
         hls_path = ''
         if ENABLE_HLS:
             hls_manifest = hls_dir / 'index.m3u8'
             _run([
-                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', str(processed),
+                'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', str(delivery_source),
                 '-c', 'copy', '-hls_time', '4', '-hls_playlist_type', 'vod',
                 '-hls_segment_filename', str(hls_dir / 'segment%05d.ts'), str(hls_manifest),
             ])
@@ -484,10 +551,12 @@ def process_job(job: dict[str, Any]) -> None:
                     _upload_blob(service, item, f'{hls_base}/{item.name}', mime)
             hls_path = f'{hls_base}/index.m3u8'
 
-        processed_size = processed.stat().st_size
+        processed_size = delivery_source.stat().st_size
+        media_hash = _sha256_file(delivery_source)
         processed_base = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{processed_path}'
         thumb_base = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{thumb_path}'
         hls_base_url = f'https://{STORAGE_ACCOUNT}.blob.core.windows.net/{CONTAINER}/{hls_path}' if hls_path else ''
+        media_mode = worker_mode if not ENABLE_HLS else f'{worker_mode}-hls'
 
         db.collection('creationMedia').document(asset_id).set({
             'processingStatus': 'ready',
@@ -499,8 +568,9 @@ def process_job(job: dict[str, Any]) -> None:
             'width': metadata['width'],
             'height': metadata['height'],
             'codec': metadata['codec'],
-            'workerMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 3,
+            'mediaHash': media_hash,
+            'workerMode': media_mode,
+            'editGraphAppliedVersion': 4 if pass_through else 3,
             'audioLayersApplied': len(audio_files),
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
@@ -518,8 +588,9 @@ def process_job(job: dict[str, Any]) -> None:
             'mediaWidth': metadata['width'],
             'mediaHeight': metadata['height'],
             'mediaCodec': metadata['codec'],
-            'mediaProcessingMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 3,
+            'mediaProcessingMode': media_mode,
+            'mediaHash': media_hash,
+            'editGraphAppliedVersion': 4 if pass_through else 3,
             'audioLayersApplied': len(audio_files),
             'mediaProcessedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
