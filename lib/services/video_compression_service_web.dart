@@ -9,6 +9,7 @@ class VideoCompressionResult {
     required this.compressedBytes,
     required this.profile,
     required this.compressionApplied,
+    required this.deliveryReady,
     this.sourceWidth,
     this.sourceHeight,
     this.outputWidth,
@@ -21,6 +22,7 @@ class VideoCompressionResult {
   final int compressedBytes;
   final VideoDeliveryTier profile;
   final bool compressionApplied;
+  final bool deliveryReady;
   final int? sourceWidth;
   final int? sourceHeight;
   final int? outputWidth;
@@ -81,6 +83,7 @@ class VideoCompressionService {
       compressedBytes: bytes,
       profile: VideoDeliveryTier.tier720,
       compressionApplied: false,
+      deliveryReady: false,
     );
   }
 }
