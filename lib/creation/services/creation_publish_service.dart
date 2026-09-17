@@ -115,15 +115,63 @@ class CreationPublishService {
     String? storagePath;
 
     if (_azureMedia.isConfigured) {
-      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: uploadBytes);
+      final uploadFingerprint = '${uploadFile.path}|$uploadBytes';
+      final localUploadState = await CreationPublishStateStore.instance.load(project.projectId);
+      final checkpointMatches = localUploadState != null &&
+          localUploadState.requestId == publishRequestId &&
+          localUploadState.uploadSourceFingerprint == uploadFingerprint &&
+          localUploadState.uploadTotalBytes == uploadBytes;
+      final resumeBytes = checkpointMatches ? localUploadState!.uploadBytes : 0;
+      final resumeStoragePath = checkpointMatches ? localUploadState!.uploadStoragePath : null;
+
+      await _saveState(
+        project.projectId,
+        CreationPublishStage.uploading,
+        requestId: publishRequestId,
+        bytesUploaded: resumeBytes,
+        totalBytes: uploadBytes,
+        uploadStoragePath: resumeStoragePath,
+        uploadSourceFingerprint: uploadFingerprint,
+        uploadBytes: resumeBytes,
+        uploadTotalBytes: uploadBytes,
+        uploadBlockSize: CreationAzureMediaService.chunkSize,
+      );
+
       final azureResult = await _azureMedia.uploadVideo(
         projectId: project.projectId,
         assetId: asset.assetId,
         localPath: uploadFile.path,
         contentType: 'video/mp4',
         deferProcessing: true,
+        resumeBytes: resumeBytes,
+        resumeStoragePath: resumeStoragePath,
         onProgress: (uploaded, total) {
-          _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: uploaded, totalBytes: total);
+          _saveState(
+            project.projectId,
+            CreationPublishStage.uploading,
+            requestId: publishRequestId,
+            bytesUploaded: uploaded,
+            totalBytes: total,
+            uploadStoragePath: resumeStoragePath,
+            uploadSourceFingerprint: uploadFingerprint,
+            uploadBytes: uploaded,
+            uploadTotalBytes: total,
+            uploadBlockSize: CreationAzureMediaService.chunkSize,
+          );
+        },
+        onCheckpoint: (uploaded, total, checkpointStoragePath) {
+          _saveState(
+            project.projectId,
+            CreationPublishStage.uploading,
+            requestId: publishRequestId,
+            bytesUploaded: uploaded,
+            totalBytes: total,
+            uploadStoragePath: checkpointStoragePath,
+            uploadSourceFingerprint: uploadFingerprint,
+            uploadBytes: uploaded,
+            uploadTotalBytes: total,
+            uploadBlockSize: CreationAzureMediaService.chunkSize,
+          );
         },
       );
       if (azureResult == null) throw const CreationPublishException('Azure media service returned no upload result.');
@@ -441,9 +489,34 @@ class CreationPublishService {
     }
   }
 
-  Future<void> _saveState(String projectId, CreationPublishStage stage, {String? requestId, int bytesUploaded = 0, int totalBytes = 0}) async {
+  Future<void> _saveState(
+    String projectId,
+    CreationPublishStage stage, {
+    String? requestId,
+    int bytesUploaded = 0,
+    int totalBytes = 0,
+    String? uploadStoragePath,
+    String? uploadSourceFingerprint,
+    int uploadBytes = 0,
+    int uploadTotalBytes = 0,
+    int uploadBlockSize = 0,
+  }) async {
     try {
-      await CreationPublishStateStore.instance.save(CreationPublishState(projectId: projectId, stage: stage, requestId: requestId, bytesUploaded: bytesUploaded, totalBytes: totalBytes, updatedAt: DateTime.now()));
+      await CreationPublishStateStore.instance.save(
+        CreationPublishState(
+          projectId: projectId,
+          stage: stage,
+          requestId: requestId,
+          bytesUploaded: bytesUploaded,
+          totalBytes: totalBytes,
+          updatedAt: DateTime.now(),
+          uploadStoragePath: uploadStoragePath,
+          uploadSourceFingerprint: uploadSourceFingerprint,
+          uploadBytes: uploadBytes,
+          uploadTotalBytes: uploadTotalBytes,
+          uploadBlockSize: uploadBlockSize,
+        ),
+      );
     } catch (_) {}
   }
 
