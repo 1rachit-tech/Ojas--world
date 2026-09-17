@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -45,7 +46,7 @@ class CreationAzureMediaService {
     int resumeBytes = 0,
     String? resumeStoragePath,
     void Function(int uploaded, int total)? onProgress,
-    Future<void> Function(int uploaded, int total, String storagePath)? onCheckpoint,
+    FutureOr<void> Function(int uploaded, int total, String storagePath)? onCheckpoint,
   }) async {
     if (!isConfigured) return null;
 
@@ -193,9 +194,6 @@ class CreationAzureMediaService {
       body: blockXml.toString(),
     );
     if (commitResponse.statusCode != 201 && commitResponse.statusCode != 200) {
-      // A stale local checkpoint can outlive the corresponding uncommitted
-      // Azure blocks. Reset only the local resume marker; the next attempt
-      // will obtain a fresh SAS target and upload from byte zero.
       if (resumeBytes > 0) {
         final checkpoint = onCheckpoint;
         if (checkpoint != null) await checkpoint(0, totalBytes, storagePath);
