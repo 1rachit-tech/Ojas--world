@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ojas/creation/models/creation_project.dart';
-import 'package:ojas/creation/services/creation_edit_command_service.dart';
+import 'package:ojas_app/creation/models/creation_project.dart';
+import 'package:ojas_app/creation/services/creation_edit_command_service.dart';
 
 void main() {
-  final engine = const CreationEditCommandService();
+  const engine = CreationEditCommandService();
 
   CreationProject project() {
     return CreationProject.createForAsset(
@@ -12,7 +12,7 @@ void main() {
       localUri: '/tmp/video.mp4',
       isVideo: true,
       sizeBytes: 100,
-      durationMs: 10_000,
+      durationMs: 10000,
     );
   }
 
@@ -22,13 +22,13 @@ void main() {
     final updated = engine.trimClip(
       source,
       clipId: clip.clipId,
-      trimInMs: 1_000,
-      trimOutMs: 7_000,
+      trimInMs: 1000,
+      trimOutMs: 7000,
     );
 
     expect(updated.mediaAssets.single.localUri, source.mediaAssets.single.localUri);
-    expect(updated.timeline.single.trimInMs, 1_000);
-    expect(updated.timeline.single.trimOutMs, 7_000);
+    expect(updated.timeline.single.trimInMs, 1000);
+    expect(updated.timeline.single.trimOutMs, 7000);
     expect(updated.version, greaterThan(source.version));
     expect(updated.operations.last['type'], 'trim');
   });
@@ -36,7 +36,7 @@ void main() {
   test('split creates two timeline clips sharing the same source', () {
     final source = project();
     final clip = source.timeline.single;
-    final updated = engine.splitClip(source, clipId: clip.clipId, splitAtMs: 5_000);
+    final updated = engine.splitClip(source, clipId: clip.clipId, splitAtMs: 5000);
 
     expect(updated.timeline, hasLength(2));
     expect(updated.timeline[0].sourceId, clip.sourceId);
