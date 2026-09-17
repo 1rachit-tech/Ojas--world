@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -183,24 +184,41 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   }
 
   Future<void> _openAudioTool() async {
-    final controller = TextEditingController();
-    final uri = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Add audio'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(hintText: 'Local/content URI'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Add')),
-        ],
+    final picked = await FilePicker.pickFile(type: FileType.audio);
+    if (picked == null || !mounted) return;
+
+    final localPath = picked.path?.trim();
+    if (localPath == null || localPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This audio file is not available as a local file.')),
+      );
+      return;
+    }
+
+    final length = await picked.length();
+    if (length == null || length <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read the selected audio file.')),
+      );
+      return;
+    }
+    if (length > 10 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Audio must be 10 MB or smaller.')),
+      );
+      return;
+    }
+
+    _applyEdit(
+      _editEngine.addAudio(
+        _project,
+        uri: localPath,
+        title: picked.name,
       ),
     );
-    if (uri == null || uri.isEmpty || !mounted) return;
-    _applyEdit(_editEngine.addAudio(_project, uri: uri));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${picked.name} added to the edit.')),
+    );
   }
 
   Future<void> _openEffectsTool() async {
