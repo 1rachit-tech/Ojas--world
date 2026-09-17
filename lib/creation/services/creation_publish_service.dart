@@ -103,6 +103,7 @@ class CreationPublishService {
     await postRef.set(<String, dynamic>{
       'creatorId': user.uid,
       'projectId': project.projectId,
+      'mediaAssetId': asset.assetId,
       'publishRequestId': publishRequestId,
       'videoUrl': downloadUrl,
       'hlsUrl': downloadUrl,
@@ -154,6 +155,7 @@ class CreationPublishService {
         'processingStatus': processing ? 'queued' : 'uploaded',
         'mediaHash': mediaHash,
         'editGraphVersion': 2,
+        'mediaAssetId': asset.assetId,
       },
     );
     await CreationProjectStore.instance.save(published);
@@ -172,9 +174,7 @@ class CreationPublishService {
       final rawUri = layer['uri'];
       final localUri = rawUri is String ? rawUri.trim() : '';
       final existingStoragePath = layer['storagePath'] is String ? (layer['storagePath'] as String).trim() : '';
-      final layerId = layer['id'] is String && (layer['id'] as String).trim().isNotEmpty
-          ? (layer['id'] as String).trim()
-          : 'audio_${DateTime.now().microsecondsSinceEpoch}';
+      final layerId = layer['id'] is String && (layer['id'] as String).trim().isNotEmpty ? (layer['id'] as String).trim() : 'audio_${DateTime.now().microsecondsSinceEpoch}';
 
       if (existingStoragePath.startsWith('creation-audio/')) {
         layer
@@ -190,26 +190,16 @@ class CreationPublishService {
       final file = File(localUri);
       if (!await file.exists()) throw CreationPublishException('Audio file is no longer available: ${layer['title'] ?? layerId}.');
       final size = await file.length();
-      if (size <= 0 || size > CreationAzureMediaService.maxAudioBytes) {
-        throw const CreationPublishException('Each creation audio track must be between 1 byte and 10 MB.');
-      }
+      if (size <= 0 || size > CreationAzureMediaService.maxAudioBytes) throw const CreationPublishException('Each creation audio track must be between 1 byte and 10 MB.');
 
       final fileName = localUri.split(RegExp(r'[\\/]')).last;
       final extensionIndex = fileName.lastIndexOf('.');
-      final extension = extensionIndex >= 0 && extensionIndex < fileName.length - 1
-          ? fileName.substring(extensionIndex).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '')
-          : '.bin';
+      final extension = extensionIndex >= 0 && extensionIndex < fileName.length - 1 ? fileName.substring(extensionIndex).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '') : '.bin';
       final safeExtension = extension.length <= 8 ? extension : '.bin';
       final contentType = _audioContentType(safeExtension);
       if (contentType == 'audio/*') throw const CreationPublishException('Unsupported audio format. Use MP3, M4A, WAV, AAC, OGG, or OPUS.');
 
-      final azureAudio = await _azureMedia.uploadAudio(
-        projectId: project.projectId,
-        layerId: layerId,
-        localPath: localUri,
-        blobName: '$layerId$safeExtension',
-        contentType: contentType,
-      );
+      final azureAudio = await _azureMedia.uploadAudio(projectId: project.projectId, layerId: layerId, localPath: localUri, blobName: '$layerId$safeExtension', contentType: contentType);
       if (azureAudio == null) throw const CreationPublishException('Azure media service returned no audio upload result.');
 
       layer
@@ -236,20 +226,13 @@ class CreationPublishService {
 
   String _audioContentType(String extension) {
     switch (extension.toLowerCase()) {
-      case '.mp3':
-        return 'audio/mpeg';
-      case '.wav':
-        return 'audio/wav';
-      case '.m4a':
-        return 'audio/mp4';
-      case '.aac':
-        return 'audio/aac';
-      case '.ogg':
-        return 'audio/ogg';
-      case '.opus':
-        return 'audio/opus';
-      default:
-        return 'audio/*';
+      case '.mp3': return 'audio/mpeg';
+      case '.wav': return 'audio/wav';
+      case '.m4a': return 'audio/mp4';
+      case '.aac': return 'audio/aac';
+      case '.ogg': return 'audio/ogg';
+      case '.opus': return 'audio/opus';
+      default: return 'audio/*';
     }
   }
 
