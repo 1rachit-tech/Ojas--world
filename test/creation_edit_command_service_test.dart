@@ -93,6 +93,28 @@ void main() {
     expect(updated.operations.map((e) => e['type']), containsAll(<String>['crop', 'transform']));
   });
 
+  test('timed captions and audio layers remain editable instructions', () {
+    var updated = project();
+    updated = engine.addCaption(updated, text: 'Hello OJAS', startMs: 1000, endMs: 2500);
+    updated = engine.addAudio(
+      updated,
+      uri: '/tmp/music.m4a',
+      title: 'Music',
+      startMs: 500,
+      endMs: 8000,
+      volume: 0.7,
+    );
+    updated = engine.setAutoCaptions(updated, enabled: true);
+
+    expect(updated.textLayers.single['layerType'], 'caption');
+    expect(updated.textLayers.single['startMs'], 1000);
+    expect(updated.textLayers.single['endMs'], 2500);
+    expect(updated.audio.single['volume'], 0.7);
+    expect(updated.audio.single['startMs'], 500);
+    expect(updated.accessibility['autoCaptions'], isTrue);
+    expect(updated.operations.map((e) => e['type']), containsAll(<String>['caption_add', 'audio_add', 'accessibility_update']));
+  });
+
   test('speed, transform and layers are persisted as edit instructions', () {
     var updated = project();
     final clip = updated.timeline.single;
