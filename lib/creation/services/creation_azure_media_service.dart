@@ -193,6 +193,13 @@ class CreationAzureMediaService {
       body: blockXml.toString(),
     );
     if (commitResponse.statusCode != 201 && commitResponse.statusCode != 200) {
+      // A stale local checkpoint can outlive the corresponding uncommitted
+      // Azure blocks. Reset only the local resume marker; the next attempt
+      // will obtain a fresh SAS target and upload from byte zero.
+      if (resumeBytes > 0) {
+        final checkpoint = onCheckpoint;
+        if (checkpoint != null) await checkpoint(0, totalBytes, storagePath);
+      }
       throw CreationAzureMediaException(_readError(commitResponse.body));
     }
 
