@@ -180,14 +180,77 @@ class CreationEditCommandService {
   }) {
     final layer = <String, dynamic>{
       'id': _nextLayerId('text'),
+      'layerType': 'text',
       'text': text.trim(),
-      'startMs': startMs,
-      'endMs': endMs,
+      'startMs': startMs.clamp(0, 86400000),
+      'endMs': _safeEnd(startMs, endMs),
       'x': x,
       'y': y,
       'fontSize': fontSize.clamp(8, 120),
     };
     return _finish(project.copyWith(textLayers: [...project.textLayers, layer]), <String, dynamic>{'type': 'text_add', 'layerId': layer['id']});
+  }
+
+  CreationProject addCaption(
+    CreationProject project, {
+    required String text,
+    required int startMs,
+    required int endMs,
+    double x = 0,
+    double y = 0.72,
+    double fontSize = 30,
+    String style = 'default',
+  }) {
+    final safeStart = startMs.clamp(0, 86400000);
+    final safeEnd = endMs.clamp(safeStart + 1, 86400000);
+    final layer = <String, dynamic>{
+      'id': _nextLayerId('caption'),
+      'layerType': 'caption',
+      'text': text.trim(),
+      'startMs': safeStart,
+      'endMs': safeEnd,
+      'x': x,
+      'y': y,
+      'fontSize': fontSize.clamp(10, 120),
+      'style': style.trim().isEmpty ? 'default' : style.trim(),
+      'source': 'manual',
+    };
+    return _finish(project.copyWith(textLayers: [...project.textLayers, layer]), <String, dynamic>{'type': 'caption_add', 'layerId': layer['id']});
+  }
+
+  CreationProject setAutoCaptions(
+    CreationProject project, {
+    required bool enabled,
+  }) {
+    return setAccessibility(project, autoCaptions: enabled);
+  }
+
+  CreationProject updateTextLayer(
+    CreationProject project, {
+    required String layerId,
+    String? text,
+    int? startMs,
+    int? endMs,
+    double? x,
+    double? y,
+    double? fontSize,
+  }) {
+    final index = project.textLayers.indexWhere((layer) => layer['id'] == layerId);
+    if (index < 0) return project;
+    final current = project.textLayers[index];
+    final safeStart = (startMs ?? (current['startMs'] as num?)?.toInt() ?? 0).clamp(0, 86400000);
+    final safeEnd = (endMs ?? (current['endMs'] as num?)?.toInt() ?? safeStart + 1).clamp(safeStart + 1, 86400000);
+    final nextLayer = <String, dynamic>{
+      ...current,
+      if (text != null) 'text': text.trim(),
+      'startMs': safeStart,
+      'endMs': safeEnd,
+      if (x != null) 'x': x,
+      if (y != null) 'y': y,
+      if (fontSize != null) 'fontSize': fontSize.clamp(8, 120),
+    };
+    final layers = [...project.textLayers]..[index] = nextLayer;
+    return _finish(project.copyWith(textLayers: layers), <String, dynamic>{'type': 'text_update', 'layerId': layerId});
   }
 
   CreationProject addAudio(
@@ -197,16 +260,61 @@ class CreationEditCommandService {
     int startMs = 0,
     int? endMs,
     double volume = 1.0,
+    bool muted = false,
   }) {
+    final safeStart = startMs.clamp(0, 86400000);
     final layer = <String, dynamic>{
       'id': _nextLayerId('audio'),
-      'uri': uri,
-      'title': title ?? 'Audio',
-      'startMs': startMs,
-      'endMs': endMs,
+      'uri': uri.trim(),
+      'title': (title ?? 'Audio').trim().isEmpty ? 'Audio' : title!.trim(),
+      'startMs': safeStart,
+      'endMs': _safeEnd(safeStart, endMs),
       'volume': volume.clamp(0.0, 2.0),
+      'muted': muted,
     };
     return _finish(project.copyWith(audio: [...project.audio, layer]), <String, dynamic>{'type': 'audio_add', 'layerId': layer['id']});
+  }
+
+  CreationProject updateAudio(
+    CreationProject project, {
+    required String layerId,
+    String? title,
+    int? startMs,
+    int? endMs,
+    double? volume,
+    bool? muted,
+  }) {
+    final index = project.audio.indexWhere((layer) => layer['id'] == layerId);
+    if (index < 0) return project;
+    final current = project.audio[index];
+    final safeStart = (startMs ?? (current['startMs'] as num?)?.toInt() ?? 0).clamp(0, 86400000);
+    final safeEnd = (endMs ?? (current['endMs'] as num?)?.toInt() ?? safeStart + 1).clamp(safeStart + 1, 86400000);
+    final nextLayer = <String, dynamic>{
+      ...current,
+      if (title != null) 'title': title.trim(),
+      'startMs': safeStart,
+      'endMs': safeEnd,
+      if (volume != null) 'volume': volume.clamp(0.0, 2.0),
+      if (muted != null) 'muted': muted,
+    };
+    final layers = [...project.audio]..[index] = nextLayer;
+    return _finish(project.copyWith(audio: layers), <String, dynamic>{'type': 'audio_update', 'layerId': layerId});
+  }
+
+  CreationProject removeTextLayer(CreationProject project, {required String layerId}) {
+    if (!project.textLayers.any((layer) => layer['id'] == layerId)) return project;
+    return _finish(
+      project.copyWith(textLayers: project.textLayers.where((layer) => layer['id'] != layerId).toList(growable: false)),
+      <String, dynamic>{'type': 'text_remove', 'layerId': layerId},
+    );
+  }
+
+  CreationProject removeAudioLayer(CreationProject project, {required String layerId}) {
+    if (!project.audio.any((layer) => layer['id'] == layerId)) return project;
+    return _finish(
+      project.copyWith(audio: project.audio.where((layer) => layer['id'] != layerId).toList(growable: false)),
+      <String, dynamic>{'type': 'audio_remove', 'layerId': layerId},
+    );
   }
 
   CreationProject addEffect(
@@ -339,6 +447,11 @@ class CreationEditCommandService {
         },
       ],
     );
+  }
+
+  int? _safeEnd(int startMs, int? endMs) {
+    if (endMs == null) return null;
+    return endMs.clamp(startMs + 1, 86400000);
   }
 
   int _sourceDuration(CreationProject project, String sourceId) {
