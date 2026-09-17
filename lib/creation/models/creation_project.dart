@@ -88,6 +88,10 @@ class CreationTimelineClip {
     this.scale = 1.0,
     this.x = 0.0,
     this.y = 0.0,
+    this.cropLeft = 0.0,
+    this.cropTop = 0.0,
+    this.cropRight = 0.0,
+    this.cropBottom = 0.0,
   });
 
   final String clipId;
@@ -102,6 +106,18 @@ class CreationTimelineClip {
   final double scale;
   final double x;
   final double y;
+  final double cropLeft;
+  final double cropTop;
+  final double cropRight;
+  final double cropBottom;
+
+  int get effectiveStartMs => trimInMs.clamp(0, endMs);
+
+  int get effectiveEndMs => (trimOutMs ?? endMs).clamp(effectiveStartMs + 1, endMs);
+
+  int get trimmedDurationMs => effectiveEndMs - effectiveStartMs;
+
+  int get renderedDurationMs => (trimmedDurationMs / speed.clamp(0.25, 4.0)).round();
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'clipId': clipId,
@@ -116,6 +132,10 @@ class CreationTimelineClip {
         'scale': scale,
         'x': x,
         'y': y,
+        'cropLeft': cropLeft,
+        'cropTop': cropTop,
+        'cropRight': cropRight,
+        'cropBottom': cropBottom,
       };
 
   factory CreationTimelineClip.fromMap(Map<String, dynamic> map) {
@@ -132,6 +152,10 @@ class CreationTimelineClip {
       scale: (map['scale'] as num?)?.toDouble() ?? 1.0,
       x: (map['x'] as num?)?.toDouble() ?? 0.0,
       y: (map['y'] as num?)?.toDouble() ?? 0.0,
+      cropLeft: (map['cropLeft'] as num?)?.toDouble() ?? 0.0,
+      cropTop: (map['cropTop'] as num?)?.toDouble() ?? 0.0,
+      cropRight: (map['cropRight'] as num?)?.toDouble() ?? 0.0,
+      cropBottom: (map['cropBottom'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -180,6 +204,8 @@ class CreationProject {
   final Map<String, dynamic> accessibility;
   final Map<String, dynamic> rights;
   final Map<String, dynamic> publishState;
+
+  int get renderedDurationMs => timeline.fold<int>(0, (total, clip) => total + clip.renderedDurationMs);
 
   CreationProject copyWith({
     DateTime? updatedAt,
