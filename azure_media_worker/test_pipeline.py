@@ -6,6 +6,44 @@ import render_override
 import worker
 
 
+class _Snapshot:
+    def __init__(self, data):
+        self._data = data
+        self.exists = True
+
+    def to_dict(self):
+        return dict(self._data)
+
+
+class _Document:
+    def __init__(self, data):
+        self._snapshot = _Snapshot(data)
+
+    def get(self):
+        return self._snapshot
+
+
+class _Collection:
+    def __init__(self, documents):
+        self._documents = documents
+
+    def document(self, document_id):
+        return _Document(self._documents.get(document_id, {}))
+
+
+class _Firestore:
+    def __init__(self, media, reels):
+        self._media = media
+        self._reels = reels
+
+    def collection(self, name):
+        if name == 'creationMedia':
+            return _Collection(self._media)
+        if name == 'reels':
+            return _Collection(self._reels)
+        raise AssertionError(f'Unexpected collection: {name}')
+
+
 class PublishedRenderPipelineTests(unittest.TestCase):
     def test_clip_visual_chain_applies_speed_crop_transform_and_opacity(self) -> None:
         filters = []
@@ -106,6 +144,41 @@ class ReplacementRetentionTests(unittest.TestCase):
                 'creation-audio/owner/reel/a2/audio.m4a',
             },
         )
+
+
+class TranscodePostProcessingTests(unittest.TestCase):
+    def test_ready_media_runs_server_hash_then_replacement_cleanup(self) -> None:
+        db = _Firestore(
+            media={
+                'asset-new': {
+                    'processingStatus': 'ready',
+                    'processedVideoStoragePath': 'creation/owner/reel/asset-new/processed.mp4',
+                },
+            },
+            reels={
+                'reel': {
+                    'mediaReplacementCleanupStatus': 'pending',
+                    'mediaReplacementCleanupAssetId': 'asset-old',
+                    'mediaReplacementCleanupAudioPaths': ['creation-audio/owner/reel/a1/audio.mp3'],
+                    'mediaAssetId': 'asset-new',
+                    'editGraph': {'audio': []},
+                },
+            },
+        )
+        calls = []
+        with patch.object(worker, '_firebase', return_value=db), \
+             patch.object(dispatcher, '_server_hash_job', side_effect=lambda job: calls.append(('hash', job['processedVideoStoragePath']))), \
+             patch.object(dispatcher, '_replacement_cleanup_job', side_effect=lambda job: calls.append(('cleanup', job['oldAssetId']))):
+            dispatcher._post_process_transcode({
+                'assetId': 'asset-new',
+                'projectId': 'reel',
+                'ownerId': 'owner',
+            })
+
+        self.assertEqual(calls, [
+            ('hash', 'creation/owner/reel/asset-new/processed.mp4'),
+            ('cleanup', 'asset-old'),
+        ])
 
 
 if __name__ == '__main__':
