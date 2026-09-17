@@ -12,10 +12,14 @@ class ReelFeedService {
   final FirebaseFirestore _firestore;
   final AzureMediaPlaybackService _playback;
 
-  CollectionReference<Map<String, dynamic>> get _reels => _fireels;
+  CollectionReference<Map<String, dynamic>> get _reels =>
+      _firestore.collection('reels');
 
   Future<ReelFeedPage> fetchPage({DocumentSnapshot<Map<String, dynamic>>? cursor}) async {
-    Query<Map<String, dynamic>> query = _reels.orderBy('algorithmScore', descending: true).limit(pageSize);
+    Query<Map<String, dynamic>> query = _reels
+        .where('visibility', isEqualTo: 'public')
+        .orderBy('algorithmScore', descending: true)
+        .limit(pageSize);
     if (cursor != null) query = query.startAfterDocument(cursor);
 
     final snapshot = await query.get();
@@ -24,12 +28,8 @@ class ReelFeedService {
 
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final visibility = (data['visibility'] as String? ?? 'public').toLowerCase();
-      if (visibility != 'public') continue;
-
       final moderationStatus = (data['moderationStatus'] as String? ?? '').toLowerCase();
       if (moderationStatus != 'approved') continue;
-
       if (data['deletedAt'] != null) continue;
 
       final mediaProvider = (data['mediaProvider'] as String? ?? '').toLowerCase();
@@ -42,7 +42,11 @@ class ReelFeedService {
       mediaProviderById[reel.id] = mediaProvider;
     }
 
-    final azureIds = candidateReels.where((reel) => mediaProviderById[reel.id] == 'azure').map((reel) => reel.id).take(10).toList(growable: false);
+    final azureIds = candidateReels
+        .where((reel) => mediaProviderById[reel.id] == 'azure')
+        .map((reel) => reel.id)
+        .take(10)
+        .toList(growable: false);
     final secureAssets = await _playback.resolvePlaybackAssets(azureIds);
     final resolved = <ReelModel>[];
 
@@ -53,7 +57,10 @@ class ReelFeedService {
       }
       final asset = secureAssets[reel.id];
       if (asset == null || asset.playbackUrl.isEmpty) continue;
-      resolved.add(reel.copyWith(hlsUrl: asset.playbackUrl, thumbnailUrl: asset.thumbnailUrl ?? reel.thumbnailUrl));
+      resolved.add(reel.copyWith(
+        hlsUrl: asset.playbackUrl,
+        thumbnailUrl: asset.thumbnailUrl ?? reel.thumbnailUrl,
+      ));
     }
 
     return ReelFeedPage(
