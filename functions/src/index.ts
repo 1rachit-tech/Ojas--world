@@ -17,7 +17,7 @@ const AZURE_PROCESSING_QUEUE = 'ojas-media-processing';
 
 interface ConversationData { participants?: unknown; participantProfiles?: unknown; }
 interface MessageData { senderId?: unknown; text?: unknown; type?: unknown; isDeleted?: unknown; }
-interface CreationMediaData { assetId?: unknown; projectId?: unknown; ownerId?: unknown; storagePath?: unknown; contentLength?: unknown; contentType?: unknown; processingStatus?: unknown; queueEnqueuedAt?: unknown; }
+interface CreationMediaData { assetId?: unknown; projectId?: unknown; ownerId?: unknown; storagePath?: unknown; contentLength?: unknown; contentType?: unknown; processingStatus?: unknown; deviceCompressed?: unknown; queueEnqueuedAt?: unknown; }
 
 const RATE_WINDOW_MS = 60_000;
 const MAX_MESSAGES_PER_INSTANCE_PER_MINUTE = 30;
@@ -71,7 +71,8 @@ function readCreationMediaJob(media: CreationMediaData, fallbackAssetId: string)
   const storagePath = typeof media.storagePath === 'string' ? media.storagePath.trim() : '';
   const contentType = typeof media.contentType === 'string' ? media.contentType.trim() : '';
   const contentLength = typeof media.contentLength === 'number' ? media.contentLength : 0;
-  return {assetId, projectId, ownerId, storagePath, contentType, contentLength};
+  const deviceCompressed = media.deviceCompressed === true;
+  return {assetId, projectId, ownerId, storagePath, contentType, contentLength, deviceCompressed};
 }
 
 async function enqueueCreationMediaJob(snapshot: FirebaseFirestore.DocumentSnapshot, media: CreationMediaData, connectionString: string, fallbackAssetId: string): Promise<void> {
@@ -84,7 +85,7 @@ async function enqueueCreationMediaJob(snapshot: FirebaseFirestore.DocumentSnaps
 
   const queue = getMediaQueueClient(connectionString);
   if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
-  const job = {schemaVersion: 1, kind: 'creation-video-transcode', assetId: jobInfo.assetId, projectId: jobInfo.projectId, ownerId: jobInfo.ownerId, storagePath: jobInfo.storagePath, contentLength: jobInfo.contentLength, contentType: jobInfo.contentType};
+  const job = {schemaVersion: 1, kind: 'creation-video-transcode', assetId: jobInfo.assetId, projectId: jobInfo.projectId, ownerId: jobInfo.ownerId, storagePath: jobInfo.storagePath, contentLength: jobInfo.contentLength, contentType: jobInfo.contentType, deviceCompressed: jobInfo.deviceCompressed};
   await queue.createIfNotExists();
   await queue.sendMessage(Buffer.from(JSON.stringify(job), 'utf8').toString('base64'));
   await snapshot.ref.set({queueEnqueuedAt: FieldValue.serverTimestamp(), queueName: AZURE_PROCESSING_QUEUE, updatedAt: FieldValue.serverTimestamp()}, {merge: true});
