@@ -1,6 +1,12 @@
 import {getFirestore} from 'firebase-admin/firestore';
+import {HttpsError} from 'firebase-functions/v2/https';
 
 const MAX_RESULTS = 30;
+
+type SearchRequest = {
+  auth?: {uid?: string} | null;
+  data?: unknown;
+};
 
 function tokensFromQuery(value: unknown): string[] {
   if (typeof value !== 'string') return [];
@@ -14,9 +20,12 @@ function tokensFromQuery(value: unknown): string[] {
   )).slice(0, 8);
 }
 
-export async function searchPublicReels(request: {auth?: {uid?: string} | null; data?: Record<string, unknown>}) {
-  if (!request.auth?.uid) throw new Error('unauthenticated');
-  const tokens = tokensFromQuery(request.data?.query);
+export async function searchPublicReels(request: SearchRequest) {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Please sign in again.');
+  const data = request.data && typeof request.data === 'object' && !Array.isArray(request.data)
+    ? request.data as Record<string, unknown>
+    : {};
+  const tokens = tokensFromQuery(data.query);
   if (tokens.length === 0) return {results: []};
 
   const snapshot = await getFirestore()
@@ -31,7 +40,9 @@ export async function searchPublicReels(request: {auth?: {uid?: string} | null; 
   const results = snapshot.docs
     .map((doc) => doc.data())
     .filter((item) => {
-      const indexed = Array.isArray(item.tokens) ? item.tokens.filter((token): token is string => typeof token === 'string') : [];
+      const indexed = Array.isArray(item.tokens)
+        ? item.tokens.filter((token): token is string => typeof token === 'string')
+        : [];
       return tokens.every((token) => indexed.includes(token));
     })
     .slice(0, MAX_RESULTS)
