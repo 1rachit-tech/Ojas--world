@@ -75,14 +75,14 @@ class PublishedRenderPipelineTests(unittest.TestCase):
 class AudioStorageSafetyTests(unittest.TestCase):
     def test_audio_path_uses_secure_creation_audio_namespace(self) -> None:
         self.assertTrue(
-            worker._safe_audio_storage_path(
+            dispatcher._safe_audio_path(
                 'creation-audio/owner/project/layer/audio.mp3',
                 'owner',
                 'project',
             )
         )
         self.assertFalse(
-            worker._safe_audio_storage_path(
+            dispatcher._safe_audio_path(
                 'creation_audio/owner/project/audio.mp3',
                 'owner',
                 'project',
