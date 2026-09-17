@@ -64,16 +64,15 @@ void main() {
     expect(next.timeline[1].trimOutMs, 10000);
   });
 
-  test('validation rejects an invalid crop rectangle and oversized operation history', () async {
-    final clipId = project.timeline.single.clipId;
-    final invalid = engine.setCrop(project, clipId: clipId, left: 0.4, right: 0.4);
-    final oversized = invalid.copyWith(
+  test('validation rejects an oversized operation history', () async {
+    final oversized = project.copyWith(
       operations: List<Map<String, dynamic>>.generate(257, (index) => <String, dynamic>{'version': index}),
     );
 
     final result = await CreationValidationService.validateProject(oversized);
 
-    expect(result.isValid, isTrue);
+    expect(result.isValid, isFalse);
+    expect(result.errors.join('\n'), contains('edit history'));
   });
 
   test('validation rejects invalid timeline transforms created outside the edit engine', () async {
