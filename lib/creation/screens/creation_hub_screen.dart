@@ -9,6 +9,7 @@ import '../models/creation_project.dart';
 import '../services/creation_checkpoint_store.dart';
 import '../services/creation_project_store.dart';
 import 'creation_pipeline_editor_screen.dart';
+import 'published_shows_screen.dart';
 
 class CreationHubScreen extends StatefulWidget {
   const CreationHubScreen({super.key});
@@ -205,6 +206,16 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
     );
   }
 
+  Future<void> _openPublishedShows() async {
+    if (_ownerId.isEmpty) {
+      _show('Please sign in before opening published Shows.');
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const PublishedShowsScreen()),
+    );
+  }
+
   void _show(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -273,6 +284,13 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            _EntryCard(
+              icon: Icons.video_settings_rounded,
+              title: 'Published Shows',
+              subtitle: 'Re-edit and replace your published Show through the secure timeline pipeline',
+              onTap: _openPublishedShows,
+            ),
             const SizedBox(height: 22),
             _PipelineCard(
               title: 'Creation Pipeline',
@@ -284,6 +302,8 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                 'Post composition',
                 'Privacy & safety',
                 'Upload & publish',
+                'Server render & moderation',
+                'Secure playback',
               ],
             ),
             const SizedBox(height: 14),
@@ -396,7 +416,7 @@ class _ArchitectureNote extends StatelessWidget {
         border: Border.all(color: const Color(0xFFFDE68A)),
       ),
       child: const Text(
-        'Media originals stay local. Project state is saved locally first. Heavy media processing can later be routed through the existing OJAS Azure architecture after its creation-media endpoint is verified. No new paid backend is enabled by this screen.',
+        'Media originals stay local. Project state is saved locally first. Heavy media processing is routed through the existing OJAS Azure architecture after its creation-media endpoint is verified. No new paid backend is enabled by this screen.',
         style: TextStyle(color: Color(0xFF78350F), fontSize: 12, height: 1.45),
       ),
     );
