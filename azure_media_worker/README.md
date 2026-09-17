@@ -10,14 +10,34 @@ For every queued creation video the worker:
 
 1. downloads the private source Blob to ephemeral job storage;
 2. validates the media with `ffprobe`;
-3. transcodes one 720p-max H.264/AAC MP4 with `ffmpeg`;
-4. creates one JPEG thumbnail;
-5. writes authoritative processing metadata to Firestore;
-6. removes the queue message only after successful processing.
+3. applies the bounded edit graph (trim/split order, speed, rotation, text/captions and lightweight effects);
+4. optionally mixes creator-selected audio tracks staged in Firebase Storage;
+5. transcodes one 720p-max H.264/AAC MP4 with `ffmpeg`;
+6. creates one JPEG thumbnail;
+7. writes authoritative processing metadata to Firestore;
+8. removes temporary `creation_audio/{uid}/{projectId}/...` assets after successful processing;
+9. removes the queue message only after successful processing.
 
 This deliberately avoids multiple renditions, always-on servers, and mandatory HLS segment storage during the low-traffic launch stage.
 
-Set `OJAS_ENABLE_HLS=true` later when HLS delivery is worth the extra CPU/storage cost. The code already contains the HLS generation path.
+Set `OJAS_ENABLE_HLS=true` later when HLS delivery is worth the extra CPU/storage cost. The code already contains the HLS generation path, but HLS is **not active by default**.
+
+## Audio staging contract
+
+The Flutter editor uses the native audio picker and keeps the selected file local during editing. At publish time, each audio layer is copied to the owner-scoped Firebase Storage path:
+
+`creation_audio/{uid}/{projectId}/{layerId}.<ext>`
+
+The resulting edit graph stores `storagePath` rather than the device's local filesystem path. This prevents private device paths from reaching Firestore and lets the server worker retrieve the audio securely with Firebase Admin credentials.
+
+Audio limits:
+
+- Maximum audio layers per edit graph: `32`
+- Maximum size per audio asset: `10 MiB`
+- Supported runtime container paths are owner/project scoped
+- Temporary staged audio is deleted after a successful media render
+
+Because Firebase Storage is still a billed storage/operations meter, audio files are kept temporary and are deleted after successful rendering. No new always-on service is introduced for audio.
 
 ## Runtime contract
 
@@ -69,4 +89,4 @@ The Container Apps consumption model includes a monthly free grant and charges a
 docker build -t ghcr.io/1rachit-tech/ojas-media-worker:latest azure_media_worker
 ```
 
-The container contains FFmpeg and the Python worker only. No long-running HTTP server is required.
+The container contains FFmpeg, DejaVu fonts and the Python worker only. No long-running HTTP server is required.
