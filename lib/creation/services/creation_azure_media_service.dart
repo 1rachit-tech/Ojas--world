@@ -41,6 +41,7 @@ class CreationAzureMediaService {
     required String assetId,
     required String localPath,
     required String contentType,
+    bool deferProcessing = false,
     void Function(int uploaded, int total)? onProgress,
   }) async {
     if (!isConfigured) return null;
@@ -132,7 +133,14 @@ class CreationAzureMediaService {
     final finalizeResponse = await _client.post(
       Uri.parse('$brokerUrl/media/creation-upload-complete'),
       headers: <String, String>{'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
-      body: jsonEncode(<String, dynamic>{'projectId': projectId, 'assetId': assetId, 'storagePath': storagePath, 'contentLength': totalBytes, 'contentType': contentType}),
+      body: jsonEncode(<String, dynamic>{
+        'projectId': projectId,
+        'assetId': assetId,
+        'storagePath': storagePath,
+        'contentLength': totalBytes,
+        'contentType': contentType,
+        'deferProcessing': deferProcessing,
+      }),
     );
     if (finalizeResponse.statusCode != 200) throw CreationAzureMediaException(_readError(finalizeResponse.body));
 
