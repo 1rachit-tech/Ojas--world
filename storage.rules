@@ -72,6 +72,19 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    match /creation_audio/{userId}/{projectId}/{fileName} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && isAudio()
+        && isValidAudioSize();
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
     match /profileImages/{userId}/{fileName} {
       allow read: if true;
 
