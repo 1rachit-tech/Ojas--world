@@ -52,6 +52,7 @@ class VideoCompressionService {
       VideoCompressionService._();
 
   static const int maxDeliveryShortSide = 720;
+  static const int _audioBitrateBps = 96 * 1000;
 
   static VideoDeliveryTier selectTier({
     required int? width,
@@ -65,6 +66,17 @@ class VideoCompressionService {
     return VideoDeliveryTier.tier720;
   }
 
+  int _videoBitrateBps(VideoDeliveryTier tier) {
+    switch (tier) {
+      case VideoDeliveryTier.tier360:
+        return 800 * 1000;
+      case VideoDeliveryTier.tier480:
+        return 1400 * 1000;
+      case VideoDeliveryTier.tier720:
+        return 2400 * 1000;
+    }
+  }
+
   VideoQuality _qualityFor(VideoDeliveryTier tier) {
     switch (tier) {
       case VideoDeliveryTier.tier360:
@@ -74,6 +86,22 @@ class VideoCompressionService {
       case VideoDeliveryTier.tier720:
         return VideoQuality.Res1280x720Quality;
     }
+  }
+
+  int _recommendedMaxBytes(VideoDeliveryTier tier, int? durationMs) {
+    final durationSeconds = durationMs != null && durationMs > 0
+        ? durationMs / 1000.0
+        : 60.0;
+    final bitrate = _videoBitrateBps(tier) + _audioBitrateBps;
+    // Allow 25% headroom for motion complexity/container overhead while still
+    // preventing unusually high-bitrate delivery files from reaching cloud.
+    final estimate = durationSeconds * bitrate / 8.0 * 1.25;
+    final floor = switch (tier) {
+      VideoDeliveryTier.tier360 => 6 * 1024 * 1024,
+      VideoDeliveryTier.tier480 => 10 * 1024 * 1024,
+      VideoDeliveryTier.tier720 => 16 * 1024 * 1024,
+    };
+    return estimate.ceil().clamp(floor, 64 * 1024 * 1024);
   }
 
   Future<VideoCompressionResult> prepareForUpload(
@@ -98,13 +126,22 @@ class VideoCompressionService {
     final durationMs = info?.duration?.round();
     final profile = selectTier(width: sourceWidth, height: sourceHeight);
 
-    // A video already in the supported 360/480/720 delivery range can be
-    // uploaded as-is. High-resolution sources must be compressed locally;
-    // the original is never silently uploaded as a fallback.
-    final sourceShortSide = sourceWidth != null && sourceHeight != null && sourceWidth > 0 && sourceHeight > 0
+    final sourceShortSide = sourceWidth != null &&
+            sourceHeight != null &&
+            sourceWidth > 0 &&
+            sourceHeight > 0
         ? (sourceWidth < sourceHeight ? sourceWidth : sourceHeight)
         : maxDeliveryShortSide + 1;
-    if (sourceShortSide <= maxDeliveryShortSide) {
+    final sourceExtension = source.path.split(RegExp(r'[\\/]')).last.toLowerCase();
+    final withinResolution = sourceShortSide <= maxDeliveryShortSide;
+    final withinSizeBudget = originalBytes <= _recommendedMaxBytes(profile, durationMs);
+    final compatibleContainer = sourceExtension.endsWith('.mp4');
+
+    // Only skip device encoding when the source is already a sensible MP4
+    // delivery rendition. High resolution, oversized, or non-MP4 sources are
+    // always normalized on-device. The original is never uploaded as a silent
+    // fallback after a compression failure.
+    if (withinResolution && withinSizeBudget && compatibleContainer) {
       onProgress?.call(1.0);
       return VideoCompressionResult(
         file: source,
@@ -141,10 +178,15 @@ class VideoCompressionService {
     final outputWidth = outputInfo?.width;
     final outputHeight = outputInfo?.height;
     final outputBytes = await output.length();
-    final outputShortSide = outputWidth != null && outputHeight != null && outputWidth > 0 && outputHeight > 0
+    final outputShortSide = outputWidth != null &&
+            outputHeight != null &&
+            outputWidth > 0 &&
+            outputHeight > 0
         ? (outputWidth < outputHeight ? outputWidth : outputHeight)
         : 0;
-    if (outputBytes <= 0 || outputShortSide <= 0 || outputShortSide > maxDeliveryShortSide) {
+    if (outputBytes <= 0 ||
+        outputShortSide <= 0 ||
+        outputShortSide > maxDeliveryShortSide) {
       throw const VideoCompressionException(
         'Device compression produced an invalid delivery video. The original video was not uploaded.',
       );
@@ -158,14 +200,14 @@ class VideoCompressionService {
     final stablePath = '${directory.path}/${safeAsset}_${profile.name}.mp4';
     final stableFile = File(stablePath);
     if (stableFile.path != output.path) {
-      await stableFile.writeAsBytes(await output.readAsBytes(), flush: true);
+      await output.copy(stablePath);
     }
 
     onProgress?.call(1.0);
     return VideoCompressionResult(
       file: XFile(stableFile.path),
       originalBytes: originalBytes,
-      compressedBytes: stableFile.lengthSync(),
+      compressedBytes: await stableFile.length(),
       profile: profile,
       compressionApplied: true,
       sourceWidth: sourceWidth,
@@ -178,7 +220,8 @@ class VideoCompressionService {
 
   String _safePathPart(String value) {
     final compact = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    return compact.isEmpty ? 'media' : compact.substring(0, compact.length.clamp(1, 96));
+    if (compact.isEmpty) return 'media';
+    return compact.length > 96 ? compact.substring(0, 96) : compact;
   }
 }
 
