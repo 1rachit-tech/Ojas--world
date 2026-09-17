@@ -1,0 +1,57 @@
+name: Flutter Feature Check
+
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/flutter-feature-check.yml'
+  push:
+    branches:
+      - 'feature/creation-pipeline-production'
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/flutter-feature-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-feature-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Analyze and test Flutter changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze changed production surfaces
+        run: >-
+          flutter analyze
+          lib/screens/creator_profile_screen.dart
+          lib/services/reel_lifecycle_service.dart
+          lib/services/reel_feed_service.dart
+          lib/services/home_feed_service.dart
+          lib/creation/screens/creation_hub_screen.dart
+          lib/creation/services/creation_checkpoint_store.dart
+
+      - name: Run creation regression tests
+        run: flutter test test/creation_publish_state_test.dart test/creation_post_composer_test.dart test/creation_edit_engine_test.dart
