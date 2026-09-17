@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import uuid
@@ -18,6 +19,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 MAX_VIDEO_BYTES = 512 * 1024 * 1024
 MAX_SOURCE_SECONDS = 15 * 60
 MAX_OUTPUT_WIDTH = 720
+MAX_TEXT_CHARS = 120
+MAX_TEXT_LAYERS = 64
+MAX_EFFECT_LAYERS = 32
 QUEUE_VISIBILITY_SECONDS = 3600
 
 STORAGE_ACCOUNT = os.environ.get('AZURE_STORAGE_ACCOUNT_NAME', '').strip()
@@ -26,6 +30,7 @@ STORAGE_CONNECTION_STRING = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', ''
 QUEUE_CONNECTION_STRING = os.environ.get('AZURE_STORAGE_QUEUE_CONNECTION_STRING', '').strip()
 QUEUE_NAME = os.environ.get('AZURE_STORAGE_PROCESSING_QUEUE', 'ojas-media-processing').strip().lower()
 ENABLE_HLS = os.environ.get('OJAS_ENABLE_HLS', 'false').strip().lower() == 'true'
+FONT_FILE = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 
 
 def _firebase() -> firestore.Client:
@@ -55,7 +60,7 @@ def _queue() -> QueueClient:
 def _safe_creation_path(path: str) -> bool:
     parts = path.split('/')
     return (
-        len(parts) == 4
+        len(parts) >= 4
         and parts[0] == 'creation'
         and all(part and part not in {'.', '..'} for part in parts[1:])
         and all(all(c.isalnum() or c in '_-' for c in part) for part in parts[1:3])
@@ -121,7 +126,12 @@ def _claim(db: firestore.Client, asset_id: str, job_id: str) -> bool:
         status = str(data.get('processingStatus', '')).lower()
         if status in {'ready', 'processing'}:
             return False
-        txn.update(ref, {'processingStatus': 'processing', 'processingJobId': job_id, 'processingStartedAt': firestore.SERVER_TIMESTAMP, 'updatedAt': firestore.SERVER_TIMESTAMP})
+        txn.update(ref, {
+            'processingStatus': 'processing',
+            'processingJobId': job_id,
+            'processingStartedAt': firestore.SERVER_TIMESTAMP,
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+        })
         return True
 
     return apply_claim(transaction)
@@ -131,6 +141,7 @@ def _bounded_clip(clip: dict[str, Any], source_duration_ms: int) -> tuple[int, i
     trim_in = max(0, int(clip.get('trimInMs') or 0))
     trim_out_raw = clip.get('trimOutMs')
     trim_out = int(trim_out_raw) if isinstance(trim_out_raw, (int, float)) else source_duration_ms
+    trim_in = min(trim_in, source_duration_ms - 1)
     trim_out = min(source_duration_ms, trim_out)
     if trim_out <= trim_in:
         raise ValueError('Edit graph contains an invalid trim range.')
@@ -157,6 +168,96 @@ def _atempo_chain(speed: float) -> str:
     return ','.join(filters)
 
 
+def _escape_drawtext_text(value: str) -> str:
+    compact = ' '.join(value.replace('\n', ' ').split())[:MAX_TEXT_CHARS]
+    return (
+        compact
+        .replace('\\', '\\\\')
+        .replace(':', '\\:')
+        .replace("'", "\\'")
+        .replace('%', '\\%')
+    )
+
+
+def _safe_layer_time(layer: dict[str, Any], duration_ms: int) -> tuple[float, float] | None:
+    start_raw = layer.get('startMs', 0)
+    end_raw = layer.get('endMs', duration_ms)
+    if not isinstance(start_raw, (int, float)) or not isinstance(end_raw, (int, float)):
+        return None
+    start = max(0, min(duration_ms, int(start_raw)))
+    end = max(start + 1, min(duration_ms, int(end_raw)))
+    if end <= start:
+        return None
+    return start / 1000.0, end / 1000.0
+
+
+def _effect_expression(effect: dict[str, Any]) -> str | None:
+    effect_id = str(effect.get('effectId') or '').strip().lower()
+    try:
+        intensity = float(effect.get('intensity') or 1.0)
+    except (TypeError, ValueError):
+        intensity = 1.0
+    intensity = max(0.0, min(1.0, intensity))
+    if effect_id == 'mono':
+        return f'hue=s={1.0 - intensity:.3f}'
+    if effect_id == 'warm':
+        return f'eq=saturation={1.0 + 0.15 * intensity:.3f}:gamma={1.0 + 0.04 * intensity:.3f}:brightness={0.025 * intensity:.3f}'
+    if effect_id == 'cool':
+        return f'hue=h={-10.0 * intensity:.3f}:s={1.0 + 0.05 * intensity:.3f}'
+    if effect_id == 'vivid':
+        return f'eq=contrast={1.0 + 0.10 * intensity:.3f}:saturation={1.0 + 0.25 * intensity:.3f}'
+    return None
+
+
+def _append_visual_layers(
+    filter_parts: list[str],
+    input_label: str,
+    edit_graph: dict[str, Any],
+    duration_ms: int,
+) -> str:
+    current = input_label
+    effects = edit_graph.get('effectLayers')
+    if isinstance(effects, list):
+        for index, raw in enumerate(effects[:MAX_EFFECT_LAYERS]):
+            if not isinstance(raw, dict):
+                continue
+            expression = _effect_expression(raw)
+            if not expression:
+                continue
+            output_label = f'fx{index}'
+            filter_parts.append(f'[{current}]{expression}[{output_label}]')
+            current = output_label
+
+    text_layers = edit_graph.get('textLayers')
+    if isinstance(text_layers, list):
+        for index, raw in enumerate(text_layers[:MAX_TEXT_LAYERS]):
+            if not isinstance(raw, dict):
+                continue
+            text = str(raw.get('text') or '').strip()
+            timing = _safe_layer_time(raw, duration_ms)
+            if not text or timing is None:
+                continue
+            start, end = timing
+            try:
+                x = max(-0.4, min(1.4, float(raw.get('x') or 0.0)))
+                y = max(-0.2, min(1.2, float(raw.get('y') or 0.0)))
+                font_size = max(8, min(120, int(float(raw.get('fontSize') or 28))))
+            except (TypeError, ValueError):
+                continue
+            output_label = f'txt{index}'
+            escaped = _escape_drawtext_text(text)
+            drawtext = (
+                f"drawtext=fontfile='{FONT_FILE}':text='{escaped}':"
+                f'fontcolor=white:fontsize={font_size}:borderw=2:bordercolor=black@0.85:'
+                f'box=1:boxcolor=black@0.30:boxborderw=10:'
+                f"x='(w-text_w)/2+({x:.4f}*w)':y='({y:.4f}*h)':"
+                f"enable='between(t,{start:.3f},{end:.3f})'"
+            )
+            filter_parts.append(f'[{current}]{drawtext}[{output_label}]')
+            current = output_label
+    return current
+
+
 def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_graph: dict[str, Any]) -> str:
     raw_timeline = edit_graph.get('timeline')
     if not isinstance(raw_timeline, list) or not raw_timeline:
@@ -173,7 +274,11 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
     for index, clip in enumerate(clips):
         trim_in, trim_out, speed, rotation = _bounded_clip(clip, metadata['durationMs'])
         video_label = f'v{index}'
-        video_filters = [f'trim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f}', 'setpts=PTS-STARTPTS']
+        video_filters = [
+            f'trim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f}',
+            'setpts=PTS-STARTPTS',
+            f'setpts=PTS/{speed:.5f}',
+        ]
         if rotation == 90:
             video_filters.append('transpose=1')
         elif rotation == 180:
@@ -185,35 +290,49 @@ def _render_edit_graph(source: str, output: str, metadata: dict[str, Any], edit_
         filter_parts.append(f'[0:v]{",".join(video_filters)}[{video_label}]')
         if has_audio:
             audio_label = f'a{index}'
-            filter_parts.append(f'[0:a]atrim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f},asetpts=PTS-STARTPTS,{_atempo_chain(speed)}[{audio_label}]')
-            concat_inputs.extend([f'[{video_label}][{audio_label}]'])
+            filter_parts.append(
+                f'[0:a]atrim=start={trim_in / 1000:.3f}:end={trim_out / 1000:.3f},'
+                f'asetpts=PTS-STARTPTS,{_atempo_chain(speed)}[{audio_label}]'
+            )
+            concat_inputs.append(f'[{video_label}][{audio_label}]')
         else:
             concat_inputs.append(f'[{video_label}]')
 
     if len(clips) == 1:
-        filter_parts.append(f'{concat_inputs[0]}null[vout]')
-        if has_audio:
-            filter_parts.append(f'{concat_inputs[0]}null[aout]') if False else None
-        command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-filter_complex', ';'.join(filter_parts)]
-        command.extend(['-map', '[vout]'])
-        if has_audio:
-            command.extend(['-map', '[a0]', '-c:a', 'aac', '-b:a', '96k'])
-        command.extend(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output])
-        _run(command)
-        return 'edit-graph-v1'
-
-    if has_audio:
-        concat = ''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=1[vout][aout]'
+        filter_parts.append(f'[v0]null[preout]')
+        final_video_input = 'preout'
+        final_audio = 'a0' if has_audio else None
     else:
-        concat = ''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=0[vout]'
-    filter_parts.append(concat)
+        if has_audio:
+            filter_parts.append(''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=1[basev][basea]')
+            final_video_input = 'basev'
+            final_audio = 'basea'
+        else:
+            filter_parts.append(''.join(concat_inputs) + f'concat=n={len(clips)}:v=1:a=0[basev]')
+            final_video_input = 'basev'
+            final_audio = None
 
-    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source, '-filter_complex', ';'.join(filter_parts), '-map', '[vout]']
-    if has_audio:
-        command.extend(['-map', '[aout]', '-c:a', 'aac', '-b:a', '96k'])
-    command.extend(['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '2M', '-bufsize', '4M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output])
+    final_video = _append_visual_layers(filter_parts, final_video_input, edit_graph, metadata['durationMs'])
+
+    command = [
+        'ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', source,
+        '-filter_complex', ';'.join(filter_parts),
+        '-map', f'[{final_video}]',
+    ]
+    if final_audio:
+        command.extend(['-map', f'[{final_audio}]', '-c:a', 'aac', '-b:a', '96k'])
+    command.extend([
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '23',
+        '-maxrate', '2M',
+        '-bufsize', '4M',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        output,
+    ])
     _run(command)
-    return 'edit-graph-v1'
+    return 'edit-graph-v2-render'
 
 
 def process_job(job: dict[str, Any]) -> None:
@@ -313,7 +432,7 @@ def process_job(job: dict[str, Any]) -> None:
             'height': metadata['height'],
             'codec': metadata['codec'],
             'workerMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 1,
+            'editGraphAppliedVersion': 2,
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
@@ -331,7 +450,7 @@ def process_job(job: dict[str, Any]) -> None:
             'mediaHeight': metadata['height'],
             'mediaCodec': metadata['codec'],
             'mediaProcessingMode': worker_mode if not ENABLE_HLS else f'{worker_mode}-hls',
-            'editGraphAppliedVersion': 1,
+            'editGraphAppliedVersion': 2,
             'mediaProcessedAt': firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
