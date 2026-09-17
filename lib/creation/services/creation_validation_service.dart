@@ -19,6 +19,7 @@ class CreationValidationService {
 
   static const int maxVideoBytes = 512 * 1024 * 1024;
   static const int maxImageBytes = 10 * 1024 * 1024;
+  static const int maxAudioBytes = 10 * 1024 * 1024;
   static const int maxTimelineClips = 32;
   static const int maxOperations = 256;
   static const int maxTextLayers = 64;
@@ -155,9 +156,19 @@ class CreationValidationService {
     }
     for (final layer in project.audio) {
       _validateLayerTiming(layer, errors, 'audio');
+      final uri = layer['uri'];
+      final storagePath = layer['storagePath'];
+      if (uri is! String || uri.trim().isEmpty) {
+        if (storagePath is! String || storagePath.trim().isEmpty) errors.add('An audio layer is missing its source.');
+      } else if (uri.length > 2048) {
+        errors.add('An audio layer source URI is too long.');
+      }
       final volume = _doubleValue(layer['volume']);
       if (volume != null && (volume < 0 || volume > 2)) errors.add('Audio layer volume is outside the supported range.');
-      if (layer['uri'] is! String || (layer['uri'] as String).trim().isEmpty) errors.add('An audio layer is missing its source URI.');
+      final muted = layer['muted'];
+      if (muted != null && muted is! bool) errors.add('Audio layer mute state must be boolean.');
+      final sizeBytes = _intValue(layer['sizeBytes']);
+      if (sizeBytes != null && (sizeBytes <= 0 || sizeBytes > maxAudioBytes)) errors.add('Audio layer exceeds the 10 MB size limit.');
     }
     for (final layer in project.stickerLayers) {
       final scale = _doubleValue(layer['scale']);
