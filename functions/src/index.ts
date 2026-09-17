@@ -10,7 +10,6 @@ import {manageReelLifecycle, moderateAndIndexReel, shouldReprocessReel} from './
 import {searchPublicReels} from './reel_search';
 
 initializeApp();
-
 setGlobalOptions({region: 'asia-south1', maxInstances: 3, minInstances: 0});
 
 const azureQueueConnectionString = defineSecret('AZURE_STORAGE_QUEUE_CONNECTION_STRING');
@@ -145,12 +144,13 @@ export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reel
 
   const queue = getMediaQueueClient(azureQueueConnectionString.value());
   if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
+  const mediaAssetId = typeof after.mediaAssetId === 'string' ? after.mediaAssetId.trim() : '';
   const job = {
     schemaVersion: 1,
     kind: 'creation-media-cleanup',
     reelId: event.params.reelId,
     ownerId,
-    assetId: typeof after.projectId === 'string' ? after.projectId.trim() : event.params.reelId,
+    assetId: mediaAssetId || event.params.reelId,
     cleanupPrefix: `creation/${ownerId}/${event.params.reelId}/`,
     audioCleanupPrefix: `creation-audio/${ownerId}/${event.params.reelId}/`,
     mediaStoragePath: typeof after.mediaStoragePath === 'string' ? after.mediaStoragePath.trim() : '',
