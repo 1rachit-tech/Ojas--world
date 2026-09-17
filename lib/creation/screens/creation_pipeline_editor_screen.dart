@@ -237,7 +237,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
             ListTile(leading: const Icon(Icons.rotate_right), title: const Text('Rotate 90°'), onTap: () => Navigator.pop(sheetContext, 'rotate')),
             ListTile(leading: const Icon(Icons.speed), title: const Text('Speed 2×'), onTap: () => Navigator.pop(sheetContext, 'speed2')),
             ListTile(leading: const Icon(Icons.slow_motion_video), title: const Text('Speed 0.5×'), onTap: () => Navigator.pop(sheetContext, 'speed05')),
+            ListTile(leading: const Icon(Icons.opacity), title: const Text('Opacity 50%'), onTap: () => Navigator.pop(sheetContext, 'opacity')),
             ListTile(leading: const Icon(Icons.call_split), title: const Text('Split at current position'), onTap: () => Navigator.pop(sheetContext, 'split')),
+            ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Delete this clip'), onTap: () => Navigator.pop(sheetContext, 'delete')),
           ],
         ),
       ),
@@ -253,13 +255,70 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       case 'speed05':
         _applyEdit(_editEngine.setSpeed(_project, clipId: clip.clipId, speed: 0.5));
         break;
+      case 'opacity':
+        _applyEdit(_editEngine.setTransform(_project, clipId: clip.clipId, opacity: 0.5));
+        break;
       case 'split':
         final controller = _videoController;
         if (controller == null || !controller.value.isInitialized) return;
         final position = controller.value.position.inMilliseconds;
         _applyEdit(_editEngine.splitClip(_project, clipId: clip.clipId, splitAtMs: position));
         break;
+      case 'delete':
+        if (_project.timeline.length == 1) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('At least one clip is required.')));
+          return;
+        }
+        _applyEdit(_editEngine.deleteClip(_project, clipId: clip.clipId));
+        break;
     }
+  }
+
+  Future<void> _openCropTool() async {
+    final clip = _primaryClip;
+    if (clip == null) return;
+    var left = clip.cropLeft;
+    var top = clip.cropTop;
+    var right = clip.cropRight;
+    var bottom = clip.cropBottom;
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, MediaQuery.of(sheetContext).viewInsets.bottom + 20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(alignment: Alignment.centerLeft, child: Text('Crop', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800))),
+                  const SizedBox(height: 12),
+                  _CropSlider(label: 'Left', value: left, onChanged: (v) => setSheetState(() => left = v)),
+                  _CropSlider(label: 'Top', value: top, onChanged: (v) => setSheetState(() => top = v)),
+                  _CropSlider(label: 'Right', value: right, onChanged: (v) => setSheetState(() => right = v)),
+                  _CropSlider(label: 'Bottom', value: bottom, onChanged: (v) => setSheetState(() => bottom = v)),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, height: 48, child: FilledButton(onPressed: () => Navigator.pop(sheetContext, true), child: const Text('Apply crop'))),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (result != true || !mounted) return;
+    _applyEdit(_editEngine.setCrop(_project, clipId: clip.clipId, left: left, top: top, right: right, bottom: bottom));
+  }
+
+  void _movePrimaryClip(int delta) {
+    final clip = _primaryClip;
+    if (clip == null) return;
+    final current = _project.timeline.indexWhere((item) => item.clipId == clip.clipId);
+    final target = current + delta;
+    if (current < 0 || target < 0 || target >= _project.timeline.length) return;
+    _applyEdit(_editEngine.reorderClip(_project, clipId: clip.clipId, toIndex: target));
   }
 
   Future<void> _openCaption() async {
@@ -352,6 +411,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     if (_videoInitializing) return const Center(child: CircularProgressIndicator());
     if (_videoError || _videoController == null || !_videoController!.value.isInitialized) return const Center(child: Text('Unable to load video', style: TextStyle(color: Colors.white)));
     final controller = _videoController!;
+    final clip = _primaryClip;
+    final rotationTurns = ((clip?.rotation ?? 0) / 90).round();
+    final opacity = (clip?.opacity ?? 1).clamp(0.0, 1.0).toDouble();
     return GestureDetector(
       onTap: () async {
         if (controller.value.isPlaying) {
@@ -361,7 +423,66 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         }
         if (mounted) setState(() {});
       },
-      child: Center(child: AspectRatio(aspectRatio: controller.value.aspectRatio > 0 ? controller.value.aspectRatio : 9 / 16, child: VideoPlayer(controller))),
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: controller.value.aspectRatio > 0 ? controller.value.aspectRatio : 9 / 16,
+          child: Opacity(
+            opacity: opacity,
+            child: RotatedBox(quarterTurns: rotationTurns % 4, child: VideoPlayer(controller)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimelineStrip(CreationTimelineClip? selected) {
+    return Container(
+      height: 62,
+      color: const Color(0xFF111111),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _project.timeline.length < 2 ? null : () => _movePrimaryClip(-1),
+            color: Colors.white,
+            disabledColor: Colors.white24,
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Move clip left',
+          ),
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _project.timeline.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (_, index) {
+                final clip = _project.timeline[index];
+                final selectedClip = selected?.clipId == clip.clipId;
+                return Container(
+                  width: 92,
+                  decoration: BoxDecoration(
+                    color: selectedClip ? Colors.white : const Color(0xFF292929),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: selectedClip ? Colors.white : Colors.white12),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Clip ${index + 1}\n${(clip.renderedDurationMs / 1000).toStringAsFixed(1)}s',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: selectedClip ? Colors.black : Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            onPressed: _project.timeline.length < 2 ? null : () => _movePrimaryClip(1),
+            color: Colors.white,
+            disabledColor: Colors.white24,
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Move clip right',
+          ),
+        ],
+      ),
     );
   }
 
@@ -388,18 +509,29 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               fit: StackFit.expand,
               children: [
                 Center(child: _buildPreview()),
-                Positioned(left: 12, right: 12, bottom: 12, child: Row(children: [
-                  _ToolButton(icon: Icons.text_fields_rounded, label: 'Text', onTap: _openTextTool),
-                  const SizedBox(width: 7),
-                  _ToolButton(icon: Icons.music_note_rounded, label: 'Audio', onTap: _openAudioTool),
-                  const SizedBox(width: 7),
-                  _ToolButton(icon: Icons.auto_awesome_rounded, label: 'Effects', onTap: _openEffectsTool),
-                  const SizedBox(width: 7),
-                  _ToolButton(icon: Icons.tune_rounded, label: 'Adjust', onTap: _openAdjustTool),
-                ])),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      _ToolButton(icon: Icons.text_fields_rounded, label: 'Text', onTap: _openTextTool),
+                      const SizedBox(width: 7),
+                      _ToolButton(icon: Icons.music_note_rounded, label: 'Audio', onTap: _openAudioTool),
+                      const SizedBox(width: 7),
+                      _ToolButton(icon: Icons.auto_awesome_rounded, label: 'Effects', onTap: _openEffectsTool),
+                      const SizedBox(width: 7),
+                      _ToolButton(icon: Icons.tune_rounded, label: 'Adjust', onTap: _openAdjustTool),
+                      const SizedBox(width: 7),
+                      _ToolButton(icon: Icons.crop_rounded, label: 'Crop', onTap: _openCropTool),
+                    ]),
+                  ),
+                ),
               ],
             ),
           ),
+          _buildTimelineStrip(clip),
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -407,7 +539,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               if (_videoController?.value.isInitialized == true && clip != null) ...[
                 Row(children: [const Text('Trim', style: TextStyle(fontWeight: FontWeight.w800)), const Spacer(), Text('${(_trimStart * 100).round()}% — ${(_trimEnd * 100).round()}%')]),
                 RangeSlider(values: RangeValues(_trimStart, _trimEnd), onChanged: (value) => _setTrim(value.start, value.end)),
-                Align(alignment: Alignment.centerLeft, child: Text('${clip.speed.toStringAsFixed(2)}×  •  ${clip.rotation.toStringAsFixed(0)}°  •  v${_project.version}', style: const TextStyle(fontSize: 12, color: Colors.black54))),
+                Align(alignment: Alignment.centerLeft, child: Text('${clip.speed.toStringAsFixed(2)}×  •  ${clip.rotation.toStringAsFixed(0)}°  •  crop ${(clip.cropLeft * 100).round()}%/${(clip.cropTop * 100).round()}%/${(clip.cropRight * 100).round()}%/${(clip.cropBottom * 100).round()}%  •  v${_project.version}', style: const TextStyle(fontSize: 12, color: Colors.black54))),
                 const SizedBox(height: 6),
               ],
               Row(children: [
@@ -431,7 +563,7 @@ class _ToolButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Expanded(child: Material(color: Colors.black54, borderRadius: BorderRadius.circular(14), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Column(children: [Icon(icon, color: Colors.white, size: 19), const SizedBox(height: 3), Text(label, style: const TextStyle(color: Colors.white, fontSize: 10))])))));
+  Widget build(BuildContext context) => Material(color: Colors.black54, borderRadius: BorderRadius.circular(14), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: Colors.white, size: 19), const SizedBox(width: 5), Text(label, style: const TextStyle(color: Colors.white, fontSize: 10))])));
 }
 
 class _ComposerTile extends StatelessWidget {
@@ -441,4 +573,22 @@ class _ComposerTile extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(onPressed: onTap, icon: Icon(icon, size: 18), label: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis), style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))));
+}
+
+class _CropSlider extends StatelessWidget {
+  const _CropSlider({required this.label, required this.value, required this.onChanged});
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(width: 58, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+        Expanded(child: Slider(value: value, min: 0, max: 0.45, divisions: 45, label: '${(value * 100).round()}%', onChanged: onChanged)),
+        SizedBox(width: 44, child: Text('${(value * 100).round()}%', textAlign: TextAlign.end)),
+      ],
+    );
+  }
 }
