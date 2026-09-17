@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../services/media_hash_service.dart';
 import '../../services/reel_lifecycle_service.dart';
+import '../../services/video_compression_service.dart';
 import '../models/creation_project.dart';
 import '../models/creation_publish_state.dart';
 import 'creation_azure_media_service.dart';
@@ -18,6 +20,13 @@ class CreationPublishResult {
   final String postId;
   final String mediaUrl;
   final bool isProcessing;
+}
+
+class _PreparedUploadMedia {
+  const _PreparedUploadMedia({required this.file, required this.compression});
+
+  final File file;
+  final Map<String, dynamic> compression;
 }
 
 class CreationPublishService {
@@ -88,17 +97,30 @@ class CreationPublishService {
     }
 
     await _saveState(project.projectId, CreationPublishStage.validating, requestId: publishRequestId);
+    await _saveState(project.projectId, CreationPublishStage.preparing, requestId: publishRequestId);
+    final prepared = await _prepareUploadMedia(
+      project: project,
+      asset: asset,
+      publishState: publishState,
+      requestId: publishRequestId,
+    );
+    final uploadFile = prepared.file;
+    final compression = prepared.compression;
+    final uploadBytes = await uploadFile.length();
+    if (uploadBytes <= 0) {
+      throw const CreationPublishException('Prepared video is empty. Please try again.');
+    }
+
     String downloadUrl;
     String? storagePath;
 
-    await _saveState(project.projectId, CreationPublishStage.preparing, requestId: publishRequestId);
     if (_azureMedia.isConfigured) {
-      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: asset.sizeBytes);
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: uploadBytes);
       final azureResult = await _azureMedia.uploadVideo(
         projectId: project.projectId,
         assetId: asset.assetId,
-        localPath: asset.localUri,
-        contentType: asset.mimeType == 'video/*' ? 'video/mp4' : asset.mimeType,
+        localPath: uploadFile.path,
+        contentType: 'video/mp4',
         deferProcessing: true,
         onProgress: (uploaded, total) {
           _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: uploaded, totalBytes: total);
@@ -108,17 +130,16 @@ class CreationPublishService {
       downloadUrl = azureResult.mediaUrl;
       storagePath = azureResult.storagePath;
     } else {
-      final source = File(asset.localUri);
       final storageReference = _storage.ref().child('reels').child(user.uid).child('${project.projectId}.mp4');
-      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: asset.sizeBytes);
-      final uploadTask = await storageReference.putFile(source, SettableMetadata(contentType: 'video/mp4'));
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: uploadBytes);
+      final uploadTask = await storageReference.putFile(File(uploadFile.path), SettableMetadata(contentType: 'video/mp4'));
       downloadUrl = await uploadTask.ref.getDownloadURL();
       storagePath = storageReference.fullPath;
-      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: uploadBytes, totalBytes: uploadBytes);
     }
 
-    await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
-    final mediaHash = await _computeMediaHash(asset.localUri);
+    await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: uploadBytes, totalBytes: uploadBytes);
+    final mediaHash = await _computeMediaHash(uploadFile.path);
     if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(mediaHash)) {
       throw const CreationPublishException('Could not calculate a valid media hash. Please try again.');
     }
@@ -135,7 +156,7 @@ class CreationPublishService {
         mediaAssetId: asset.assetId,
         videoUrl: downloadUrl,
         mediaStoragePath: storagePath ?? '',
-        contentLength: asset.sizeBytes,
+        contentLength: uploadBytes,
         mediaHash: mediaHash,
         editGraph: editGraph,
         caption: project.caption,
@@ -165,10 +186,15 @@ class CreationPublishService {
         'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
         'mediaStoragePath': storagePath,
         'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
-        'mediaProcessingVersion': 3,
-        'mediaProcessingMode': 'edit-graph-v5-render',
+        'mediaProcessingVersion': 4,
+        'mediaProcessingMode': _azureMedia.isConfigured ? 'device-compressed-validate' : 'device-compressed-local',
         'editGraphVersion': 2,
         'editGraph': editGraph,
+        'deviceCompressed': compression['applied'] == true,
+        'deviceCompressionProfile': compression['profile'],
+        'deviceOriginalBytes': compression['originalBytes'],
+        'deviceUploadBytes': compression['uploadBytes'],
+        'deviceCompressionRatio': compression['ratio'],
         'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
         'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
         'mediaHash': mediaHash,
@@ -200,7 +226,8 @@ class CreationPublishService {
         projectId: project.projectId,
         ownerId: user.uid,
         storagePath: storagePath ?? '',
-        contentLength: asset.sizeBytes,
+        contentLength: uploadBytes,
+        deviceCompressed: compression['applied'] == true,
       );
     }
 
@@ -221,13 +248,80 @@ class CreationPublishService {
         'mediaHash': mediaHash,
         'editGraphVersion': 2,
         'mediaAssetId': asset.assetId,
+        'preparedMediaPath': uploadFile.path,
+        'mediaCompression': compression,
         if (isExistingEdit) 'editOfPostId': project.projectId,
       },
     );
     await CreationProjectStore.instance.save(published);
-    await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes, requestId: publishRequestId);
+    await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, bytesUploaded: uploadBytes, totalBytes: uploadBytes, requestId: publishRequestId);
 
     return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
+  }
+
+  Future<_PreparedUploadMedia> _prepareUploadMedia({
+    required CreationProject project,
+    required dynamic asset,
+    required Map<String, dynamic> publishState,
+    required String requestId,
+  }) async {
+    final storedPath = publishState['preparedMediaPath'] is String ? (publishState['preparedMediaPath'] as String).trim() : '';
+    final storedCompression = publishState['mediaCompression'];
+    if (storedPath.isNotEmpty && storedCompression is Map) {
+      final cached = File(storedPath);
+      if (await cached.exists() && await cached.length() > 0) {
+        return _PreparedUploadMedia(
+          file: cached,
+          compression: Map<String, dynamic>.from(storedCompression),
+        );
+      }
+    }
+
+    final result = await VideoCompressionService.instance.prepareForUpload(
+      XFile(asset.localUri),
+      projectId: project.projectId,
+      assetId: asset.assetId,
+      onProgress: (progress) {
+        final bounded = progress.clamp(0.0, 1.0).toDouble();
+        _saveState(
+          project.projectId,
+          CreationPublishStage.preparing,
+          requestId: requestId,
+          bytesUploaded: (asset.sizeBytes * bounded).round(),
+          totalBytes: asset.sizeBytes,
+        );
+      },
+    );
+    final preparedFile = File(result.file.path);
+    if (!await preparedFile.exists() || await preparedFile.length() <= 0) {
+      throw const CreationPublishException('Device did not produce a usable delivery video.');
+    }
+
+    final compression = <String, dynamic>{
+      'applied': result.compressionApplied,
+      'profile': result.profileName,
+      'originalBytes': result.originalBytes,
+      'uploadBytes': result.compressedBytes,
+      'ratio': double.parse(result.compressionRatio.toStringAsFixed(6)),
+      'sourceWidth': result.sourceWidth,
+      'sourceHeight': result.sourceHeight,
+      'outputWidth': result.outputWidth,
+      'outputHeight': result.outputHeight,
+      'durationMs': result.durationMs,
+      'engine': 'device-video-compress-3.1.4',
+      'version': 1,
+    };
+
+    final checkpointed = project.copyWith(
+      publishState: <String, dynamic>{
+        ...publishState,
+        'preparedMediaPath': preparedFile.path,
+        'mediaCompression': compression,
+      },
+    );
+    await CreationProjectStore.instance.save(checkpointed);
+
+    return _PreparedUploadMedia(file: preparedFile, compression: compression);
   }
 
   Future<void> _markCreationMediaQueued({
@@ -236,6 +330,7 @@ class CreationPublishService {
     required String ownerId,
     required String storagePath,
     required int contentLength,
+    required bool deviceCompressed,
   }) async {
     if (storagePath.isEmpty) throw const CreationPublishException('Media storage path is missing.');
     await _firestore.collection('creationMedia').doc(assetId).set(<String, dynamic>{
@@ -245,6 +340,7 @@ class CreationPublishService {
       'storagePath': storagePath,
       'contentLength': contentLength,
       'contentType': 'video/mp4',
+      'deviceCompressed': deviceCompressed,
       'status': 'uploaded',
       'processingStatus': 'queued',
       'queuedAt': FieldValue.serverTimestamp(),
