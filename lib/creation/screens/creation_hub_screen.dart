@@ -37,16 +37,14 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
     _loadRecovery();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadRecovery();
-  }
-
   Future<void> _loadRecovery() async {
     final ownerId = _ownerId;
     if (ownerId.isEmpty) {
-      if (mounted) setState(() => _recoveryItems = const <CreationPublishRecoveryItem>[]);
+      if (mounted) {
+        setState(
+          () => _recoveryItems = const <CreationPublishRecoveryItem>[],
+        );
+      }
       return;
     }
     try {
@@ -90,8 +88,7 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
 
       final assets = <CreationMediaAsset>[];
       for (var index = 0; index < files.length; index++) {
-        final selected = files[index];
-        assets.add(await _buildAsset(selected, index));
+        assets.add(await _buildAsset(files[index], index));
       }
 
       final projectId = '${_ownerId}_${DateTime.now().microsecondsSinceEpoch}';
@@ -195,7 +192,7 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
       assetId: '${DateTime.now().microsecondsSinceEpoch}_$index',
       localUri: selected.path,
       type: isVideo ? 'video' : 'image',
-      mimeType: isVideo ? 'video/mp4' : 'image/*',
+      mimeType: isVideo ? 'video/*' : 'image/*',
       sizeBytes: size,
       durationMs: durationMs,
     );
@@ -486,7 +483,7 @@ class _RecoveryCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
-                value: item.progress.clamp(0.0, 1.0),
+                value: item.progress.clamp(0.0, 1.0).toDouble(),
                 minHeight: 6,
                 backgroundColor: Colors.white12,
               ),
