@@ -13,6 +13,7 @@ class VideoCompressionResult {
     required this.compressedBytes,
     required this.profile,
     required this.compressionApplied,
+    required this.deliveryReady,
     this.sourceWidth,
     this.sourceHeight,
     this.outputWidth,
@@ -25,6 +26,7 @@ class VideoCompressionResult {
   final int compressedBytes;
   final VideoDeliveryTier profile;
   final bool compressionApplied;
+  final bool deliveryReady;
   final int? sourceWidth;
   final int? sourceHeight;
   final int? outputWidth;
@@ -137,10 +139,9 @@ class VideoCompressionService {
     final withinSizeBudget = originalBytes <= _recommendedMaxBytes(profile, durationMs);
     final compatibleContainer = sourceExtension.endsWith('.mp4');
 
-    // Only skip device encoding when the source is already a sensible MP4
-    // delivery rendition. High resolution, oversized, or non-MP4 sources are
-    // always normalized on-device. The original is never uploaded as a silent
-    // fallback after a compression failure.
+    // Sources that are already acceptable delivery MP4s are marked ready rather
+    // than re-encoded. The server independently probes the uploaded media
+    // before allowing pass-through, so this flag is only an optimization hint.
     if (withinResolution && withinSizeBudget && compatibleContainer) {
       onProgress?.call(1.0);
       return VideoCompressionResult(
@@ -149,6 +150,7 @@ class VideoCompressionService {
         compressedBytes: originalBytes,
         profile: profile,
         compressionApplied: false,
+        deliveryReady: true,
         sourceWidth: sourceWidth,
         sourceHeight: sourceHeight,
         outputWidth: sourceWidth,
@@ -210,6 +212,7 @@ class VideoCompressionService {
       compressedBytes: await stableFile.length(),
       profile: profile,
       compressionApplied: true,
+      deliveryReady: true,
       sourceWidth: sourceWidth,
       sourceHeight: sourceHeight,
       outputWidth: outputWidth,
