@@ -149,7 +149,7 @@ class HomeFeedService {
     if (data['private'] == true) return HomeEligibilityStatus.filtered;
     if (data['ageRestricted'] == true) return HomeEligibilityStatus.restricted;
     final moderationStatus = (data['moderationStatus'] as String? ?? '').toLowerCase();
-    if (moderationStatus.isNotEmpty && moderationStatus != 'approved') return HomeEligibilityStatus.rejected;
+    if (moderationStatus != 'approved') return HomeEligibilityStatus.rejected;
     if (data['recommendationEligible'] == false) return HomeEligibilityStatus.filtered;
     if ((data['copyrightStatus'] as String?) == 'blocked') return HomeEligibilityStatus.rejected;
     if (data['spam'] == true) return HomeEligibilityStatus.rejected;
