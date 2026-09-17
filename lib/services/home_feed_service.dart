@@ -59,17 +59,17 @@ class HomeFeedService {
   Future<QuerySnapshot<Map<String, dynamic>>> _fetchCandidates({required HomeFeedMode mode, required String userId, required DocumentSnapshot<Map<String, dynamic>>? cursor}) async {
     switch (mode) {
       case HomeFeedMode.latest:
-        return _runQuery(_reels.orderBy('createdAt', descending: true), cursor);
+        return _runQuery(_reels.where('visibility', isEqualTo: 'public').orderBy('createdAt', descending: true), cursor);
       case HomeFeedMode.following:
         final following = await _readFollowing(userId);
         if (following.isEmpty) return _emptySnapshot();
-        return _runQuery(_reels.where('creatorId', whereIn: following.take(maxWhereInIds).toList(growable: false)).orderBy('createdAt', descending: true), cursor);
+        return _runQuery(_reels.where('creatorId', whereIn: following.take(maxWhereInIds).toList(growable: false)).where('visibility', isEqualTo: 'public').orderBy('createdAt', descending: true), cursor);
       case HomeFeedMode.favorites:
         final savedIds = await _readSavedContentIds(userId);
         if (savedIds.isEmpty) return _emptySnapshot();
-        return _runQuery(_reels.where(FieldPath.documentId, whereIn: savedIds.take(maxWhereInIds).toList()).orderBy('createdAt', descending: true), cursor);
+        return _runQuery(_reels.where(FieldPath.documentId, whereIn: savedIds.take(maxWhereInIds).toList()).where('visibility', isEqualTo: 'public').orderBy('createdAt', descending: true), cursor);
       case HomeFeedMode.personalized:
-        return _runQuery(_reels.orderBy('createdAt', descending: true), cursor);
+        return _runQuery(_reels.where('visibility', isEqualTo: 'public').orderBy('createdAt', descending: true), cursor);
       case HomeFeedMode.friends:
         return _emptySnapshot();
     }
