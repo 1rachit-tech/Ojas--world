@@ -128,6 +128,41 @@ class HomeFeedItem {
   final String visibility;
   final bool recommendationEligible;
 
+  HomeFeedItem copyWith({
+    List<String>? mediaSources,
+    String? thumbnailUrl,
+    String? mediaUrl,
+  }) {
+    return HomeFeedItem(
+      contentId: contentId,
+      creatorId: creatorId,
+      contentType: contentType,
+      mediaType: mediaType,
+      createdAt: createdAt,
+      source: source,
+      eligibility: eligibility,
+      rankingScore: rankingScore,
+      mediaSources: mediaSources ?? this.mediaSources,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      caption: caption,
+      hashtags: hashtags,
+      mentions: mentions,
+      soundId: soundId,
+      location: location,
+      likes: likes,
+      comments: comments,
+      shares: shares,
+      saves: saves,
+      views: views,
+      recommendationReason: recommendationReason,
+      rankingContext: rankingContext,
+      trackingToken: trackingToken,
+      visibility: visibility,
+      recommendationEligible: recommendationEligible,
+    );
+  }
+
   bool get isVideo => mediaType == 'video' || contentType == HomeContentType.video;
 }
 
