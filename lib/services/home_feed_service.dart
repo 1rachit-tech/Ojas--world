@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/home_feed_models.dart';
 import '../models/reel_model.dart';
 import '../models/home_feed_runtime_models.dart';
+import 'azure_media_playback_service.dart';
 import 'ranking/home_feed_ranker.dart';
 
 class HomeFeedService {
@@ -13,9 +14,11 @@ class HomeFeedService {
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
     HomeFeedRanker? ranker,
+    AzureMediaPlaybackService? playback,
   })  : _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance,
-        _ranker = ranker ?? const DefaultHomeFeedRanker();
+        _ranker = ranker ?? const DefaultHomeFeedRanker(),
+        _playback = playback ?? AzureMediaPlaybackService();
 
   static const int candidatePageSize = 20;
   static const int finalPageSize = 10;
@@ -24,6 +27,7 @@ class HomeFeedService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final HomeFeedRanker _ranker;
+  final AzureMediaPlaybackService _playback;
 
   CollectionReference<Map<String, dynamic>> get _reels =>
       _firestore.collection('reels');
@@ -47,6 +51,7 @@ class HomeFeedService {
     );
 
     final candidates = <HomeFeedItem>[];
+    final mediaProviderById = <String, String>{};
     for (final doc in snapshot.docs) {
       final item = _toFeedItem(doc, context, userId);
       if (item.eligibility != HomeEligibilityStatus.eligible) continue;
@@ -55,6 +60,8 @@ class HomeFeedService {
       if (context.mutedCreatorIds.contains(item.creatorId)) continue;
       if (context.blockedCreatorIds.contains(item.creatorId)) continue;
       candidates.add(item);
+      mediaProviderById[item.contentId] =
+          (doc.data()['mediaProvider'] as String? ?? '').toLowerCase();
     }
 
     final ranked = _ranker.rank(
@@ -64,8 +71,37 @@ class HomeFeedService {
     );
     final selected = ranked.take(finalPageSize).toList(growable: false);
 
+    final azureIds = selected
+        .where((item) => mediaProviderById[item.contentId] == 'azure')
+        .map((item) => item.contentId)
+        .take(10)
+        .toList(growable: false);
+    final secureAssets = await _playback.resolvePlaybackAssets(azureIds);
+
+    final resolved = <HomeFeedItem>[];
+    for (final item in selected) {
+      if (mediaProviderById[item.contentId] != 'azure') {
+        resolved.add(item);
+        continue;
+      }
+
+      final asset = secureAssets[item.contentId];
+      if (asset == null || asset.playbackUrl.isEmpty) {
+        // Never expose a private Azure source URL directly to a player.
+        continue;
+      }
+
+      resolved.add(
+        item.copyWith(
+          mediaSources: <String>[asset.playbackUrl],
+          mediaUrl: asset.playbackUrl,
+          thumbnailUrl: asset.thumbnailUrl ?? item.thumbnailUrl,
+        ),
+      );
+    }
+
     return HomeFeedPage(
-      items: selected,
+      items: List<HomeFeedItem>.unmodifiable(resolved),
       cursor: snapshot.docs.isEmpty ? cursor : snapshot.docs.last,
       hasMore: snapshot.docs.length >= candidatePageSize,
     );
@@ -179,6 +215,7 @@ class HomeFeedService {
         (reel.shares * 3.0);
     final avgWatchMs = reel.views <= 0 ? 0 : reel.watchTimeMs / reel.views;
     final watchQuality = (avgWatchMs / 60000).clamp(0.0, 1.0);
+    final isAzure = (data['mediaProvider'] as String? ?? '').toLowerCase() == 'azure';
 
     final eligibility = _readEligibility(data, reel, userId);
     final mediaSources = _readStringList(data['mediaSources']);
@@ -200,11 +237,13 @@ class HomeFeedService {
       source: _sourceFor(context.mode),
       eligibility: eligibility,
       rankingScore: 0,
-      mediaSources: mediaSources.isEmpty && reel.hlsUrl.isNotEmpty
-          ? <String>[reel.hlsUrl]
-          : mediaSources,
+      mediaSources: isAzure
+          ? mediaSources
+          : (mediaSources.isEmpty && reel.hlsUrl.isNotEmpty
+              ? <String>[reel.hlsUrl]
+              : mediaSources),
       thumbnailUrl: reel.thumbnailUrl.isEmpty ? null : reel.thumbnailUrl,
-      mediaUrl: reel.hlsUrl.isEmpty ? null : reel.hlsUrl,
+      mediaUrl: isAzure || reel.hlsUrl.isEmpty ? null : reel.hlsUrl,
       caption: reel.caption,
       hashtags: hashtags,
       mentions: mentions,
