@@ -31,8 +31,9 @@ class ReelFeedService {
 
     final snapshot = await query.get();
     final docs = snapshot.docs;
-
     final candidateReels = <ReelModel>[];
+    final mediaProviderById = <String, String>{};
+
     for (final doc in docs) {
       final data = doc.data();
       final visibility = (data['visibility'] as String? ?? 'public').toLowerCase();
@@ -50,28 +51,34 @@ class ReelFeedService {
       final reel = ReelModel.fromFirestore(doc);
       if (reel.hlsUrl.trim().isEmpty) continue;
       candidateReels.add(reel);
+      mediaProviderById[reel.id] = mediaProvider;
     }
 
     final azureIds = candidateReels
-        .where((reel) => reel.mediaProvider.toLowerCase() == 'azure')
+        .where((reel) => mediaProviderById[reel.id] == 'azure')
         .map((reel) => reel.id)
         .take(10)
         .toList(growable: false);
-    final signedUrls = await _playback.resolvePlaybackUrls(azureIds);
+    final secureAssets = await _playback.resolvePlaybackAssets(azureIds);
 
     final resolved = <ReelModel>[];
     for (final reel in candidateReels) {
-      if (reel.mediaProvider.toLowerCase() != 'azure') {
+      if (mediaProviderById[reel.id] != 'azure') {
         resolved.add(reel);
         continue;
       }
 
-      final signedUrl = signedUrls[reel.id];
-      if (signedUrl == null || signedUrl.isEmpty) {
+      final asset = secureAssets[reel.id];
+      if (asset == null || asset.playbackUrl.isEmpty) {
         // Never expose a private Azure source URL directly to the player.
         continue;
       }
-      resolved.add(reel.copyWith(hlsUrl: signedUrl));
+      resolved.add(
+        reel.copyWith(
+          hlsUrl: asset.playbackUrl,
+          thumbnailUrl: asset.thumbnailUrl ?? reel.thumbnailUrl,
+        ),
+      );
     }
 
     return ReelFeedPage(
