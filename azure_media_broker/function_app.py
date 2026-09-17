@@ -23,7 +23,7 @@ _PLAYBACK_SAS_TTL_MINUTES = 15
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SAFE_CREATION_PATH = re.compile(
-    r"^creation/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}(?:/[^/]{1,512})?$"
+    r"^creation/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}(?:/[^/]{1,512}){0,5}$"
 )
 _CREATION_VIDEO_TYPES = {
     "video/mp4",
@@ -403,7 +403,6 @@ def creation_playback_urls(req: func.HttpRequest) -> func.HttpResponse:
         storage_path = str(
             data.get("processedVideoStoragePath")
             or data.get("hlsStoragePath")
-            or data.get("mediaStoragePath")
             or "",
         ).strip()
         if (
