@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../services/media_hash_service.dart';
@@ -34,9 +33,7 @@ class CreationPublishService {
 
   Future<CreationPublishResult> publish(CreationProject project) async {
     final user = _auth.currentUser;
-    if (user == null || user.uid != project.ownerId) {
-      throw const CreationPublishException('Please sign in again before posting.');
-    }
+    if (user == null || user.uid != project.ownerId) throw const CreationPublishException('Please sign in again before posting.');
 
     final validation = await CreationValidationService.validateProject(project, requirePublishRights: true);
     if (!validation.isValid) throw CreationPublishException(validation.message);
@@ -100,7 +97,7 @@ class CreationPublishService {
 
     await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     final mediaHash = await _computeMediaHash(asset.localUri);
-    final editGraph = await _prepareEditGraph(project, user.uid);
+    final editGraph = await _prepareEditGraph(project);
     await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
     await postRef.set(<String, dynamic>{
@@ -119,8 +116,8 @@ class CreationPublishService {
       'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
       'mediaStoragePath': storagePath,
       'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
-      'mediaProcessingVersion': 2,
-      'mediaProcessingMode': 'edit-graph-v2-render',
+      'mediaProcessingVersion': 3,
+      'mediaProcessingMode': 'edit-graph-v3-render',
       'editGraphVersion': 2,
       'editGraph': editGraph,
       'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
@@ -165,7 +162,7 @@ class CreationPublishService {
     return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
   }
 
-  Future<Map<String, dynamic>> _prepareEditGraph(CreationProject project, String uid) async {
+  Future<Map<String, dynamic>> _prepareEditGraph(CreationProject project) async {
     List<Map<String, dynamic>> bounded(List<Map<String, dynamic>> input, int maxItems) => input.take(maxItems).map((item) => Map<String, dynamic>.from(item)).toList(growable: false);
     final timeline = project.timeline.take(32).map((clip) => clip.toMap()).toList(growable: false);
     final audioLayers = <Map<String, dynamic>>[];
@@ -174,25 +171,26 @@ class CreationPublishService {
       final layer = Map<String, dynamic>.from(raw);
       final rawUri = layer['uri'];
       final localUri = rawUri is String ? rawUri.trim() : '';
+      final existingStoragePath = layer['storagePath'] is String ? (layer['storagePath'] as String).trim() : '';
       final layerId = layer['id'] is String && (layer['id'] as String).trim().isNotEmpty
           ? (layer['id'] as String).trim()
           : 'audio_${DateTime.now().microsecondsSinceEpoch}';
 
-      if (localUri.startsWith('creation_audio/')) {
+      if (existingStoragePath.startsWith('creation-audio/')) {
         layer
           ..remove('uri')
-          ..['storagePath'] = localUri
+          ..['storagePath'] = existingStoragePath
+          ..['storageProvider'] = 'azure'
           ..['id'] = layerId;
         audioLayers.add(layer);
         continue;
       }
 
+      if (localUri.isEmpty) throw CreationPublishException('Audio file is missing: ${layer['title'] ?? layerId}.');
       final file = File(localUri);
-      if (!await file.exists()) {
-        throw CreationPublishException('Audio file is no longer available: ${layer['title'] ?? layerId}.');
-      }
+      if (!await file.exists()) throw CreationPublishException('Audio file is no longer available: ${layer['title'] ?? layerId}.');
       final size = await file.length();
-      if (size <= 0 || size > 10 * 1024 * 1024) {
+      if (size <= 0 || size > CreationAzureMediaService.maxAudioBytes) {
         throw const CreationPublishException('Each creation audio track must be between 1 byte and 10 MB.');
       }
 
@@ -202,18 +200,24 @@ class CreationPublishService {
           ? fileName.substring(extensionIndex).toLowerCase().replaceAll(RegExp(r'[^a-z0-9.]'), '')
           : '.bin';
       final safeExtension = extension.length <= 8 ? extension : '.bin';
-      final storageReference = _storage.ref()
-          .child('creation_audio')
-          .child(uid)
-          .child(project.projectId)
-          .child('$layerId$safeExtension');
-      final metadata = SettableMetadata(contentType: _audioContentType(safeExtension));
-      await storageReference.putFile(file, metadata);
+      final contentType = _audioContentType(safeExtension);
+      if (contentType == 'audio/*') throw const CreationPublishException('Unsupported audio format. Use MP3, M4A, WAV, AAC, OGG, or OPUS.');
+
+      final azureAudio = await _azureMedia.uploadAudio(
+        projectId: project.projectId,
+        layerId: layerId,
+        localPath: localUri,
+        blobName: '$layerId$safeExtension',
+        contentType: contentType,
+      );
+      if (azureAudio == null) throw const CreationPublishException('Azure media service returned no audio upload result.');
 
       layer
         ..remove('uri')
-        ..['storagePath'] = storageReference.fullPath
-        ..['id'] = layerId;
+        ..['storagePath'] = azureAudio.storagePath
+        ..['storageProvider'] = 'azure'
+        ..['id'] = layerId
+        ..['sizeBytes'] = size;
       audioLayers.add(layer);
     }
 
@@ -221,7 +225,7 @@ class CreationPublishService {
       'version': 2,
       'timeline': timeline,
       'audio': audioLayers,
-      'audioStorageBucket': Firebase.app().options.storageBucket ?? '',
+      'audioStorageProvider': 'azure',
       'textLayers': bounded(project.textLayers, 64),
       'stickerLayers': bounded(project.stickerLayers, 64),
       'effectLayers': bounded(project.effectLayers, 32),
