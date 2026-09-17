@@ -51,10 +51,13 @@ jobs:
           lib/services/reel_lifecycle_service.dart
           lib/services/reel_feed_service.dart
           lib/services/home_feed_service.dart
+          lib/services/video_compression_service.dart
+          lib/services/video_compression_service_io.dart
           lib/creation/screens/creation_hub_screen.dart
           lib/creation/screens/published_shows_screen.dart
           lib/creation/screens/creation_pipeline_editor_screen.dart
           lib/creation/services/creation_checkpoint_store.dart
+          lib/creation/services/creation_publish_service.dart
           lib/creation/services/published_show_edit_service.dart
           lib/services/azure_media_playback_service.dart
 
