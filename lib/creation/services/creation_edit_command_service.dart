@@ -9,15 +9,17 @@ class CreationEditCommandService {
     required int trimInMs,
     required int trimOutMs,
   }) {
+    final clip = _findClip(project, clipId);
+    if (clip == null) return project;
+    final sourceDuration = _sourceDuration(project, clip.sourceId);
+    if (sourceDuration <= 1) return project;
+    final safeIn = trimInMs.clamp(0, sourceDuration - 1);
+    final safeOut = trimOutMs.clamp(safeIn + 1, sourceDuration);
     return _updateClip(
       project,
       clipId,
-      (clip) => _copyClip(
-        clip,
-        trimInMs: trimInMs.clamp(0, _sourceDuration(project, clip.sourceId)),
-        trimOutMs: trimOutMs > trimInMs ? trimOutMs : trimInMs + 1,
-      ),
-      operation: <String, dynamic>{'type': 'trim', 'clipId': clipId, 'trimInMs': trimInMs, 'trimOutMs': trimOutMs},
+      (_) => _copyClip(clip, trimInMs: safeIn, trimOutMs: safeOut),
+      operation: <String, dynamic>{'type': 'trim', 'clipId': clipId, 'trimInMs': safeIn, 'trimOutMs': safeOut},
     );
   }
 
@@ -35,7 +37,7 @@ class CreationEditCommandService {
 
     final left = _copyClip(
       clip,
-      clipId: '${clip.clipId}_a',
+      clipId: _nextLayerId('clip'),
       startMs: clip.startMs,
       endMs: splitAtMs,
       trimInMs: effectiveIn,
@@ -43,7 +45,7 @@ class CreationEditCommandService {
     );
     final right = _copyClip(
       clip,
-      clipId: '${clip.clipId}_b',
+      clipId: _nextLayerId('clip'),
       startMs: splitAtMs,
       endMs: clip.endMs,
       trimInMs: splitAtMs,
@@ -117,21 +119,22 @@ class CreationEditCommandService {
     double? y,
     double? opacity,
   }) {
+    final safeRotation = rotation == null ? null : _snapRotation(rotation);
     return _updateClip(
       project,
       clipId,
       (clip) => _copyClip(
         clip,
         opacity: (opacity ?? clip.opacity).clamp(0.0, 1.0).toDouble(),
-        rotation: rotation ?? clip.rotation,
+        rotation: safeRotation ?? clip.rotation,
         scale: (scale ?? clip.scale).clamp(0.1, 5.0).toDouble(),
-        x: x ?? clip.x,
-        y: y ?? clip.y,
+        x: (x ?? clip.x).clamp(-1.0, 1.0).toDouble(),
+        y: (y ?? clip.y).clamp(-1.0, 1.0).toDouble(),
       ),
       operation: <String, dynamic>{
         'type': 'transform',
         'clipId': clipId,
-        'rotation': rotation,
+        'rotation': safeRotation,
         'scale': scale,
         'x': x,
         'y': y,
@@ -151,13 +154,23 @@ class CreationEditCommandService {
     return _updateClip(
       project,
       clipId,
-      (clip) => _copyClip(
-        clip,
-        cropLeft: (left ?? clip.cropLeft).clamp(0.0, 0.9).toDouble(),
-        cropTop: (top ?? clip.cropTop).clamp(0.0, 0.9).toDouble(),
-        cropRight: (right ?? clip.cropRight).clamp(0.0, 0.9).toDouble(),
-        cropBottom: (bottom ?? clip.cropBottom).clamp(0.0, 0.9).toDouble(),
-      ),
+      (clip) {
+        final horizontal = _fitCropPair(
+          (left ?? clip.cropLeft).clamp(0.0, 0.9).toDouble(),
+          (right ?? clip.cropRight).clamp(0.0, 0.9).toDouble(),
+        );
+        final vertical = _fitCropPair(
+          (top ?? clip.cropTop).clamp(0.0, 0.9).toDouble(),
+          (bottom ?? clip.cropBottom).clamp(0.0, 0.9).toDouble(),
+        );
+        return _copyClip(
+          clip,
+          cropLeft: horizontal.$1,
+          cropRight: horizontal.$2,
+          cropTop: vertical.$1,
+          cropBottom: vertical.$2,
+        );
+      },
       operation: <String, dynamic>{
         'type': 'crop',
         'clipId': clipId,
@@ -184,8 +197,8 @@ class CreationEditCommandService {
       'text': text.trim(),
       'startMs': startMs.clamp(0, 86400000),
       'endMs': _safeEnd(startMs, endMs),
-      'x': x,
-      'y': y,
+      'x': x.clamp(-1.0, 1.0).toDouble(),
+      'y': y.clamp(-1.0, 1.0).toDouble(),
       'fontSize': fontSize.clamp(8, 120),
     };
     return _finish(project.copyWith(textLayers: [...project.textLayers, layer]), <String, dynamic>{'type': 'text_add', 'layerId': layer['id']});
@@ -209,8 +222,8 @@ class CreationEditCommandService {
       'text': text.trim(),
       'startMs': safeStart,
       'endMs': safeEnd,
-      'x': x,
-      'y': y,
+      'x': x.clamp(-1.0, 1.0).toDouble(),
+      'y': y.clamp(-1.0, 1.0).toDouble(),
       'fontSize': fontSize.clamp(10, 120),
       'style': style.trim().isEmpty ? 'default' : style.trim(),
       'source': 'manual',
@@ -238,15 +251,17 @@ class CreationEditCommandService {
     final index = project.textLayers.indexWhere((layer) => layer['id'] == layerId);
     if (index < 0) return project;
     final current = project.textLayers[index];
-    final safeStart = (startMs ?? (current['startMs'] as num?)?.toInt() ?? 0).clamp(0, 86400000);
-    final safeEnd = (endMs ?? (current['endMs'] as num?)?.toInt() ?? safeStart + 1).clamp(safeStart + 1, 86400000);
+    final currentStart = (current['startMs'] as num?)?.toInt() ?? 0;
+    final safeStart = (startMs ?? currentStart).clamp(0, 86400000);
+    final currentEnd = (current['endMs'] as num?)?.toInt() ?? safeStart + 1;
+    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000);
     final nextLayer = <String, dynamic>{
       ...current,
       if (text != null) 'text': text.trim(),
       'startMs': safeStart,
       'endMs': safeEnd,
-      if (x != null) 'x': x,
-      if (y != null) 'y': y,
+      if (x != null) 'x': x.clamp(-1.0, 1.0).toDouble(),
+      if (y != null) 'y': y.clamp(-1.0, 1.0).toDouble(),
       if (fontSize != null) 'fontSize': fontSize.clamp(8, 120),
     };
     final layers = [...project.textLayers]..[index] = nextLayer;
@@ -287,8 +302,10 @@ class CreationEditCommandService {
     final index = project.audio.indexWhere((layer) => layer['id'] == layerId);
     if (index < 0) return project;
     final current = project.audio[index];
-    final safeStart = (startMs ?? (current['startMs'] as num?)?.toInt() ?? 0).clamp(0, 86400000);
-    final safeEnd = (endMs ?? (current['endMs'] as num?)?.toInt() ?? safeStart + 1).clamp(safeStart + 1, 86400000);
+    final currentStart = (current['startMs'] as num?)?.toInt() ?? 0;
+    final safeStart = (startMs ?? currentStart).clamp(0, 86400000);
+    final currentEnd = (current['endMs'] as num?)?.toInt() ?? safeStart + 1;
+    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000);
     final nextLayer = <String, dynamic>{
       ...current,
       if (title != null) 'title': title.trim(),
@@ -324,10 +341,10 @@ class CreationEditCommandService {
   }) {
     final layer = <String, dynamic>{
       'id': _nextLayerId('effect'),
-      'effectId': effectId,
+      'effectId': effectId.trim(),
       'intensity': intensity.clamp(0.0, 1.0),
     };
-    return _finish(project.copyWith(effectLayers: [...project.effectLayers, layer]), <String, dynamic>{'type': 'effect_add', 'layerId': layer['id'], 'effectId': effectId});
+    return _finish(project.copyWith(effectLayers: [...project.effectLayers, layer]), <String, dynamic>{'type': 'effect_add', 'layerId': layer['id'], 'effectId': layer['effectId']});
   }
 
   CreationProject addSticker(
@@ -339,12 +356,12 @@ class CreationEditCommandService {
   }) {
     final layer = <String, dynamic>{
       'id': _nextLayerId('sticker'),
-      'stickerId': stickerId,
-      'x': x,
-      'y': y,
+      'stickerId': stickerId.trim(),
+      'x': x.clamp(-1.0, 1.0).toDouble(),
+      'y': y.clamp(-1.0, 1.0).toDouble(),
       'scale': scale.clamp(0.1, 5.0),
     };
-    return _finish(project.copyWith(stickerLayers: [...project.stickerLayers, layer]), <String, dynamic>{'type': 'sticker_add', 'layerId': layer['id'], 'stickerId': stickerId});
+    return _finish(project.copyWith(stickerLayers: [...project.stickerLayers, layer]), <String, dynamic>{'type': 'sticker_add', 'layerId': layer['id'], 'stickerId': layer['stickerId']});
   }
 
   CreationProject setAccessibility(
@@ -355,7 +372,7 @@ class CreationEditCommandService {
     return _finish(
       project.copyWith(accessibility: <String, dynamic>{
         ...project.accessibility,
-        if (altText != null) 'altText': altText.trim(),
+        if (altText != null) 'altText': altText.trim().substring(0, altText.trim().length.clamp(0, 1000)),
         if (autoCaptions != null) 'autoCaptions': autoCaptions,
       }),
       <String, dynamic>{'type': 'accessibility_update'},
@@ -434,18 +451,22 @@ class CreationEditCommandService {
   CreationProject _finish(CreationProject project, Map<String, dynamic> operation) {
     final nextVersion = project.version + 1;
     final now = DateTime.now();
+    final nextOperations = <Map<String, dynamic>>[
+      ...project.operations,
+      <String, dynamic>{
+        ...operation,
+        'version': nextVersion,
+        'at': now.toIso8601String(),
+      },
+    ];
+    final boundedOperations = nextOperations.length <= 256
+        ? nextOperations
+        : nextOperations.sublist(nextOperations.length - 256);
     return project.copyWith(
       status: CreationProjectStatus.editing,
       version: nextVersion,
       updatedAt: now,
-      operations: [
-        ...project.operations,
-        <String, dynamic>{
-          ...operation,
-          'version': nextVersion,
-          'at': now.toIso8601String(),
-        },
-      ],
+      operations: List<Map<String, dynamic>>.unmodifiable(boundedOperations),
     );
   }
 
@@ -454,11 +475,32 @@ class CreationEditCommandService {
     return endMs.clamp(startMs + 1, 86400000);
   }
 
+  CreationTimelineClip? _findClip(CreationProject project, String clipId) {
+    for (final clip in project.timeline) {
+      if (clip.clipId == clipId) return clip;
+    }
+    return null;
+  }
+
   int _sourceDuration(CreationProject project, String sourceId) {
     for (final asset in project.mediaAssets) {
       if (asset.assetId == sourceId) return asset.durationMs ?? 0;
     }
     return 0;
+  }
+
+  double _snapRotation(double value) {
+    if (!value.isFinite) return 0;
+    final normalized = value % 360;
+    final snapped = (normalized / 90).round() * 90;
+    return snapped.toDouble() % 360;
+  }
+
+  (double, double) _fitCropPair(double first, double second) {
+    final total = first + second;
+    if (total < 0.98) return (first, second);
+    final scale = 0.98 / total;
+    return (first * scale, second * scale);
   }
 
   String _nextLayerId(String prefix) => '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
