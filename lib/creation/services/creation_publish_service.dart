@@ -47,7 +47,10 @@ class CreationPublishService {
     }
 
     const maxCaptionLength = 2200;
-    final validation = await CreationValidationService.validateProject(project);
+    final validation = await CreationValidationService.validateProject(
+      project,
+      requirePublishRights: true,
+    );
     if (!validation.isValid) {
       throw CreationPublishException(validation.message);
     }
@@ -64,14 +67,9 @@ class CreationPublishService {
     final asset = project.mediaAssets.first;
     final postRef = _firestore.collection('reels').doc(project.projectId);
     final publishState = project.publishState;
-    final publishRequestId = publishState['publishRequestId'] as String? ??
-        'creation:${project.projectId}';
-    final allowComments = publishState['allowComments'] is bool
-        ? publishState['allowComments'] as bool
-        : true;
-    final recommendRequested = publishState['recommend'] is bool
-        ? publishState['recommend'] as bool
-        : true;
+    final publishRequestId = publishState['publishRequestId'] as String? ?? 'creation:${project.projectId}';
+    final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
+    final recommendRequested = publishState['recommend'] is bool ? publishState['recommend'] as bool : true;
     final isPublic = project.privacy.toLowerCase() == 'public';
     final recommendationEligible = isPublic && recommendRequested;
 
@@ -80,115 +78,46 @@ class CreationPublishService {
       final data = existing.data() ?? const <String, dynamic>{};
       final existingUrl = data['videoUrl'] as String? ?? '';
       if (existingUrl.isNotEmpty) {
-        final existingStatus =
-            (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
-        final existingProvider =
-            (data['mediaProvider'] as String? ?? '').toLowerCase();
-        final processing = existingProvider == 'azure' &&
-            existingStatus != 'ready' &&
-            existingStatus != 'published';
-        await _saveState(
-          project.projectId,
-          processing
-              ? CreationPublishStage.processing
-              : CreationPublishStage.published,
-          requestId: publishRequestId,
-        );
-        return CreationPublishResult(
-          postId: postRef.id,
-          mediaUrl: existingUrl,
-          isProcessing: processing,
-        );
+        final existingStatus = (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
+        final existingProvider = (data['mediaProvider'] as String? ?? '').toLowerCase();
+        final processing = existingProvider == 'azure' && existingStatus != 'ready' && existingStatus != 'published';
+        await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId);
+        return CreationPublishResult(postId: postRef.id, mediaUrl: existingUrl, isProcessing: processing);
       }
     }
 
-    await _saveState(
-      project.projectId,
-      CreationPublishStage.validating,
-      requestId: publishRequestId,
-    );
-
+    await _saveState(project.projectId, CreationPublishStage.validating, requestId: publishRequestId);
     String downloadUrl;
     String? storagePath;
 
-    await _saveState(
-      project.projectId,
-      CreationPublishStage.preparing,
-      requestId: publishRequestId,
-    );
-
+    await _saveState(project.projectId, CreationPublishStage.preparing, requestId: publishRequestId);
     if (_azureMedia.isConfigured) {
-      await _saveState(
-        project.projectId,
-        CreationPublishStage.uploading,
-        requestId: publishRequestId,
-        totalBytes: asset.sizeBytes,
-      );
-
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: asset.sizeBytes);
       final azureResult = await _azureMedia.uploadVideo(
         projectId: project.projectId,
         assetId: asset.assetId,
         localPath: asset.localUri,
         contentType: asset.mimeType == 'video/*' ? 'video/mp4' : asset.mimeType,
         onProgress: (uploaded, total) {
-          _saveState(
-            project.projectId,
-            CreationPublishStage.uploading,
-            requestId: publishRequestId,
-            bytesUploaded: uploaded,
-            totalBytes: total,
-          );
+          _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: uploaded, totalBytes: total);
         },
       );
-
-      if (azureResult == null) {
-        throw const CreationPublishException('Azure media service returned no upload result.');
-      }
+      if (azureResult == null) throw const CreationPublishException('Azure media service returned no upload result.');
       downloadUrl = azureResult.mediaUrl;
       storagePath = azureResult.storagePath;
     } else {
       final source = File(asset.localUri);
-      final storageReference = _storage
-          .ref()
-          .child('reels')
-          .child(user.uid)
-          .child('${project.projectId}.mp4');
-      await _saveState(
-        project.projectId,
-        CreationPublishStage.uploading,
-        requestId: publishRequestId,
-        totalBytes: asset.sizeBytes,
-      );
-      final uploadTask = await storageReference.putFile(
-        source,
-        SettableMetadata(contentType: 'video/mp4'),
-      );
+      final storageReference = _storage.ref().child('reels').child(user.uid).child('${project.projectId}.mp4');
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, totalBytes: asset.sizeBytes);
+      final uploadTask = await storageReference.putFile(source, SettableMetadata(contentType: 'video/mp4'));
       downloadUrl = await uploadTask.ref.getDownloadURL();
       storagePath = storageReference.fullPath;
-      await _saveState(
-        project.projectId,
-        CreationPublishStage.uploading,
-        requestId: publishRequestId,
-        bytesUploaded: asset.sizeBytes,
-        totalBytes: asset.sizeBytes,
-      );
+      await _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     }
 
-    await _saveState(
-      project.projectId,
-      CreationPublishStage.processing,
-      requestId: publishRequestId,
-      bytesUploaded: asset.sizeBytes,
-      totalBytes: asset.sizeBytes,
-    );
-
+    await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     final mediaHash = await _computeMediaHash(asset.localUri);
-
-    await _saveState(
-      project.projectId,
-      CreationPublishStage.publishing,
-      requestId: publishRequestId,
-    );
+    await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
     await postRef.set(<String, dynamic>{
       'creatorId': user.uid,
@@ -206,8 +135,8 @@ class CreationPublishService {
       'mediaStoragePath': storagePath,
       'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
       'mediaProcessingVersion': 1,
-      'aiGeneratedDisclosure': publishState['aiGeneratedDisclosure'] == true,
-      'copyrightConfirmed': publishState['copyrightConfirmed'] == true,
+      'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
+      'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
       'createdAt': FieldValue.serverTimestamp(),
       'likesCount': 0,
       'commentsCount': 0,
@@ -227,9 +156,7 @@ class CreationPublishService {
 
     final processing = _azureMedia.isConfigured;
     final published = project.copyWith(
-      status: processing
-          ? CreationProjectStatus.processing
-          : CreationProjectStatus.published,
+      status: processing ? CreationProjectStatus.processing : CreationProjectStatus.published,
       publishState: <String, dynamic>{
         ...publishState,
         'postId': postRef.id,
@@ -244,50 +171,20 @@ class CreationPublishService {
       },
     );
     await CreationProjectStore.instance.save(published);
+    await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
 
-    await _saveState(
-      project.projectId,
-      processing ? CreationPublishStage.processing : CreationPublishStage.published,
-      requestId: publishRequestId,
-      bytesUploaded: asset.sizeBytes,
-      totalBytes: asset.sizeBytes,
-    );
-
-    return CreationPublishResult(
-      postId: postRef.id,
-      mediaUrl: downloadUrl,
-      isProcessing: processing,
-    );
+    return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
   }
 
-  Future<void> _saveState(
-    String projectId,
-    CreationPublishStage stage, {
-    String? requestId,
-    int bytesUploaded = 0,
-    int totalBytes = 0,
-  }) async {
+  Future<void> _saveState(String projectId, CreationPublishStage stage, {String? requestId, int bytesUploaded = 0, int totalBytes = 0}) async {
     try {
-      await CreationPublishStateStore.instance.save(
-        CreationPublishState(
-          projectId: projectId,
-          stage: stage,
-          requestId: requestId,
-          bytesUploaded: bytesUploaded,
-          totalBytes: totalBytes,
-          updatedAt: DateTime.now(),
-        ),
-      );
-    } catch (_) {
-      // Publish progress persistence must never make publishing crash.
-    }
+      await CreationPublishStateStore.instance.save(CreationPublishState(projectId: projectId, stage: stage, requestId: requestId, bytesUploaded: bytesUploaded, totalBytes: totalBytes, updatedAt: DateTime.now()));
+    } catch (_) {}
   }
 
   Future<String> _computeMediaHash(String path) async {
     try {
-      return MediaHashService.instance.normalize(
-        await MediaHashService.instance.sha256File(File(path)),
-      );
+      return MediaHashService.instance.normalize(await MediaHashService.instance.sha256File(File(path)));
     } catch (_) {
       return '';
     }
@@ -296,9 +193,7 @@ class CreationPublishService {
 
 class CreationPublishException implements Exception {
   const CreationPublishException(this.message);
-
   final String message;
-
   @override
   String toString() => message;
 }
