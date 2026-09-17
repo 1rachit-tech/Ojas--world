@@ -80,7 +80,7 @@ def _require_id(value: Any) -> bool:
     return isinstance(value, str) and bool(_SAFE_ID.fullmatch(value.strip()))
 
 
-def _record_creation_media(*, uid: str, project_id: str, asset_id: str, storage_path: str, content_length: int, content_type: str) -> None:
+def _record_creation_media(*, uid: str, project_id: str, asset_id: str, storage_path: str, content_length: int, content_type: str, processing_status: str) -> None:
     if not _FIREBASE_READY:
         return
     firestore.client().collection("creationMedia").document(asset_id).set({
@@ -91,7 +91,7 @@ def _record_creation_media(*, uid: str, project_id: str, asset_id: str, storage_
         "contentLength": content_length,
         "contentType": content_type,
         "status": "uploaded",
-        "processingStatus": "queued",
+        "processingStatus": processing_status,
         "updatedAt": firestore.SERVER_TIMESTAMP,
     }, merge=True)
 
@@ -201,6 +201,7 @@ def creation_upload_complete(req: func.HttpRequest) -> func.HttpResponse:
     storage_path = str(data.get("storagePath", "")).strip()
     content_length = data.get("contentLength")
     content_type = str(data.get("contentType", "")).strip().lower()
+    defer_processing = data.get("deferProcessing") is True
     prefix = f"creation/{uid}/{project_id}/{asset_id}/"
     if not _require_id(uid) or not _require_id(project_id) or not _require_id(asset_id):
         return _json(400, {"error": "Invalid creation identifiers."})
@@ -218,8 +219,9 @@ def creation_upload_complete(req: func.HttpRequest) -> func.HttpResponse:
     actual_size = int(props.size or 0)
     if actual_size != content_length:
         return _json(400, {"error": "Uploaded creation video size does not match the request."})
-    _record_creation_media(uid=uid, project_id=project_id, asset_id=asset_id, storage_path=storage_path, content_length=actual_size, content_type=content_type)
-    return _json(200, {"downloadUrl": _creation_download_url(storage_path), "storagePath": storage_path, "contentLength": actual_size, "contentType": content_type, "processingStatus": "queued"})
+    processing_status = "uploaded" if defer_processing else "queued"
+    _record_creation_media(uid=uid, project_id=project_id, asset_id=asset_id, storage_path=storage_path, content_length=actual_size, content_type=content_type, processing_status=processing_status)
+    return _json(200, {"downloadUrl": _creation_download_url(storage_path), "storagePath": storage_path, "contentLength": actual_size, "contentType": content_type, "processingStatus": processing_status})
 
 
 @app.route(route="media/creation-audio-upload-target", methods=["POST"])
@@ -339,10 +341,17 @@ def creation_playback_urls(req: func.HttpRequest) -> func.HttpResponse:
             continue
         if str(reel_data.get("mediaProvider", "")).lower() != "azure":
             continue
-        if str(reel_data.get("mediaProcessingStatus", "")).lower() not in {"ready", "published"}:
-            continue
 
-        primary_path = str(reel_data.get("hlsStoragePath") or reel_data.get("processedVideoStoragePath") or "").strip()
+        processing_status = str(reel_data.get("mediaProcessingStatus", "")).lower()
+        if processing_status in {"ready", "published"}:
+            primary_path = str(reel_data.get("hlsStoragePath") or reel_data.get("processedVideoStoragePath") or "").strip()
+        elif processing_status in {"queued", "processing", "failed"}:
+            # During a published-media re-render the previous processed asset remains on the
+            # reel until the new render is ready. Keep playback available to authorized users.
+            primary_path = str(reel_data.get("hlsStoragePath") or reel_data.get("processedVideoStoragePath") or "").strip()
+        else:
+            primary_path = ""
+
         thumbnail_path = str(reel_data.get("thumbnailStoragePath") or "").strip()
         allowed_prefix = f"creation/{creator_id}/{reel_id}/"
         if not primary_path or not primary_path.startswith(allowed_prefix) or not _SAFE_CREATION_PATH.fullmatch(primary_path):
