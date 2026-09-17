@@ -28,6 +28,7 @@ class CreationAzureMediaService {
 
   static const int chunkSize = 8 * 1024 * 1024;
   static const int maxVideoBytes = 512 * 1024 * 1024;
+  static const int maxAudioBytes = 10 * 1024 * 1024;
 
   String get brokerUrl => const String.fromEnvironment(
         'OJAS_AZURE_MEDIA_BROKER_URL',
@@ -45,67 +46,35 @@ class CreationAzureMediaService {
     if (!isConfigured) return null;
 
     final user = _auth.currentUser;
-    if (user == null) {
-      throw const CreationAzureMediaException('Authentication required.');
-    }
+    if (user == null) throw const CreationAzureMediaException('Authentication required.');
 
     final file = File(localPath);
-    if (!await file.exists()) {
-      throw const CreationAzureMediaException('Selected video is no longer available.');
-    }
-
+    if (!await file.exists()) throw const CreationAzureMediaException('Selected video is no longer available.');
     final totalBytes = await file.length();
-    if (totalBytes <= 0 || totalBytes > maxVideoBytes) {
-      throw const CreationAzureMediaException(
-        'Video is empty or larger than the 512 MB creation limit.',
-      );
-    }
+    if (totalBytes <= 0 || totalBytes > maxVideoBytes) throw const CreationAzureMediaException('Video is empty or larger than the 512 MB creation limit.');
 
     final idToken = await user.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw const CreationAzureMediaException('Unable to refresh authentication token.');
-    }
+    if (idToken == null || idToken.isEmpty) throw const CreationAzureMediaException('Unable to refresh authentication token.');
 
     final targetResponse = await _client.post(
       Uri.parse('$brokerUrl/media/creation-upload-target'),
-      headers: <String, String>{
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'projectId': projectId,
-        'assetId': assetId,
-        'blobName': '$assetId.mp4',
-        'contentLength': totalBytes,
-        'contentType': contentType,
-      }),
+      headers: <String, String>{'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+      body: jsonEncode(<String, dynamic>{'projectId': projectId, 'assetId': assetId, 'blobName': '$assetId.mp4', 'contentLength': totalBytes, 'contentType': contentType}),
     );
-
-    if (targetResponse.statusCode != 200) {
-      throw CreationAzureMediaException(_readError(targetResponse.body));
-    }
+    if (targetResponse.statusCode != 200) throw CreationAzureMediaException(_readError(targetResponse.body));
 
     final target = jsonDecode(targetResponse.body);
-    if (target is! Map) {
-      throw const CreationAzureMediaException('Media broker returned an invalid upload target.');
-    }
-
+    if (target is! Map) throw const CreationAzureMediaException('Media broker returned an invalid upload target.');
     final uploadUrl = target['uploadUrl'] as String?;
     final downloadUrl = target['downloadUrl'] as String?;
     final storagePath = target['storagePath'] as String?;
     final maxBytes = (target['maxBytes'] as num?)?.toInt() ?? maxVideoBytes;
-
-    if (uploadUrl == null || downloadUrl == null || storagePath == null) {
-      throw const CreationAzureMediaException('Media broker returned incomplete upload metadata.');
-    }
-    if (totalBytes > maxBytes) {
-      throw const CreationAzureMediaException('Video exceeds the server upload limit.');
-    }
+    if (uploadUrl == null || downloadUrl == null || storagePath == null) throw const CreationAzureMediaException('Media broker returned incomplete upload metadata.');
+    if (totalBytes > maxBytes) throw const CreationAzureMediaException('Video exceeds the server upload limit.');
 
     final blockIds = <String>[];
     var uploaded = 0;
     final randomAccessFile = await file.open(mode: FileMode.read);
-
     try {
       var blockIndex = 0;
       while (uploaded < totalBytes) {
@@ -113,9 +82,7 @@ class CreationAzureMediaService {
         final readLength = remaining < chunkSize ? remaining : chunkSize;
         await randomAccessFile.setPosition(uploaded);
         final bytes = await randomAccessFile.read(readLength);
-        if (bytes.isEmpty) {
-          throw const CreationAzureMediaException('Video read stopped before upload completed.');
-        }
+        if (bytes.isEmpty) throw const CreationAzureMediaException('Video read stopped before upload completed.');
 
         final rawBlockId = 'ojas-${blockIndex.toString().padLeft(8, '0')}';
         final blockId = base64.encode(utf8.encode(rawBlockId));
@@ -127,32 +94,20 @@ class CreationAzureMediaService {
           try {
             final response = await _client.put(
               Uri.parse(blockUrl),
-              headers: <String, String>{
-                'Content-Type': contentType,
-                'Content-Length': bytes.length.toString(),
-                'x-ms-version': '2023-11-03',
-              },
+              headers: <String, String>{'Content-Type': contentType, 'Content-Length': bytes.length.toString(), 'x-ms-version': '2023-11-03'},
               body: bytes,
             );
             if (response.statusCode == 201 || response.statusCode == 200) {
               uploadedBlock = true;
               break;
             }
-            lastError = response.statusCode == 408 || response.statusCode >= 500
-                ? StateError('Transient Azure upload response ${response.statusCode}')
-                : StateError(_readError(response.body));
+            lastError = response.statusCode == 408 || response.statusCode >= 500 ? StateError('Transient Azure upload response ${response.statusCode}') : StateError(_readError(response.body));
           } catch (error) {
             lastError = error;
           }
           await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
         }
-
-        if (!uploadedBlock) {
-          throw CreationAzureMediaException(
-            'Unable to upload video chunk ${blockIndex + 1}. ${lastError ?? ''}'.trim(),
-          );
-        }
-
+        if (!uploadedBlock) throw CreationAzureMediaException('Unable to upload video chunk ${blockIndex + 1}. ${lastError ?? ''}'.trim());
         blockIds.add(blockId);
         uploaded += bytes.length;
         onProgress?.call(uploaded, totalBytes);
@@ -167,58 +122,79 @@ class CreationAzureMediaService {
       blockXml.write('<Latest>$blockId</Latest>');
     }
     blockXml.write('</BlockList>');
-
-    final commitUrl = '$uploadUrl&comp=blocklist';
     final commitResponse = await _client.put(
-      Uri.parse(commitUrl),
-      headers: const <String, String>{
-        'Content-Type': 'application/xml',
-        'x-ms-version': '2023-11-03',
-      },
+      '$uploadUrl&comp=blocklist' as Uri,
+      headers: const <String, String>{'Content-Type': 'application/xml', 'x-ms-version': '2023-11-03'},
       body: blockXml.toString(),
     );
-
-    if (commitResponse.statusCode != 201 && commitResponse.statusCode != 200) {
-      throw CreationAzureMediaException(_readError(commitResponse.body));
-    }
+    if (commitResponse.statusCode != 201 && commitResponse.statusCode != 200) throw CreationAzureMediaException(_readError(commitResponse.body));
 
     final finalizeResponse = await _client.post(
       Uri.parse('$brokerUrl/media/creation-upload-complete'),
-      headers: <String, String>{
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'projectId': projectId,
-        'assetId': assetId,
-        'storagePath': storagePath,
-        'contentLength': totalBytes,
-        'contentType': contentType,
-      }),
+      headers: <String, String>{'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+      body: jsonEncode(<String, dynamic>{'projectId': projectId, 'assetId': assetId, 'storagePath': storagePath, 'contentLength': totalBytes, 'contentType': contentType}),
     );
-
-    if (finalizeResponse.statusCode != 200) {
-      throw CreationAzureMediaException(_readError(finalizeResponse.body));
-    }
+    if (finalizeResponse.statusCode != 200) throw CreationAzureMediaException(_readError(finalizeResponse.body));
 
     final finalized = jsonDecode(finalizeResponse.body);
-    final finalizedUrl = finalized is Map
-        ? finalized['downloadUrl'] as String? ?? downloadUrl
-        : downloadUrl;
+    final finalizedUrl = finalized is Map ? finalized['downloadUrl'] as String? ?? downloadUrl : downloadUrl;
+    return CreationAzureUploadResult(mediaUrl: finalizedUrl, storagePath: storagePath, bytesUploaded: totalBytes);
+  }
 
-    return CreationAzureUploadResult(
-      mediaUrl: finalizedUrl,
-      storagePath: storagePath,
-      bytesUploaded: totalBytes,
+  Future<CreationAzureUploadResult?> uploadAudio({
+    required String projectId,
+    required String layerId,
+    required String localPath,
+    required String blobName,
+    required String contentType,
+  }) async {
+    if (!isConfigured) return null;
+    final user = _auth.currentUser;
+    if (user == null) throw const CreationAzureMediaException('Authentication required.');
+
+    final file = File(localPath);
+    if (!await file.exists()) throw const CreationAzureMediaException('Selected audio is no longer available.');
+    final totalBytes = await file.length();
+    if (totalBytes <= 0 || totalBytes > maxAudioBytes) throw const CreationAzureMediaException('Audio is empty or larger than the 10 MB creation limit.');
+    final idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) throw const CreationAzureMediaException('Unable to refresh authentication token.');
+
+    final targetResponse = await _client.post(
+      Uri.parse('$brokerUrl/media/creation-audio-upload-target'),
+      headers: <String, String>{'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+      body: jsonEncode(<String, dynamic>{'projectId': projectId, 'layerId': layerId, 'blobName': blobName, 'contentLength': totalBytes, 'contentType': contentType}),
     );
+    if (targetResponse.statusCode != 200) throw CreationAzureMediaException(_readError(targetResponse.body));
+    final target = jsonDecode(targetResponse.body);
+    if (target is! Map) throw const CreationAzureMediaException('Media broker returned an invalid audio upload target.');
+    final uploadUrl = target['uploadUrl'] as String?;
+    final downloadUrl = target['downloadUrl'] as String?;
+    final storagePath = target['storagePath'] as String?;
+    if (uploadUrl == null || downloadUrl == null || storagePath == null) throw const CreationAzureMediaException('Media broker returned incomplete audio metadata.');
+
+    final bytes = await file.readAsBytes();
+    final uploadResponse = await _client.put(
+      Uri.parse(uploadUrl),
+      headers: <String, String>{'Content-Type': contentType, 'Content-Length': bytes.length.toString(), 'x-ms-blob-type': 'BlockBlob', 'x-ms-version': '2023-11-03'},
+      body: bytes,
+    );
+    if (uploadResponse.statusCode != 201 && uploadResponse.statusCode != 200) throw CreationAzureMediaException(_readError(uploadResponse.body));
+
+    final finalizeResponse = await _client.post(
+      Uri.parse('$brokerUrl/media/creation-audio-upload-complete'),
+      headers: <String, String>{'Authorization': 'Bearer $idToken', 'Content-Type': 'application/json'},
+      body: jsonEncode(<String, dynamic>{'projectId': projectId, 'layerId': layerId, 'storagePath': storagePath, 'contentLength': totalBytes, 'contentType': contentType}),
+    );
+    if (finalizeResponse.statusCode != 200) throw CreationAzureMediaException(_readError(finalizeResponse.body));
+    final finalized = jsonDecode(finalizeResponse.body);
+    final finalizedUrl = finalized is Map ? finalized['downloadUrl'] as String? ?? downloadUrl : downloadUrl;
+    return CreationAzureUploadResult(mediaUrl: finalizedUrl, storagePath: storagePath, bytesUploaded: totalBytes);
   }
 
   String _readError(String body) {
     try {
       final decoded = jsonDecode(body);
-      if (decoded is Map && decoded['error'] is String) {
-        return decoded['error'] as String;
-      }
+      if (decoded is Map && decoded['error'] is String) return decoded['error'] as String;
     } catch (_) {}
     return 'Media service request failed.';
   }
@@ -228,9 +204,7 @@ class CreationAzureMediaService {
 
 class CreationAzureMediaException implements Exception {
   const CreationAzureMediaException(this.message);
-
   final String message;
-
   @override
   String toString() => message;
 }
