@@ -32,11 +32,21 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   late final TextEditingController _captionController;
   double _trimStart = 0;
   double _trimEnd = 1;
+  String? _selectedClipId;
   late final CreationEditCommandService _editEngine;
   final List<CreationProject> _undoStack = <CreationProject>[];
   final List<CreationProject> _redoStack = <CreationProject>[];
 
-  CreationTimelineClip? get _primaryClip => _project.timeline.isEmpty ? null : _project.timeline.first;
+  CreationTimelineClip? get _primaryClip {
+    if (_project.timeline.isEmpty) return null;
+    final selectedId = _selectedClipId;
+    if (selectedId != null) {
+      for (final clip in _project.timeline) {
+        if (clip.clipId == selectedId) return clip;
+      }
+    }
+    return _project.timeline.first;
+  }
 
   @override
   void initState() {
@@ -44,6 +54,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     WidgetsBinding.instance.addObserver(this);
     _editEngine = const CreationEditCommandService();
     _project = widget.project;
+    _selectedClipId = _project.timeline.isEmpty ? null : _project.timeline.first.clipId;
     _captionController = TextEditingController(text: _project.caption);
     _initializeMedia();
   }
@@ -62,6 +73,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         await controller.dispose();
         return;
       }
+      final clip = _primaryClip;
+      if (clip != null) _syncTrimState(clip, seek: false);
       setState(() => _videoInitializing = false);
     } catch (error) {
       debugPrint('Creation editor media initialization failed: $error');
@@ -72,6 +85,35 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         });
       }
     }
+  }
+
+  void _syncTrimState(CreationTimelineClip clip, {bool seek = true}) {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) return;
+    final durationMs = controller.value.duration.inMilliseconds;
+    if (durationMs <= 0) return;
+    final start = (clip.effectiveStartMs / durationMs).clamp(0.0, 0.98).toDouble();
+    final end = (clip.effectiveEndMs / durationMs).clamp(start + 0.01, 1.0).toDouble();
+    _trimStart = start;
+    _trimEnd = end;
+    if (seek) {
+      controller.seekTo(Duration(milliseconds: clip.effectiveStartMs));
+      controller.pause();
+    }
+  }
+
+  void _selectClip(CreationTimelineClip clip) {
+    if (!mounted) return;
+    setState(() {
+      _selectedClipId = clip.clipId;
+      _syncTrimState(clip, seek: true);
+    });
+  }
+
+  void _repairSelection(CreationProject next) {
+    final selectedId = _selectedClipId;
+    if (selectedId != null && next.timeline.any((clip) => clip.clipId == selectedId)) return;
+    _selectedClipId = next.timeline.isEmpty ? null : next.timeline.first.clipId;
   }
 
   @override
@@ -119,6 +161,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       await CreationProjectStore.instance.save(next);
       await CreationCheckpointStore.instance.save(next);
       _project = next;
+      _repairSelection(next);
+      final clip = _primaryClip;
+      if (clip != null) _syncTrimState(clip, seek: false);
       if (showFeedback && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Draft checkpoint saved locally.')),
@@ -141,7 +186,12 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     _undoStack.add(_project);
     if (_undoStack.length > 30) _undoStack.removeAt(0);
     _redoStack.clear();
-    setState(() => _project = next);
+    setState(() {
+      _project = next;
+      _repairSelection(next);
+      final clip = _primaryClip;
+      if (clip != null) _syncTrimState(clip, seek: false);
+    });
     _scheduleAutosave();
   }
 
@@ -149,7 +199,12 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     if (_undoStack.isEmpty) return;
     final previous = _undoStack.removeLast();
     _redoStack.add(_project);
-    setState(() => _project = previous);
+    setState(() {
+      _project = previous;
+      _repairSelection(previous);
+      final clip = _primaryClip;
+      if (clip != null) _syncTrimState(clip, seek: false);
+    });
     _scheduleAutosave();
   }
 
@@ -157,7 +212,12 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     if (_redoStack.isEmpty) return;
     final next = _redoStack.removeLast();
     _undoStack.add(_project);
-    setState(() => _project = next);
+    setState(() {
+      _project = next;
+      _repairSelection(next);
+      final clip = _primaryClip;
+      if (clip != null) _syncTrimState(clip, seek: false);
+    });
     _scheduleAutosave();
   }
 
@@ -180,7 +240,11 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       ),
     );
     if (value == null || value.isEmpty || !mounted) return;
-    _applyEdit(_editEngine.addText(_project, text: value));
+    final clip = _primaryClip;
+    final controllerValue = _videoController;
+    final startMs = clip?.effectiveStartMs ?? 0;
+    final endMs = clip?.effectiveEndMs ?? controllerValue?.value.duration.inMilliseconds;
+    _applyEdit(_editEngine.addText(_project, text: value, startMs: startMs, endMs: endMs));
   }
 
   Future<void> _openAudioTool() async {
@@ -209,11 +273,14 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       return;
     }
 
+    final clip = _primaryClip;
     _applyEdit(
       _editEngine.addAudio(
         _project,
         uri: localPath,
         title: picked.name,
+        startMs: clip?.effectiveStartMs ?? 0,
+        endMs: clip?.effectiveEndMs,
       ),
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -280,14 +347,27 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         final controller = _videoController;
         if (controller == null || !controller.value.isInitialized) return;
         final position = controller.value.position.inMilliseconds;
-        _applyEdit(_editEngine.splitClip(_project, clipId: clip.clipId, splitAtMs: position));
+        final currentIndex = _project.timeline.indexWhere((item) => item.clipId == clip.clipId);
+        final next = _editEngine.splitClip(_project, clipId: clip.clipId, splitAtMs: position);
+        if (next.version != _project.version) {
+          _selectedClipId = currentIndex >= 0 && currentIndex < next.timeline.length
+              ? next.timeline[currentIndex].clipId
+              : next.timeline.first.clipId;
+        }
+        _applyEdit(next);
         break;
       case 'delete':
         if (_project.timeline.length == 1) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('At least one clip is required.')));
           return;
         }
-        _applyEdit(_editEngine.deleteClip(_project, clipId: clip.clipId));
+        final currentIndex = _project.timeline.indexWhere((item) => item.clipId == clip.clipId);
+        final next = _editEngine.deleteClip(_project, clipId: clip.clipId);
+        if (next.version != _project.version) {
+          final nextIndex = currentIndex.clamp(0, next.timeline.length - 1);
+          _selectedClipId = next.timeline[nextIndex].clipId;
+        }
+        _applyEdit(next);
         break;
     }
   }
@@ -408,8 +488,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     final controller = _videoController;
     if (controller == null || !controller.value.isInitialized || _project.timeline.isEmpty) return;
     final durationMs = controller.value.duration.inMilliseconds;
-    final safeStart = start.clamp(0.0, 0.98);
-    final safeEnd = end.clamp(safeStart + 0.01, 1.0);
+    final safeStart = start.clamp(0.0, 0.98).toDouble();
+    final safeEnd = end.clamp(safeStart + 0.01, 1.0).toDouble();
     final clip = _primaryClip!;
     final trimIn = (durationMs * safeStart).round();
     final trimOut = (durationMs * safeEnd).round();
@@ -475,18 +555,21 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               itemBuilder: (_, index) {
                 final clip = _project.timeline[index];
                 final selectedClip = selected?.clipId == clip.clipId;
-                return Container(
-                  width: 92,
-                  decoration: BoxDecoration(
-                    color: selectedClip ? Colors.white : const Color(0xFF292929),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: selectedClip ? Colors.white : Colors.white12),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Clip ${index + 1}\n${(clip.renderedDurationMs / 1000).toStringAsFixed(1)}s',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: selectedClip ? Colors.black : Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                return GestureDetector(
+                  onTap: () => _selectClip(clip),
+                  child: Container(
+                    width: 92,
+                    decoration: BoxDecoration(
+                      color: selectedClip ? Colors.white : const Color(0xFF292929),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: selectedClip ? Colors.white : Colors.white12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Clip ${index + 1}\n${(clip.renderedDurationMs / 1000).toStringAsFixed(1)}s',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: selectedClip ? Colors.black : Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                    ),
                   ),
                 );
               },
