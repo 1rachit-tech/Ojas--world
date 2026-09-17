@@ -132,8 +132,10 @@ export const enqueueCreationMediaProcessing = onDocumentCreated({document: 'crea
 });
 
 export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reels/{reelId}', secrets: [azureQueueConnectionString]}, async (event) => {
-  const before = event.data.before.data() as Record<string, unknown>;
-  const after = event.data.after.data() as Record<string, unknown>;
+  const change = event.data;
+  if (!change) return;
+  const before = change.before.data() as Record<string, unknown>;
+  const after = change.after.data() as Record<string, unknown>;
   const wasDeleted = before.deletedAt != null || before.moderationStatus === 'deleted';
   const isDeleted = after.deletedAt != null || after.moderationStatus === 'deleted';
   if (wasDeleted || !isDeleted) return;
@@ -158,7 +160,7 @@ export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reel
 
   await queue.createIfNotExists();
   await queue.sendMessage(Buffer.from(JSON.stringify(job), 'utf8').toString('base64'));
-  await event.data.after.ref.set({mediaCleanupStatus: 'queued', mediaCleanupQueuedAt: FieldValue.serverTimestamp()}, {merge: true});
+  await change.after.ref.set({mediaCleanupStatus: 'queued', mediaCleanupQueuedAt: FieldValue.serverTimestamp()}, {merge: true});
 });
 
 export const manageReel = onCall(async (request) => manageReelLifecycle(request));
@@ -171,7 +173,9 @@ export const moderateAndIndexReelOnCreate = onDocumentCreated('reels/{reelId}', 
 });
 
 export const moderateAndIndexReelOnUpdate = onDocumentUpdated('reels/{reelId}', async (event) => {
-  if (!shouldReprocessReel(event.data.before.data() as Record<string, unknown>, event.data.after.data() as Record<string, unknown>)) return;
-  const snapshot = event.data.after;
+  const change = event.data;
+  if (!change) return;
+  if (!shouldReprocessReel(change.before.data() as Record<string, unknown>, change.after.data() as Record<string, unknown>)) return;
+  const snapshot = change.after;
   await moderateAndIndexReel({data: () => snapshot.data() as Record<string, unknown>, ref: snapshot.ref, params: event.params});
 });
