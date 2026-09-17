@@ -13,8 +13,8 @@ class CreationEditCommandService {
     if (clip == null) return project;
     final sourceDuration = _sourceDuration(project, clip.sourceId);
     if (sourceDuration <= 1) return project;
-    final safeIn = trimInMs.clamp(0, sourceDuration - 1);
-    final safeOut = trimOutMs.clamp(safeIn + 1, sourceDuration);
+    final safeIn = trimInMs.clamp(0, sourceDuration - 1).toInt();
+    final safeOut = trimOutMs.clamp(safeIn + 1, sourceDuration).toInt();
     return _updateClip(
       project,
       clipId,
@@ -85,7 +85,7 @@ class CreationEditCommandService {
   }) {
     final currentIndex = project.timeline.indexWhere((clip) => clip.clipId == clipId);
     if (currentIndex < 0 || project.timeline.length < 2) return project;
-    final safeIndex = toIndex.clamp(0, project.timeline.length - 1);
+    final safeIndex = toIndex.clamp(0, project.timeline.length - 1).toInt();
     if (currentIndex == safeIndex) return project;
     final timeline = [...project.timeline];
     final clip = timeline.removeAt(currentIndex);
@@ -252,9 +252,9 @@ class CreationEditCommandService {
     if (index < 0) return project;
     final current = project.textLayers[index];
     final currentStart = (current['startMs'] as num?)?.toInt() ?? 0;
-    final safeStart = (startMs ?? currentStart).clamp(0, 86400000);
+    final safeStart = (startMs ?? currentStart).clamp(0, 86400000).toInt();
     final currentEnd = (current['endMs'] as num?)?.toInt() ?? safeStart + 1;
-    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000);
+    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000).toInt();
     final nextLayer = <String, dynamic>{
       ...current,
       if (text != null) 'text': text.trim(),
@@ -303,9 +303,9 @@ class CreationEditCommandService {
     if (index < 0) return project;
     final current = project.audio[index];
     final currentStart = (current['startMs'] as num?)?.toInt() ?? 0;
-    final safeStart = (startMs ?? currentStart).clamp(0, 86400000);
+    final safeStart = (startMs ?? currentStart).clamp(0, 86400000).toInt();
     final currentEnd = (current['endMs'] as num?)?.toInt() ?? safeStart + 1;
-    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000);
+    final safeEnd = (endMs ?? currentEnd).clamp(safeStart + 1, 86400000).toInt();
     final nextLayer = <String, dynamic>{
       ...current,
       if (title != null) 'title': title.trim(),
@@ -369,10 +369,14 @@ class CreationEditCommandService {
     String? altText,
     bool? autoCaptions,
   }) {
+    final currentAltText = altText?.trim();
+    final safeAltText = currentAltText == null
+        ? null
+        : (currentAltText.length > 1000 ? currentAltText.substring(0, 1000) : currentAltText);
     return _finish(
       project.copyWith(accessibility: <String, dynamic>{
         ...project.accessibility,
-        if (altText != null) 'altText': altText.trim().substring(0, altText.trim().length.clamp(0, 1000)),
+        if (safeAltText != null) 'altText': safeAltText,
         if (autoCaptions != null) 'autoCaptions': autoCaptions,
       }),
       <String, dynamic>{'type': 'accessibility_update'},
@@ -472,7 +476,7 @@ class CreationEditCommandService {
 
   int? _safeEnd(int startMs, int? endMs) {
     if (endMs == null) return null;
-    return endMs.clamp(startMs + 1, 86400000);
+    return endMs.clamp(startMs + 1, 86400000).toInt();
   }
 
   CreationTimelineClip? _findClip(CreationProject project, String clipId) {
@@ -491,9 +495,10 @@ class CreationEditCommandService {
 
   double _snapRotation(double value) {
     if (!value.isFinite) return 0;
-    final normalized = value % 360;
+    var normalized = value % 360;
+    if (normalized < 0) normalized += 360;
     final snapped = (normalized / 90).round() * 90;
-    return snapped.toDouble() % 360;
+    return (snapped % 360).toDouble();
   }
 
   (double, double) _fitCropPair(double first, double second) {
