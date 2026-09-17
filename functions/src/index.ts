@@ -143,10 +143,6 @@ export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reel
   const mediaProvider = typeof after.mediaProvider === 'string' ? after.mediaProvider.trim().toLowerCase() : '';
   if (!ownerId || mediaProvider !== 'azure') return;
 
-  const editGraph = after.editGraph && typeof after.editGraph === 'object' && !Array.isArray(after.editGraph)
-    ? after.editGraph as Record<string, unknown>
-    : {};
-  const firebaseAudioBucket = typeof editGraph.audioStorageBucket === 'string' ? editGraph.audioStorageBucket.trim() : '';
   const queue = getMediaQueueClient(azureQueueConnectionString.value());
   if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
   const job = {
@@ -156,8 +152,7 @@ export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reel
     ownerId,
     assetId: typeof after.projectId === 'string' ? after.projectId.trim() : event.params.reelId,
     cleanupPrefix: `creation/${ownerId}/${event.params.reelId}/`,
-    firebaseAudioPrefix: `creation_audio/${ownerId}/${event.params.reelId}/`,
-    firebaseAudioBucket,
+    audioCleanupPrefix: `creation-audio/${ownerId}/${event.params.reelId}/`,
     mediaStoragePath: typeof after.mediaStoragePath === 'string' ? after.mediaStoragePath.trim() : '',
   };
 
