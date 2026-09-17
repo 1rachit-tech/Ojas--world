@@ -26,12 +26,7 @@ class CreationEditCommandService {
         x: clip.x,
         y: clip.y,
       ),
-      operation: <String, dynamic>{
-        'type': 'trim',
-        'clipId': clipId,
-        'trimInMs': trimInMs,
-        'trimOutMs': trimOutMs,
-      },
+      operation: <String, dynamic>{'type': 'trim', 'clipId': clipId, 'trimInMs': trimInMs, 'trimOutMs': trimOutMs},
     );
   }
 
@@ -81,11 +76,7 @@ class CreationEditCommandService {
       right,
       ...project.timeline.skip(index + 1),
     ];
-    return _finish(project.copyWith(timeline: timeline), <String, dynamic>{
-      'type': 'split',
-      'clipId': clipId,
-      'splitAtMs': splitAtMs,
-    });
+    return _finish(project.copyWith(timeline: timeline), <String, dynamic>{'type': 'split', 'clipId': clipId, 'splitAtMs': splitAtMs});
   }
 
   CreationProject setSpeed(
@@ -111,11 +102,7 @@ class CreationEditCommandService {
         x: clip.x,
         y: clip.y,
       ),
-      operation: <String, dynamic>{
-        'type': 'speed',
-        'clipId': clipId,
-        'speed': safeSpeed,
-      },
+      operation: <String, dynamic>{'type': 'speed', 'clipId': clipId, 'speed': safeSpeed},
     );
   }
 
@@ -145,15 +132,7 @@ class CreationEditCommandService {
         x: x ?? clip.x,
         y: y ?? clip.y,
       ),
-      operation: <String, dynamic>{
-        'type': 'transform',
-        'clipId': clipId,
-        'rotation': rotation,
-        'scale': scale,
-        'x': x,
-        'y': y,
-        'opacity': opacity,
-      },
+      operation: <String, dynamic>{'type': 'transform', 'clipId': clipId, 'rotation': rotation, 'scale': scale, 'x': x, 'y': y, 'opacity': opacity},
     );
   }
 
@@ -175,10 +154,7 @@ class CreationEditCommandService {
       'y': y,
       'fontSize': fontSize.clamp(8, 120),
     };
-    return _finish(project.copyWith(textLayers: [...project.textLayers, layer]), <String, dynamic>{
-      'type': 'text_add',
-      'layerId': layer['id'],
-    });
+    return _finish(project.copyWith(textLayers: [...project.textLayers, layer]), <String, dynamic>{'type': 'text_add', 'layerId': layer['id']});
   }
 
   CreationProject addAudio(
@@ -197,10 +173,7 @@ class CreationEditCommandService {
       'endMs': endMs,
       'volume': volume.clamp(0.0, 2.0),
     };
-    return _finish(project.copyWith(audio: [...project.audio, layer]), <String, dynamic>{
-      'type': 'audio_add',
-      'layerId': layer['id'],
-    });
+    return _finish(project.copyWith(audio: [...project.audio, layer]), <String, dynamic>{'type': 'audio_add', 'layerId': layer['id']});
   }
 
   CreationProject addEffect(
@@ -213,11 +186,7 @@ class CreationEditCommandService {
       'effectId': effectId,
       'intensity': intensity.clamp(0.0, 1.0),
     };
-    return _finish(project.copyWith(effectLayers: [...project.effectLayers, layer]), <String, dynamic>{
-      'type': 'effect_add',
-      'layerId': layer['id'],
-      'effectId': effectId,
-    });
+    return _finish(project.copyWith(effectLayers: [...project.effectLayers, layer]), <String, dynamic>{'type': 'effect_add', 'layerId': layer['id'], 'effectId': effectId});
   }
 
   CreationProject addSticker(
@@ -234,11 +203,7 @@ class CreationEditCommandService {
       'y': y,
       'scale': scale.clamp(0.1, 5.0),
     };
-    return _finish(project.copyWith(stickerLayers: [...project.stickerLayers, layer]), <String, dynamic>{
-      'type': 'sticker_add',
-      'layerId': layer['id'],
-      'stickerId': stickerId,
-    });
+    return _finish(project.copyWith(stickerLayers: [...project.stickerLayers, layer]), <String, dynamic>{'type': 'sticker_add', 'layerId': layer['id'], 'stickerId': stickerId});
   }
 
   CreationProject setAccessibility(
@@ -287,13 +252,14 @@ class CreationEditCommandService {
   }
 
   CreationProject _finish(CreationProject project, Map<String, dynamic> operation) {
+    final nextVersion = project.version + 1;
     return project.copyWith(
       status: CreationProjectStatus.editing,
-      version: project.version + 1,
+      version: nextVersion,
       updatedAt: DateTime.now(),
       operations: [
         ...project.operations,
-        <String, dynamic>{...operation, 'version': project.version + 1, 'at': DateTime.now().toIso8601String()},
+        <String, dynamic>{...operation, 'version': nextVersion, 'at': DateTime.now().toIso8601String()},
       ],
     );
   }
@@ -305,5 +271,5 @@ class CreationEditCommandService {
     return 0;
   }
 
-  String _nextLayerId(String prefix) => '$prefix_${DateTime.now().microsecondsSinceEpoch}';
+  String _nextLayerId(String prefix) => '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
 }
