@@ -132,6 +132,35 @@ export const enqueueCreationMediaProcessing = onDocumentCreated({document: 'crea
   }
 });
 
+export const enqueueDeletedReelMediaCleanup = onDocumentUpdated({document: 'reels/{reelId}', secrets: [azureQueueConnectionString]}, async (event) => {
+  const before = event.data.before.data() as Record<string, unknown>;
+  const after = event.data.after.data() as Record<string, unknown>;
+  const wasDeleted = before.deletedAt != null || before.moderationStatus === 'deleted';
+  const isDeleted = after.deletedAt != null || after.moderationStatus === 'deleted';
+  if (wasDeleted || !isDeleted) return;
+
+  const ownerId = typeof after.creatorId === 'string' ? after.creatorId.trim() : '';
+  const mediaProvider = typeof after.mediaProvider === 'string' ? after.mediaProvider.trim().toLowerCase() : '';
+  if (!ownerId || mediaProvider !== 'azure') return;
+
+  const queue = getMediaQueueClient(azureQueueConnectionString.value());
+  if (!queue) throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
+  const job = {
+    schemaVersion: 1,
+    kind: 'creation-media-cleanup',
+    reelId: event.params.reelId,
+    ownerId,
+    assetId: typeof after.projectId === 'string' ? after.projectId.trim() : event.params.reelId,
+    cleanupPrefix: `creation/${ownerId}/${event.params.reelId}/`,
+    firebaseAudioPrefix: `creation_audio/${ownerId}/${event.params.reelId}/`,
+    mediaStoragePath: typeof after.mediaStoragePath === 'string' ? after.mediaStoragePath.trim() : '',
+  };
+
+  await queue.createIfNotExists();
+  await queue.sendMessage(Buffer.from(JSON.stringify(job), 'utf8').toString('base64'));
+  await event.data.after.ref.set({mediaCleanupStatus: 'queued', mediaCleanupQueuedAt: FieldValue.serverTimestamp()}, {merge: true});
+});
+
 export const manageReel = onCall(async (request) => manageReelLifecycle(request));
 export const searchReels = onCall(async (request) => searchPublicReels(request));
 
