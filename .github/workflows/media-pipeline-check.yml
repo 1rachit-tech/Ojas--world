@@ -48,6 +48,7 @@ jobs:
         run: |
           pip install -r azure_media_worker/requirements.txt
           python -m compileall -q azure_media_worker
+          python -m unittest discover -s azure_media_worker -p 'test_*.py'
 
       - name: Build FFmpeg worker container
         run: docker build --tag ojas-media-worker:ci azure_media_worker
