@@ -115,9 +115,9 @@ class CreationPublishService {
       'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
       'mediaStoragePath': storagePath,
       'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
-      'mediaProcessingVersion': 1,
-      'mediaProcessingMode': 'edit-graph-v1',
-      'editGraphVersion': 1,
+      'mediaProcessingVersion': 2,
+      'mediaProcessingMode': 'edit-graph-v2-render',
+      'editGraphVersion': 2,
       'editGraph': editGraph,
       'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
       'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
@@ -152,7 +152,7 @@ class CreationPublishService {
         'recommend': recommendationEligible,
         'processingStatus': processing ? 'queued' : 'uploaded',
         'mediaHash': mediaHash,
-        'editGraphVersion': 1,
+        'editGraphVersion': 2,
       },
     );
     await CreationProjectStore.instance.save(published);
@@ -165,7 +165,7 @@ class CreationPublishService {
     List<Map<String, dynamic>> bounded(List<Map<String, dynamic>> input, int maxItems) => input.take(maxItems).map((item) => Map<String, dynamic>.from(item)).toList(growable: false);
     final timeline = project.timeline.take(32).map((clip) => clip.toMap()).toList(growable: false);
     return <String, dynamic>{
-      'version': 1,
+      'version': 2,
       'timeline': timeline,
       'audio': bounded(project.audio, 32),
       'textLayers': bounded(project.textLayers, 64),
