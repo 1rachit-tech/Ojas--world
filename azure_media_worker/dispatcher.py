@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from azure.core.exceptions import ResourceNotFoundError
+
 import worker
 
 MAX_CLEANUP_PREFIX_LENGTH = 256
@@ -77,27 +79,6 @@ def _download_audio_layers_azure(
         files.append((raw, target))
 
     return files, None, []
-
-
-def _delete_project_audio(edit_graph: dict[str, Any], owner_id: str, project_id: str) -> int:
-    raw_audio = edit_graph.get('audio')
-    if not isinstance(raw_audio, list) or not raw_audio:
-        return 0
-    service = worker._blob_service()
-    container_client = service.get_container_client(worker.CONTAINER)
-    deleted = 0
-    for raw in raw_audio[:worker.MAX_AUDIO_LAYERS]:
-        if not isinstance(raw, dict):
-            continue
-        storage_path = raw.get('storagePath')
-        if not isinstance(storage_path, str) or not _safe_audio_path(storage_path, owner_id, project_id):
-            continue
-        try:
-            container_client.delete_blob(storage_path, delete_snapshots='include')
-            deleted += 1
-        except Exception:
-            logging.warning('Could not delete creation audio %s.', storage_path)
-    return deleted
 
 
 def _current_audio_paths(edit_graph: Any, owner_id: str, project_id: str) -> set[str]:
@@ -240,14 +221,21 @@ def _replacement_cleanup_job(job: dict[str, Any]) -> None:
         logging.warning('Refusing to delete current media asset %s for reel %s', old_asset_id, reel_id)
         return
 
+    existing_cleanup = str(reel.get('mediaReplacementCleanupStatus') or '').strip().lower()
+    if existing_cleanup == 'completed':
+        return
+
     retained_audio_paths = _current_audio_paths(reel.get('editGraph'), owner_id, reel_id)
     service = worker._blob_service()
     container_client = service.get_container_client(worker.CONTAINER)
     old_prefix = _safe_asset_prefix(owner_id, reel_id, old_asset_id)
     deleted_media = 0
     for blob in container_client.list_blobs(name_starts_with=old_prefix):
-        container_client.delete_blob(blob.name, delete_snapshots='include')
-        deleted_media += 1
+        try:
+            container_client.delete_blob(blob.name, delete_snapshots='include')
+            deleted_media += 1
+        except ResourceNotFoundError:
+            logging.info('Old replacement blob already removed: %s', blob.name)
 
     deleted_audio = 0
     retained_audio = 0
@@ -265,8 +253,8 @@ def _replacement_cleanup_job(job: dict[str, Any]) -> None:
         try:
             container_client.delete_blob(path, delete_snapshots='include')
             deleted_audio += 1
-        except Exception:
-            logging.warning('Replacement audio blob already missing or could not be deleted: %s', path)
+        except ResourceNotFoundError:
+            logging.info('Replacement audio blob already removed: %s', path)
 
     reel_ref.set({
         'mediaReplacementCleanupStatus': 'completed',
@@ -276,6 +264,44 @@ def _replacement_cleanup_job(job: dict[str, Any]) -> None:
         'mediaReplacementCleanupAt': worker.firestore.SERVER_TIMESTAMP,
     }, merge=True)
     logging.info('Replacement cleanup complete for %s: %s media, %s audio blobs, %s retained.', reel_id, deleted_media, deleted_audio, retained_audio)
+
+
+def _post_process_transcode(job: dict[str, Any]) -> None:
+    asset_id = str(job.get('assetId', '')).strip()
+    project_id = str(job.get('projectId', '')).strip()
+    owner_id = str(job.get('ownerId', '')).strip()
+    if not asset_id or not project_id or not owner_id:
+        raise ValueError('Invalid transcode post-processing identity.')
+
+    db = worker._firebase()
+    media_snapshot = db.collection('creationMedia').document(asset_id).get()
+    media = media_snapshot.to_dict() if media_snapshot.exists else {}
+    processing_status = str(media.get('processingStatus') or '').strip().lower()
+    if processing_status != 'ready':
+        raise RuntimeError(f'Media {asset_id} did not reach ready state after transcode ({processing_status}).')
+    processed_path = str(media.get('processedVideoStoragePath') or '').strip()
+    if not processed_path:
+        raise RuntimeError(f'Media {asset_id} is ready but has no processed video path.')
+
+    _server_hash_job({
+        'assetId': asset_id,
+        'projectId': project_id,
+        'ownerId': owner_id,
+        'processedVideoStoragePath': processed_path,
+    })
+
+    reel_snapshot = db.collection('reels').document(project_id).get()
+    reel = reel_snapshot.to_dict() if reel_snapshot.exists else {}
+    cleanup_status = str(reel.get('mediaReplacementCleanupStatus') or '').strip().lower()
+    old_asset_id = str(reel.get('mediaReplacementCleanupAssetId') or '').strip()
+    old_audio_paths = reel.get('mediaReplacementCleanupAudioPaths')
+    if old_asset_id and cleanup_status == 'pending' and isinstance(old_audio_paths, list):
+        _replacement_cleanup_job({
+            'reelId': project_id,
+            'ownerId': owner_id,
+            'oldAssetId': old_asset_id,
+            'oldAudioPaths': old_audio_paths,
+        })
 
 
 def _transcode_job(job: dict[str, Any]) -> None:
@@ -300,6 +326,8 @@ def _transcode_job(job: dict[str, Any]) -> None:
         worker.process_job(job)
     finally:
         worker._download_audio_layers = previous_downloader
+
+    _post_process_transcode(job)
 
 
 def main() -> int:
