@@ -81,8 +81,9 @@ function validEditGraph(value: unknown): boolean {
     if (!finiteNumber(item.scale) || item.scale < 0.1 || item.scale > 5) return false;
     if (!finiteNumber(item.x) || item.x < -1 || item.x > 1) return false;
     if (!finiteNumber(item.y) || item.y < -1 || item.y > 1) return false;
-    if (!finiteNumber(item.rotation)) return false;
-    const rotation = ((item.rotation % 360) + 360) % 360;
+    const rawRotation = Number(item.rotation);
+    if (!Number.isFinite(rawRotation)) return false;
+    const rotation = ((rawRotation % 360) + 360) % 360;
     if (![0, 90, 180, 270].some((angle) => Math.abs(rotation - angle) < 0.01)) return false;
     for (const key of ['cropLeft', 'cropTop', 'cropRight', 'cropBottom']) {
       if (!finiteNumber(item[key]) || item[key] < 0 || item[key] >= 1) return false;
