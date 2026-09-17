@@ -11,11 +11,11 @@ For every queued creation video the worker:
 1. downloads the private source Blob to ephemeral job storage;
 2. validates the media with `ffprobe`;
 3. applies the bounded edit graph (trim/split order, speed, rotation, text/captions and lightweight effects);
-4. optionally mixes creator-selected audio tracks staged in Firebase Storage;
+4. optionally mixes creator-selected audio tracks temporarily staged in Azure Blob Storage;
 5. transcodes one 720p-max H.264/AAC MP4 with `ffmpeg`;
 6. creates one JPEG thumbnail;
 7. writes authoritative processing metadata to Firestore;
-8. removes temporary `creation_audio/{uid}/{projectId}/...` assets after successful processing;
+8. removes temporary Azure audio assets after successful processing;
 9. removes the queue message only after successful processing.
 
 This deliberately avoids multiple renditions, always-on servers, and mandatory HLS segment storage during the low-traffic launch stage.
@@ -24,20 +24,21 @@ Set `OJAS_ENABLE_HLS=true` later when HLS delivery is worth the extra CPU/storag
 
 ## Audio staging contract
 
-The Flutter editor uses the native audio picker and keeps the selected file local during editing. At publish time, each audio layer is copied to the owner-scoped Firebase Storage path:
+The Flutter editor uses the native audio picker and keeps the selected file local during editing. At publish time, each audio layer is copied through the existing authenticated Azure media broker to:
 
-`creation_audio/{uid}/{projectId}/{layerId}.<ext>`
+`creation-audio/{uid}/{projectId}/{layerId}/{fileName}`
 
-The resulting edit graph stores `storagePath` rather than the device's local filesystem path. This prevents private device paths from reaching Firestore and lets the server worker retrieve the audio securely with Firebase Admin credentials.
+The Firestore edit graph stores the Azure `storagePath`, never the device's local filesystem path. The worker retrieves that temporary Azure Blob with server-side storage credentials, mixes it into the render, then deletes the temporary audio asset after successful processing.
 
 Audio limits:
 
 - Maximum audio layers per edit graph: `32`
 - Maximum size per audio asset: `10 MiB`
-- Supported runtime container paths are owner/project scoped
-- Temporary staged audio is deleted after a successful media render
+- Supported audio types: MP3, M4A/MP4 audio, WAV, AAC, OGG, OPUS
+- Storage path is owner/project scoped
+- Audio is temporary and is deleted after successful rendering or post deletion
 
-Because Firebase Storage is still a billed storage/operations meter, audio files are kept temporary and are deleted after successful rendering. No new always-on service is introduced for audio.
+This creation-audio path intentionally does **not** use Firebase Storage, so the feature does not introduce a new Firebase Storage/Blaze dependency. Existing Firebase Storage usage elsewhere in the app is a separate concern.
 
 ## Runtime contract
 
@@ -65,6 +66,10 @@ Configure it before deploying Functions:
 ```bash
 firebase functions:secrets:set AZURE_STORAGE_QUEUE_CONNECTION_STRING --project ojas-e8161
 ```
+
+## Post deletion cleanup
+
+A Firestore lifecycle trigger queues `creation-media-cleanup` when an Azure-backed Show is deleted. The same Event Job removes the processed source/output tree and the temporary `creation-audio/{uid}/{projectId}/...` tree. Cleanup runs on demand; there is no always-on janitor service.
 
 ## Low-cost Container Apps job
 
