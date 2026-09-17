@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../services/media_hash_service.dart';
+import '../../services/reel_lifecycle_service.dart';
 import '../models/creation_project.dart';
 import '../models/creation_publish_state.dart';
 import 'creation_azure_media_service.dart';
@@ -20,16 +21,23 @@ class CreationPublishResult {
 }
 
 class CreationPublishService {
-  CreationPublishService({FirebaseAuth? auth, FirebaseFirestore? firestore, FirebaseStorage? storage, CreationAzureMediaService? azureMedia})
-      : _auth = auth ?? FirebaseAuth.instance,
+  CreationPublishService({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    FirebaseStorage? storage,
+    CreationAzureMediaService? azureMedia,
+    ReelLifecycleService? lifecycle,
+  })  : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
         _storage = storage ?? FirebaseStorage.instance,
-        _azureMedia = azureMedia ?? CreationAzureMediaService(auth: auth);
+        _azureMedia = azureMedia ?? CreationAzureMediaService(auth: auth),
+        _lifecycle = lifecycle ?? ReelLifecycleService(auth: auth);
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final CreationAzureMediaService _azureMedia;
+  final ReelLifecycleService _lifecycle;
 
   Future<CreationPublishResult> publish(CreationProject project) async {
     final user = _auth.currentUser;
@@ -40,26 +48,39 @@ class CreationPublishService {
     if (project.mediaAssets.length != 1 || project.mediaAssets.first.type != 'video') {
       throw const CreationPublishException('This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready.');
     }
+
+    final publishState = project.publishState;
+    final editOfPostId = publishState['editOfPostId'] is String ? (publishState['editOfPostId'] as String).trim() : '';
+    final isExistingEdit = editOfPostId.isNotEmpty && editOfPostId == project.projectId;
+    if (isExistingEdit && !_azureMedia.isConfigured) {
+      throw const CreationPublishException('Published Show editing requires the OJAS Azure media pipeline.');
+    }
     if (project.audio.isNotEmpty && !_azureMedia.isConfigured) {
       throw const CreationPublishException('Audio tracks require the server media processor. Configure the OJAS Azure media broker before publishing audio edits.');
     }
 
     final asset = project.mediaAssets.first;
     final postRef = _firestore.collection('reels').doc(project.projectId);
-    final publishState = project.publishState;
     final publishRequestId = publishState['publishRequestId'] as String? ?? 'creation:${project.projectId}';
     final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
     final recommendRequested = publishState['recommend'] is bool ? publishState['recommend'] as bool : true;
     final isPublic = project.privacy.toLowerCase() == 'public';
     final recommendationEligible = isPublic && recommendRequested;
+    final reusePolicy = publishState['reusePolicy'] is String && (publishState['reusePolicy'] as String).trim().isNotEmpty
+        ? (publishState['reusePolicy'] as String).trim().toLowerCase()
+        : 'allowed';
 
-    final existing = await postRef.get();
-    if (existing.exists) {
-      final data = existing.data() ?? const <String, dynamic>{};
-      final existingUrl = data['videoUrl'] as String? ?? '';
+    final existingSnapshot = await postRef.get();
+    final existingData = existingSnapshot.data() ?? const <String, dynamic>{};
+    if (existingSnapshot.exists && existingData['creatorId'] != user.uid) {
+      throw const CreationPublishException('You cannot replace another creator\'s Show.');
+    }
+
+    if (existingSnapshot.exists && !isExistingEdit) {
+      final existingUrl = existingData['videoUrl'] as String? ?? '';
       if (existingUrl.isNotEmpty) {
-        final status = (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
-        final provider = (data['mediaProvider'] as String? ?? '').toLowerCase();
+        final status = (existingData['mediaProcessingStatus'] as String? ?? '').toLowerCase();
+        final provider = (existingData['mediaProvider'] as String? ?? '').toLowerCase();
         final processing = provider == 'azure' && status != 'ready' && status != 'published';
         await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId);
         return CreationPublishResult(postId: postRef.id, mediaUrl: existingUrl, isProcessing: processing);
@@ -78,6 +99,7 @@ class CreationPublishService {
         assetId: asset.assetId,
         localPath: asset.localUri,
         contentType: asset.mimeType == 'video/*' ? 'video/mp4' : asset.mimeType,
+        deferProcessing: true,
         onProgress: (uploaded, total) {
           _saveState(project.projectId, CreationPublishStage.uploading, requestId: publishRequestId, bytesUploaded: uploaded, totalBytes: total);
         },
@@ -97,48 +119,90 @@ class CreationPublishService {
 
     await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     final mediaHash = await _computeMediaHash(asset.localUri);
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(mediaHash)) {
+      throw const CreationPublishException('Could not calculate a valid media hash. Please try again.');
+    }
     final editGraph = await _prepareEditGraph(project);
     await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
-    await postRef.set(<String, dynamic>{
-      'creatorId': user.uid,
-      'projectId': project.projectId,
-      'mediaAssetId': asset.assetId,
-      'publishRequestId': publishRequestId,
-      'videoUrl': downloadUrl,
-      'hlsUrl': downloadUrl,
-      'thumbnailUrl': '',
-      'caption': project.caption,
-      'shaderUsed': 'Natural',
-      'visibility': project.privacy.toLowerCase(),
-      'recommendationEligible': recommendationEligible,
-      'moderationStatus': 'pending',
-      'allowComments': allowComments,
-      'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
-      'mediaStoragePath': storagePath,
-      'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
-      'mediaProcessingVersion': 3,
-      'mediaProcessingMode': 'edit-graph-v3-render',
-      'editGraphVersion': 2,
-      'editGraph': editGraph,
-      'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
-      'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'likesCount': 0,
-      'commentsCount': 0,
-      'sharesCount': 0,
-      'likes': 0,
-      'comments': 0,
-      'saves': 0,
-      'shares': 0,
-      'views': 0,
-      'watchTimeMs': 0,
-      'completions': 0,
-      'shopItemIds': const <String>[],
-      'algorithmScore': 0.0,
-      'audioTrackId': '',
-      'mediaHash': mediaHash,
-    }, SetOptions(merge: true));
+    final reuseSourcePostId = publishState['reuseSourcePostId'] as String?;
+    final reuseSourceCreatorId = publishState['reuseSourceCreatorId'] as String?;
+    final reuseRequestId = publishState['reuseRequestId'] as String?;
+
+    if (isExistingEdit) {
+      await _lifecycle.replacePublishedMedia(
+        postId: postRef.id,
+        mediaAssetId: asset.assetId,
+        videoUrl: downloadUrl,
+        mediaStoragePath: storagePath ?? '',
+        contentLength: asset.sizeBytes,
+        mediaHash: mediaHash,
+        editGraph: editGraph,
+        caption: project.caption,
+        visibility: project.privacy.toLowerCase(),
+        allowComments: allowComments,
+        recommendationEligible: recommendationEligible,
+        reusePolicy: reusePolicy,
+        aiGeneratedDisclosure: project.rights['aiGeneratedDisclosure'] == true,
+        copyrightConfirmed: project.rights['copyrightConfirmed'] == true,
+      );
+    } else {
+      final payload = <String, dynamic>{
+        'creatorId': user.uid,
+        'projectId': project.projectId,
+        'mediaAssetId': asset.assetId,
+        'publishRequestId': publishRequestId,
+        'videoUrl': downloadUrl,
+        'hlsUrl': downloadUrl,
+        'thumbnailUrl': '',
+        'caption': project.caption,
+        'shaderUsed': 'Natural',
+        'visibility': project.privacy.toLowerCase(),
+        'recommendationEligible': recommendationEligible,
+        'moderationStatus': 'pending',
+        'allowComments': allowComments,
+        'reusePolicy': reusePolicy,
+        'mediaProvider': _azureMedia.isConfigured ? 'azure' : 'firebase',
+        'mediaStoragePath': storagePath,
+        'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
+        'mediaProcessingVersion': 3,
+        'mediaProcessingMode': 'edit-graph-v5-render',
+        'editGraphVersion': 2,
+        'editGraph': editGraph,
+        'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
+        'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
+        'mediaHash': mediaHash,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'likesCount': 0,
+        'commentsCount': 0,
+        'sharesCount': 0,
+        'likes': 0,
+        'comments': 0,
+        'saves': 0,
+        'shares': 0,
+        'views': 0,
+        'watchTimeMs': 0,
+        'completions': 0,
+        'shopItemIds': const <String>[],
+        'algorithmScore': 0.0,
+        'audioTrackId': '',
+        if (reuseRequestId != null && reuseRequestId.trim().isNotEmpty) 'reuseRequestId': reuseRequestId.trim(),
+        if (reuseSourcePostId != null && reuseSourcePostId.trim().isNotEmpty) 'reusedFromPostId': reuseSourcePostId.trim(),
+        if (reuseSourceCreatorId != null && reuseSourceCreatorId.trim().isNotEmpty) 'reusedFromCreatorId': reuseSourceCreatorId.trim(),
+      };
+      await postRef.set(payload, SetOptions(merge: false));
+    }
+
+    if (_azureMedia.isConfigured) {
+      await _markCreationMediaQueued(
+        assetId: asset.assetId,
+        projectId: project.projectId,
+        ownerId: user.uid,
+        storagePath: storagePath ?? '',
+        contentLength: asset.sizeBytes,
+      );
+    }
 
     final processing = _azureMedia.isConfigured;
     final published = project.copyWith(
@@ -152,16 +216,40 @@ class CreationPublishService {
         'publishRequestId': publishRequestId,
         'allowComments': allowComments,
         'recommend': recommendationEligible,
+        'reusePolicy': reusePolicy,
         'processingStatus': processing ? 'queued' : 'uploaded',
         'mediaHash': mediaHash,
         'editGraphVersion': 2,
         'mediaAssetId': asset.assetId,
+        if (isExistingEdit) 'editOfPostId': project.projectId,
       },
     );
     await CreationProjectStore.instance.save(published);
-    await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
+    await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes, requestId: publishRequestId);
 
     return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
+  }
+
+  Future<void> _markCreationMediaQueued({
+    required String assetId,
+    required String projectId,
+    required String ownerId,
+    required String storagePath,
+    required int contentLength,
+  }) async {
+    if (storagePath.isEmpty) throw const CreationPublishException('Media storage path is missing.');
+    await _firestore.collection('creationMedia').doc(assetId).set(<String, dynamic>{
+      'assetId': assetId,
+      'projectId': projectId,
+      'ownerId': ownerId,
+      'storagePath': storagePath,
+      'contentLength': contentLength,
+      'contentType': 'video/mp4',
+      'status': 'uploaded',
+      'processingStatus': 'queued',
+      'queuedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<Map<String, dynamic>> _prepareEditGraph(CreationProject project) async {
