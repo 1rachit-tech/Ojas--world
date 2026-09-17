@@ -33,10 +33,17 @@ function normalizeVisibility(value: unknown): string {
   return SAFE_VISIBILITIES.has(normalized) ? normalized : 'public';
 }
 
+function normalizeReusePolicy(value: unknown, fallback = 'allowed'): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : fallback;
+  return SAFE_REUSE_POLICIES.has(normalized) ? normalized : fallback;
+}
+
 function finiteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
 function isBoundedString(value: unknown, maxLength: number): boolean { return typeof value === 'string' && value.length <= maxLength; }
 
 function validEditGraph(value: unknown, ownerId?: string, projectId?: string): boolean {
+  // Older Shows may predate the edit-graph contract; keep them searchable and playable.
+  if (value == null) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const graph = value as Record<string, unknown>;
   if (graph.version !== 1 && graph.version !== 2) return false;
@@ -90,11 +97,7 @@ function validEditGraph(value: unknown, ownerId?: string, projectId?: string): b
     const hasLocalUri = isBoundedString(item.uri, 2048) && String(item.uri).trim().length > 0;
     const storagePath = typeof item.storagePath === 'string' ? item.storagePath.trim() : '';
     const expectedPrefix = ownerId && projectId ? `creation-audio/${ownerId}/${projectId}/` : '';
-    const hasSafeStoragePath = Boolean(expectedPrefix)
-      && storagePath.startsWith(expectedPrefix)
-      && storagePath.length <= 512
-      && !storagePath.includes('..')
-      && storagePath.split('/').length === 5;
+    const hasSafeStoragePath = Boolean(expectedPrefix) && storagePath.startsWith(expectedPrefix) && storagePath.length <= 512 && !storagePath.includes('..') && storagePath.split('/').length === 5;
     if (!hasLocalUri && !hasSafeStoragePath) return false;
     if (item.storageProvider != null && item.storageProvider !== 'azure') return false;
     if (item.volume != null && (!finiteNumber(item.volume) || item.volume < 0 || item.volume > 2)) return false;
@@ -134,7 +137,8 @@ export async function manageReelLifecycle(request: CallableRequest): Promise<Cal
     const visibility = normalizeVisibility(data.visibility ?? reel.visibility);
     const allowComments = typeof data.allowComments === 'boolean' ? data.allowComments : reel.allowComments === true;
     const recommendationEligible = visibility === 'public' && data.recommendationEligible === true;
-    await reelRef.update({caption, visibility, allowComments, recommendationEligible, moderationStatus: 'pending', updatedAt: FieldValue.serverTimestamp(), editedAt: FieldValue.serverTimestamp()});
+    const reusePolicy = normalizeReusePolicy(data.reusePolicy ?? reel.reusePolicy, 'allowed');
+    await reelRef.update({caption, visibility, allowComments, recommendationEligible, reusePolicy, moderationStatus: 'pending', updatedAt: FieldValue.serverTimestamp(), editedAt: FieldValue.serverTimestamp()});
     return {ok: true, operation: 'edit', postId};
   }
   if (operation === 'delete') {
@@ -185,12 +189,11 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
     await searchRef.delete();
     return;
   }
-
   const tokens = Array.from(new Set(caption.toLowerCase().replace(/[^a-z0-9_#@\s]/g, ' ').split(/\s+/).map((token) => token.startsWith('#') ? token.slice(1) : token).filter((token) => token.length >= 2 && token.length <= 64))).slice(0, 100);
   await searchRef.set({postId: reelId, creatorId, caption, tokens, visibility, moderationStatus, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()}, {merge: true});
 }
 
 export function shouldReprocessReel(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
-  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph'];
+  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph', 'reusePolicy'];
   return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }
