@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
+import '../services/reel_lifecycle_service.dart';
 import 'creator_profile_screen.dart';
 
 class DiscoverScreen extends StatefulWidget {
@@ -18,61 +19,18 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _searchDebounce;
+  final ReelLifecycleService _reelSearch = ReelLifecycleService();
 
-  static const List<String> _categories = <String>[
-    '🔥 For You',
-    '🎵 Sounds',
-    '# Trending',
-    '👥 Creators',
-  ];
-
-  static const List<String> _viewCounts = <String>[
-    '1.2M',
-    '34K',
-    '820K',
-    '56K',
-    '2.4M',
-    '91K',
-    '640K',
-    '18K',
-    '3.1M',
-    '77K',
-    '450K',
-    '29K',
-    '1.8M',
-    '63K',
-    '710K',
-    '42K',
-    '950K',
-    '105K',
-  ];
-
-  static const List<double> _tileHeights = <double>[
-    220,
-    300,
-    250,
-    300,
-    220,
-    250,
-    300,
-    220,
-    250,
-    300,
-    220,
-    250,
-    300,
-    220,
-    250,
-    300,
-    220,
-    250,
-  ];
+  static const List<String> _categories = <String>['🔥 For You', '🎵 Sounds', '# Trending', '👥 Creators'];
+  static const List<String> _viewCounts = <String>['1.2M', '34K', '820K', '56K', '2.4M', '91K', '640K', '18K', '3.1M', '77K', '450K', '29K', '1.8M', '63K', '710K', '42K', '950K', '105K'];
+  static const List<double> _tileHeights = <double>[220, 300, 250, 300, 220, 250, 300, 220, 250, 300, 220, 250, 300, 220, 250, 300, 220, 250];
 
   int _selectedCategory = 0;
   bool _isSearching = false;
   bool _isLoading = false;
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _searchResults =
-      <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  String? _searchError;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  List<Map<String, dynamic>> _postResults = <Map<String, dynamic>>[];
   int _searchRequestId = 0;
 
   @override
@@ -85,15 +43,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
-
-    final query = value.trim().toLowerCase();
+    final query = value.trim();
     if (query.isEmpty) {
       _searchRequestId++;
       if (mounted) {
         setState(() {
           _isSearching = false;
           _isLoading = false;
+          _searchError = null;
           _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          _postResults = <Map<String, dynamic>>[];
         });
       }
       return;
@@ -102,56 +61,35 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     setState(() {
       _isSearching = true;
       _isLoading = true;
+      _searchError = null;
       _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      _postResults = <Map<String, dynamic>>[];
     });
-
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      searchUsers(query);
-    });
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () => _searchAll(query));
   }
 
-  Future<void> searchUsers(String query) async {
+  Future<void> _searchAll(String query) async {
     final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isEmpty) {
-      return;
-    }
-
+    if (normalizedQuery.isEmpty) return;
     final int requestId = ++_searchRequestId;
-    if (mounted) {
-      setState(() => _isLoading = true);
-    }
-
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where(
-            'username',
-            isGreaterThanOrEqualTo: normalizedQuery,
-          )
-          .where(
-            'username',
-            isLessThan: '$normalizedQuery' 'z',
-          )
-          .limit(20)
-          .get();
-
+      final results = await Future.wait<Object>(<Future<Object>>[
+        FirebaseFirestore.instance.collection('users').where('username', isGreaterThanOrEqualTo: normalizedQuery.replaceFirst(RegExp(r'^[#@]'), '')).where('username', isLessThan: '${normalizedQuery.replaceFirst(RegExp(r'^[#@]'), '')}z').limit(20).get(),
+        _reelSearch.search(normalizedQuery),
+      ]);
       if (!mounted || requestId != _searchRequestId) return;
       setState(() {
-        _searchResults = snapshot.docs;
-        _isLoading = false;
-      });
-    } on FirebaseException catch (error) {
-      if (!mounted || requestId != _searchRequestId) return;
-      debugPrint('OJAS Discover user search failed: ${error.message}');
-      setState(() {
-        _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        _searchResults = results[0] as List<QueryDocumentSnapshot<Map<String, dynamic>>>;
+        _postResults = results[1] as List<Map<String, dynamic>>;
         _isLoading = false;
       });
     } catch (error) {
       if (!mounted || requestId != _searchRequestId) return;
-      debugPrint('OJAS Discover user search failed: $error');
+      debugPrint('OJAS Discover combined search failed: $error');
       setState(() {
         _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        _postResults = <Map<String, dynamic>>[];
+        _searchError = 'Search is temporarily unavailable.';
         _isLoading = false;
       });
     }
@@ -166,165 +104,101 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       setState(() {
         _isSearching = false;
         _isLoading = false;
+        _searchError = null;
         _searchResults = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        _postResults = <Map<String, dynamic>>[];
       });
     }
   }
 
-  void _openProfile(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data();
-    final rawUid = data['uid'];
-    final uid = rawUid is String && rawUid.trim().isNotEmpty
-        ? rawUid.trim()
-        : doc.id;
-    if (uid.isEmpty) return;
-
-    final username = data['username'] is String
-        ? (data['username'] as String).trim()
-        : '';
-    final name = data['name'] is String
-        ? (data['name'] as String).trim()
-        : data['displayName'] is String
-            ? (data['displayName'] as String).trim()
-            : '';
-
+  void _openProfile(String uid, {String? username, String? name}) {
+    if (uid.trim().isEmpty) return;
     _searchFocusNode.unfocus();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CreatorProfileScreen(
-          creatorId: uid,
-          username: username.isNotEmpty
-              ? username
-              : (name.isNotEmpty ? name : 'OJAS Creator'),
-          creatorName: name.isNotEmpty ? name : username,
-          avatarColor: const Color(0xFFE5E7EB),
-        ),
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CreatorProfileScreen(
+        creatorId: uid,
+        username: username?.isNotEmpty == true ? username! : (name?.isNotEmpty == true ? name! : 'OJAS Creator'),
+        creatorName: name?.isNotEmpty == true ? name! : (username ?? ''),
+        avatarColor: const Color(0xFFE5E7EB),
       ),
+    ));
+  }
+
+  Widget _buildCreatorResults() {
+    if (_searchResults.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text('Creators', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _searchResults.length,
+          itemBuilder: (context, index) {
+            final doc = _searchResults[index];
+            final data = doc.data();
+            final uid = data['uid'] is String && (data['uid'] as String).trim().isNotEmpty ? (data['uid'] as String).trim() : doc.id;
+            final username = data['username'] is String ? (data['username'] as String).trim() : '';
+            final name = data['name'] is String ? (data['name'] as String).trim() : data['displayName'] is String ? (data['displayName'] as String).trim() : 'OJAS User';
+            final imageUrl = data['profileImageUrl'] is String ? (data['profileImageUrl'] as String).trim() : data['photoUrl'] is String ? (data['photoUrl'] as String).trim() : '';
+            final initial = (name.isNotEmpty ? name : (username.isNotEmpty ? username : 'O')).substring(0, 1).toUpperCase();
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              leading: CircleAvatar(
+                backgroundColor: const Color(0xFFE5E7EB),
+                child: ClipOval(child: imageUrl.isEmpty ? Text(initial, style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w700)) : CachedNetworkImage(imageUrl: imageUrl, width: 40, height: 40, fit: BoxFit.cover, errorWidget: (_, __, ___) => Center(child: Text(initial)))),
+              ),
+              title: Text(name.isNotEmpty ? name : '@$username', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(username.isEmpty ? '@ojasuser' : '@$username', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+              onTap: () => _openProfile(uid, username: username, name: name),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPostResults() {
+    if (_postResults.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 10, 16, 4), child: Text('Shows', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _postResults.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final item = _postResults[index];
+            final caption = item['caption'] is String ? (item['caption'] as String).trim() : '';
+            final postId = item['postId'] is String ? item['postId'] as String : '';
+            final creatorId = item['creatorId'] is String ? item['creatorId'] as String : '';
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: const CircleAvatar(backgroundColor: Color(0xFFF1F5F9), child: Icon(Icons.play_arrow_rounded, color: Colors.black87)),
+              title: Text(caption.isEmpty ? 'OJAS Show' : caption, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(postId.isEmpty ? 'Public Show' : '#$postId', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _openProfile(creatorId),
+            );
+          },
+        ),
+      ],
     );
   }
 
   Widget _searchResultsView() {
-    if (_isLoading && _searchResults.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-
-    if (_searchResults.isEmpty) {
-      return const Center(
-        child: Text(
-          'No results found',
-          style: TextStyle(
-            color: Color(0xFF6B7280),
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.only(top: 4),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        final doc = _searchResults[index];
-        final data = doc.data();
-        final username = data['username'] is String
-            ? (data['username'] as String).trim()
-            : '';
-        final name = data['name'] is String
-            ? (data['name'] as String).trim()
-            : data['displayName'] is String
-                ? (data['displayName'] as String).trim()
-                : 'OJAS User';
-        final imageUrl = data['profileImageUrl'] is String
-            ? (data['profileImageUrl'] as String).trim()
-            : data['photoUrl'] is String
-                ? (data['photoUrl'] as String).trim()
-                : '';
-        final initialSource = name.isNotEmpty
-            ? name
-            : (username.isNotEmpty ? username : 'O');
-        final initial = initialSource.substring(0, 1).toUpperCase();
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 4,
-          ),
-          leading: CircleAvatar(
-            backgroundColor: const Color(0xFFE5E7EB),
-            child: ClipOval(
-              child: imageUrl.isEmpty
-                  ? Text(
-                      initial,
-                      style: const TextStyle(
-                        color: Color(0xFF111827),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    )
-                  : CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Center(
-                        child: Text(
-                          initial,
-                          style: const TextStyle(
-                            color: Color(0xFF111827),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      errorWidget: (_, __, ___) => Center(
-                        child: Text(
-                          initial,
-                          style: const TextStyle(
-                            color: Color(0xFF111827),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-          title: Text(
-            name.isNotEmpty ? name : '@$username',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          subtitle: Text(
-            username.isEmpty ? '@ojasuser' : '@$username',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 13,
-            ),
-          ),
-          onTap: () => _openProfile(doc),
-        );
-      },
-    );
+    if (_isLoading && _searchResults.isEmpty && _postResults.isEmpty) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    if (_searchError != null) return Center(child: Text(_searchError!, style: const TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600)));
+    if (_searchResults.isEmpty && _postResults.isEmpty) return const Center(child: Text('No results found', style: TextStyle(color: Color(0xFF6B7280), fontSize: 15, fontWeight: FontWeight.w600)));
+    return ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [_buildCreatorResults(), _buildPostResults(), const SizedBox(height: 24)]);
   }
 
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: Theme.of(context).copyWith(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: Colors.white,
-        colorScheme: Theme.of(context).colorScheme.copyWith(
-              brightness: Brightness.light,
-              onSurface: const Color(0xFF111827),
-            ),
-      ),
+      data: Theme.of(context).copyWith(brightness: Brightness.light, scaffoldBackgroundColor: Colors.white, colorScheme: Theme.of(context).colorScheme.copyWith(brightness: Brightness.light, onSurface: const Color(0xFF111827))),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: _searchFocusNode.unfocus,
@@ -340,44 +214,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     controller: _searchController,
                     focusNode: _searchFocusNode,
                     textInputAction: TextInputAction.search,
-                    textCapitalization: TextCapitalization.none,
                     autocorrect: false,
                     enableSuggestions: true,
                     onChanged: _onSearchChanged,
                     decoration: InputDecoration(
                       hintText: 'Search OJAS IDs, tags, or sounds...',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 14,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: Color(0xFF6B7280),
-                      ),
-                      suffixIcon: _isSearching
-                          ? IconButton(
-                              tooltip: 'Clear search',
-                              onPressed: _clearSearch,
-                              icon: const Icon(
-                                Icons.cancel,
-                                color: Color(0xFF6B7280),
-                              ),
-                            )
-                          : null,
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280)),
+                      suffixIcon: _isSearching ? IconButton(tooltip: 'Clear search', onPressed: _clearSearch, icon: const Icon(Icons.cancel, color: Color(0xFF6B7280))) : null,
                       filled: true,
                       fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                     ),
                   ),
                 ),
@@ -386,40 +232,24 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: List<Widget>.generate(_categories.length, (index) {
-                        final selected = index == _selectedCategory;
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            right: index == _categories.length - 1 ? 0 : 8,
-                          ),
-                          child: ChoiceChip(
-                            label: Text(_categories[index]),
-                            selected: selected,
-                            onSelected: (_) {
-                              if (selected) return;
-                              setState(() => _selectedCategory = index);
-                            },
-                            backgroundColor: Colors.white,
-                            selectedColor: Colors.black,
-                            side: const BorderSide(
-                              color: Color(0xFFD1D5DB),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            labelStyle: TextStyle(
-                              color: selected ? Colors.white : Colors.black,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            showCheckmark: false,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        );
-                      }),
-                    ),
+                    child: Row(children: List<Widget>.generate(_categories.length, (index) {
+                      final selected = index == _selectedCategory;
+                      return Padding(
+                        padding: EdgeInsets.only(right: index == _categories.length - 1 ? 0 : 8),
+                        child: ChoiceChip(
+                          label: Text(_categories[index]),
+                          selected: selected,
+                          onSelected: (_) { if (!selected && mounted) setState(() => _selectedCategory = index); },
+                          backgroundColor: Colors.white,
+                          selectedColor: Colors.black,
+                          side: const BorderSide(color: Color(0xFFD1D5DB)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                          labelStyle: TextStyle(color: selected ? Colors.white : Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                          showCheckmark: false,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      );
+                    })),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -428,20 +258,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       ? _searchResultsView()
                       : MasonryGridView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 2),
-                          gridDelegate:
-                              const SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                          ),
+                          gridDelegate: const SliverSimpleGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
                           mainAxisSpacing: 2,
                           crossAxisSpacing: 2,
                           itemCount: _tileHeights.length,
-                          itemBuilder: (context, index) {
-                            return _MasonryVideoCard(
-                              index: index,
-                              height: _tileHeights[index],
-                              viewCount: _viewCounts[index],
-                            );
-                          },
+                          itemBuilder: (context, index) => _MasonryVideoCard(index: index, height: _tileHeights[index], viewCount: _viewCounts[index]),
                         ),
                 ),
               ],
@@ -454,86 +275,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 }
 
 class _MasonryVideoCard extends StatelessWidget {
-  const _MasonryVideoCard({
-    required this.index,
-    required this.height,
-    required this.viewCount,
-  });
-
+  const _MasonryVideoCard({required this.index, required this.height, required this.viewCount});
   final int index;
   final double height;
   final String viewCount;
-
   @override
   Widget build(BuildContext context) {
     final imageUrl = 'https://picsum.photos/seed/$index/400/600';
-
     return SizedBox(
       height: height,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => ColoredBox(
-                color: Colors.grey.shade300,
-              ),
-              errorWidget: (_, __, ___) => ColoredBox(
-                color: Colors.grey.shade300,
-                child: const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  height: 92,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[
-                        Colors.transparent,
-                        Color(0xB3000000),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 8,
-              bottom: 8,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.play_arrow_outlined,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    viewCount,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: Stack(fit: StackFit.expand, children: [
+          CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.cover, placeholder: (_, __) => ColoredBox(color: Colors.grey.shade300), errorWidget: (_, __, ___) => ColoredBox(color: Colors.grey.shade300, child: const Center(child: Icon(Icons.broken_image_outlined, color: Color(0xFF9CA3AF))))),
+          Positioned.fill(child: Align(alignment: Alignment.bottomCenter, child: Container(height: 92, decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: <Color>[Colors.transparent, Color(0xB3000000)]))))),
+          Positioned(left: 8, bottom: 8, child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.play_arrow_outlined, color: Colors.white, size: 16), const SizedBox(width: 3), Text(viewCount, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))])),
+        ]),
       ),
     );
   }
