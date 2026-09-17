@@ -129,8 +129,12 @@ class _CreationPostComposerScreenState extends State<CreationPostComposerScreen>
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Published successfully'),
-          content: Text('Your post is live.\nPost ID: ${result.postId}'),
+          title: Text(result.isProcessing ? 'Upload queued' : 'Published successfully'),
+          content: Text(
+            result.isProcessing
+                ? 'Your video is uploaded and queued for processing. It will appear in Show after the media pipeline marks it ready.\nPost ID: ${result.postId}'
+                : 'Your post is live.\nPost ID: ${result.postId}',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
