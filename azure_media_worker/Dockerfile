@@ -13,5 +13,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 COPY worker.py ./
+COPY dispatcher.py ./
 
-CMD ["python", "worker.py"]
+CMD ["python", "dispatcher.py"]
