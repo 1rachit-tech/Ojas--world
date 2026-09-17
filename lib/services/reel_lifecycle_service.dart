@@ -64,6 +64,42 @@ class ReelLifecycleService {
     });
   }
 
+  Future<void> replacePublishedMedia({
+    required String postId,
+    required String mediaAssetId,
+    required String videoUrl,
+    required String mediaStoragePath,
+    required int contentLength,
+    required String mediaHash,
+    required Map<String, dynamic> editGraph,
+    required String caption,
+    required String visibility,
+    required bool allowComments,
+    required bool recommendationEligible,
+    required String reusePolicy,
+    required bool aiGeneratedDisclosure,
+    required bool copyrightConfirmed,
+  }) async {
+    await _call('manageReel', <String, dynamic>{
+      'operation': 'replace-media',
+      'postId': postId,
+      'mediaProvider': 'azure',
+      'mediaAssetId': mediaAssetId,
+      'videoUrl': videoUrl,
+      'mediaStoragePath': mediaStoragePath,
+      'contentLength': contentLength,
+      'mediaHash': mediaHash,
+      'editGraph': editGraph,
+      'caption': caption,
+      'visibility': visibility,
+      'allowComments': allowComments,
+      'recommendationEligible': recommendationEligible,
+      'reusePolicy': reusePolicy,
+      'aiGeneratedDisclosure': aiGeneratedDisclosure,
+      'copyrightConfirmed': copyrightConfirmed,
+    });
+  }
+
   Future<void> deletePost(String postId) async {
     await _call('manageReel', <String, dynamic>{
       'operation': 'delete',
