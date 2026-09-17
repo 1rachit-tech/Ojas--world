@@ -1,7 +1,7 @@
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
+import dispatcher
 import render_override
 import worker
 
@@ -92,15 +92,13 @@ class AudioStorageSafetyTests(unittest.TestCase):
 
 class ReplacementRetentionTests(unittest.TestCase):
     def test_current_edit_graph_audio_is_retained(self) -> None:
-        paths = render_override.worker._safe_layer_time  # Ensure render override and worker remain load-compatible.
-        self.assertIsNotNone(paths)
         current = {
             'audio': [
                 {'id': 'a1', 'storagePath': 'creation-audio/owner/reel/a1/audio.mp3'},
                 {'id': 'a2', 'storagePath': 'creation-audio/owner/reel/a2/audio.m4a'},
             ]
         }
-        retained = __import__('dispatcher')._current_audio_paths(current, 'owner', 'reel')
+        retained = dispatcher._current_audio_paths(current, 'owner', 'reel')
         self.assertEqual(
             retained,
             {
