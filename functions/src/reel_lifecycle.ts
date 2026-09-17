@@ -94,12 +94,19 @@ function validEditGraph(value: unknown, ownerId?: string, projectId?: string): b
     if (!layer || typeof layer !== 'object' || Array.isArray(layer)) return false;
     const item = layer as Record<string, unknown>;
     if (!isBoundedString(item.id, 128)) return false;
-    const hasLocalUri = isBoundedString(item.uri, 2048) && String(item.uri).trim().length > 0;
+    // Published edit graphs must never persist a device-local URI. Audio is staged in Azure only.
+    if (item.uri != null) return false;
     const storagePath = typeof item.storagePath === 'string' ? item.storagePath.trim() : '';
     const expectedPrefix = ownerId && projectId ? `creation-audio/${ownerId}/${projectId}/` : '';
-    const hasSafeStoragePath = Boolean(expectedPrefix) && storagePath.startsWith(expectedPrefix) && storagePath.length <= 512 && !storagePath.includes('..') && storagePath.split('/').length === 5;
-    if (!hasLocalUri && !hasSafeStoragePath) return false;
-    if (item.storageProvider != null && item.storageProvider !== 'azure') return false;
+    const segments = storagePath.split('/');
+    const hasSafeStoragePath = Boolean(expectedPrefix)
+        && item.storageProvider === 'azure'
+        && storagePath.startsWith(expectedPrefix)
+        && storagePath.length <= 512
+        && !storagePath.includes('..')
+        && segments.length === 5
+        && segments.every((segment) => segment.length > 0 && segment.length <= 128 && /^[A-Za-z0-9._-]+$/.test(segment));
+    if (!hasSafeStoragePath) return false;
     if (item.volume != null && (!finiteNumber(item.volume) || item.volume < 0 || item.volume > 2)) return false;
     if (item.muted != null && typeof item.muted !== 'boolean') return false;
   }
