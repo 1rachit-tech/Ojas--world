@@ -27,12 +27,7 @@ class CreationCheckpointStore {
     await prefs.setStringList(key, next);
   }
 
-  Future<CreationProject?> recoverLatest({
-    required String ownerId,
-    required String projectId,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final entries = prefs.getStringList(_key(ownerId, projectId));
+  CreationProject? _decodeLatest(List<String>? entries) {
     if (entries == null) return null;
     for (final entry in entries) {
       try {
@@ -45,6 +40,31 @@ class CreationCheckpointStore {
       }
     }
     return null;
+  }
+
+  Future<CreationProject?> recoverLatest({
+    required String ownerId,
+    required String projectId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    return _decodeLatest(prefs.getStringList(_key(ownerId, projectId)));
+  }
+
+  /// Returns the newest recoverable checkpoint for every project owner.
+  /// This also discovers checkpoint-only projects whose primary draft record
+  /// disappeared after a crash or partial write.
+  Future<List<CreationProject>> listLatest({required String ownerId}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = '$_prefix$ownerId.';
+    final projects = <CreationProject>[];
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(prefix)) continue;
+      final project = _decodeLatest(prefs.getStringList(key));
+      if (project == null || project.ownerId != ownerId) continue;
+      projects.add(project);
+    }
+    projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return projects;
   }
 
   Future<void> clear({required String ownerId, required String projectId}) async {
