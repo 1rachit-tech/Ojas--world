@@ -87,6 +87,8 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   const visibility = typeof data.visibility === 'string' ? data.visibility.toLowerCase() : '';
   const rightsConfirmed = data.copyrightConfirmed === true;
   const mediaHash = typeof data.mediaHash === 'string' ? data.mediaHash : '';
+  const mediaProvider = typeof data.mediaProvider === 'string' ? data.mediaProvider.toLowerCase() : '';
+  const mediaProcessingStatus = typeof data.mediaProcessingStatus === 'string' ? data.mediaProcessingStatus.toLowerCase() : '';
   const deleted = data.deletedAt != null || data.moderationStatus === 'deleted';
 
   if (deleted) {
@@ -100,6 +102,7 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
   if (caption.length > MAX_CAPTION_LENGTH) problems.push('caption_too_long');
   if (!rightsConfirmed) problems.push('rights_unconfirmed');
   if (mediaHash.length !== 64) problems.push('invalid_media_hash');
+  if (mediaProvider === 'azure' && !['ready', 'published'].includes(mediaProcessingStatus)) problems.push('media_not_ready');
 
   const moderationStatus = problems.length === 0 ? 'approved' : 'review';
   await snapshot.ref.set({moderationStatus, moderationIssues: problems, recommendationEligible: moderationStatus === 'approved' && visibility === 'public' && data.recommendationEligible === true, moderatedAt: FieldValue.serverTimestamp()}, {merge: true});
@@ -111,4 +114,19 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
 
   const tokens = Array.from(new Set(caption.toLowerCase().replace(/[^a-z0-9_#@\s]/g, ' ').split(/\s+/).map((token) => token.startsWith('#') ? token.slice(1) : token).filter((token) => token.length >= 2 && token.length <= 64))).slice(0, 100);
   await searchRef.set({postId: reelId, creatorId, caption, tokens, visibility, moderationStatus, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()}, {merge: true});
+}
+
+export function shouldReprocessReel(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  const fields = [
+    'caption',
+    'creatorId',
+    'visibility',
+    'copyrightConfirmed',
+    'mediaHash',
+    'mediaProvider',
+    'mediaProcessingStatus',
+    'recommendationEligible',
+    'deletedAt',
+  ];
+  return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }
