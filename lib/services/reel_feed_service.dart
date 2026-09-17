@@ -12,7 +12,7 @@ class ReelFeedService {
   final FirebaseFirestore _firestore;
   final AzureMediaPlaybackService _playback;
 
-  CollectionReference<Map<String, dynamic>> get _reels => _firestore.collection('reels');
+  CollectionReference<Map<String, dynamic>> get _reels => _fireels;
 
   Future<ReelFeedPage> fetchPage({DocumentSnapshot<Map<String, dynamic>>? cursor}) async {
     Query<Map<String, dynamic>> query = _reels.orderBy('algorithmScore', descending: true).limit(pageSize);
@@ -28,7 +28,7 @@ class ReelFeedService {
       if (visibility != 'public') continue;
 
       final moderationStatus = (data['moderationStatus'] as String? ?? '').toLowerCase();
-      if (moderationStatus.isNotEmpty && moderationStatus != 'approved') continue;
+      if (moderationStatus != 'approved') continue;
 
       if (data['deletedAt'] != null) continue;
 
