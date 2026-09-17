@@ -123,7 +123,7 @@ class CreationAzureMediaService {
     }
     blockXml.write('</BlockList>');
     final commitResponse = await _client.put(
-      '$uploadUrl&comp=blocklist' as Uri,
+      Uri.parse('$uploadUrl&comp=blocklist'),
       headers: const <String, String>{'Content-Type': 'application/xml', 'x-ms-version': '2023-11-03'},
       body: blockXml.toString(),
     );
