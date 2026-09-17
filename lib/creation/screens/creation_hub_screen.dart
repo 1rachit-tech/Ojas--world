@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../screens/create_screen.dart';
 import '../models/creation_project.dart';
+import '../services/creation_checkpoint_store.dart';
 import '../services/creation_project_store.dart';
 import 'creation_pipeline_editor_screen.dart';
 
@@ -116,7 +117,21 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
       _show('Please sign in before opening drafts.');
       return;
     }
-    final drafts = await CreationProjectStore.instance.list(ownerId: _ownerId);
+
+    final primaryDrafts = await CreationProjectStore.instance.list(ownerId: _ownerId);
+    final checkpoints = await CreationCheckpointStore.instance.listLatest(ownerId: _ownerId);
+    final byProjectId = <String, CreationProject>{
+      for (final project in primaryDrafts) project.projectId: project,
+    };
+    for (final checkpoint in checkpoints) {
+      final primary = byProjectId[checkpoint.projectId];
+      if (primary == null || checkpoint.updatedAt.isAfter(primary.updatedAt)) {
+        byProjectId[checkpoint.projectId] = checkpoint;
+      }
+    }
+    final drafts = byProjectId.values.toList(growable: false)
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
