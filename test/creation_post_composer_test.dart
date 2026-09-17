@@ -23,6 +23,12 @@ void main() {
     expect(find.text('Caption'), findsOneWidget);
     expect(find.text('Audience'), findsOneWidget);
     expect(find.text('Engagement & recommendations'), findsOneWidget);
-    expect(find.byType(FilledButton), findsOneWidget);
+
+    final scrollable = find.byType(ListView);
+    expect(scrollable, findsOneWidget);
+    await tester.drag(scrollable, const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Publish to OJAS'), findsOneWidget);
   });
 }
