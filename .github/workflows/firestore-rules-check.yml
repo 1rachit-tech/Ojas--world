@@ -31,6 +31,12 @@ jobs:
         with:
           node-version: 20
 
+      - name: Set up Java 21 for Firebase emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Validate rules with Firestore emulator
         run: >-
           npx --yes firebase-tools@latest emulators:exec
