@@ -1,4 +1,4 @@
-import {QueueClient} from '@azure/storage-queue';
+import {QueueServiceClient} from '@azure/storage-queue';
 import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
@@ -108,10 +108,11 @@ function tokenListFromUserData(data: Record<string, unknown>): string[] {
   return [];
 }
 
-function getMediaQueueClient(connectionString: string): QueueClient | null {
+function getMediaQueueClient(connectionString: string) {
   const trimmed = connectionString.trim();
   if (!trimmed) return null;
-  return QueueClient.fromConnectionString(trimmed, AZURE_PROCESSING_QUEUE);
+  const service = QueueServiceClient.fromConnectionString(trimmed);
+  return service.getQueueClient(AZURE_PROCESSING_QUEUE);
 }
 
 export const sendMessagePush = onDocumentCreated(
