@@ -261,24 +261,37 @@ class CreationPublishService {
 
   Future<_PreparedUploadMedia> _prepareUploadMedia({
     required CreationProject project,
-    required dynamic asset,
+    required CreationMediaAsset asset,
     required Map<String, dynamic> publishState,
     required String requestId,
   }) async {
+    final sourceFile = File(asset.localUri);
+    if (!await sourceFile.exists()) {
+      throw const CreationPublishException('Selected video is no longer available.');
+    }
+    final sourceBytes = await sourceFile.length();
+    final sourceModifiedMs = (await sourceFile.stat()).modified.millisecondsSinceEpoch;
+    if (sourceBytes <= 0) {
+      throw const CreationPublishException('Selected video is empty.');
+    }
+
     final storedPath = publishState['preparedMediaPath'] is String ? (publishState['preparedMediaPath'] as String).trim() : '';
-    final storedCompression = publishState['mediaCompression'];
-    if (storedPath.isNotEmpty && storedCompression is Map) {
-      final cached = File(storedPath);
-      if (await cached.exists() && await cached.length() > 0) {
-        return _PreparedUploadMedia(
-          file: cached,
-          compression: Map<String, dynamic>.from(storedCompression),
-        );
+    final storedCompressionRaw = publishState['mediaCompression'];
+    if (storedPath.isNotEmpty && storedCompressionRaw is Map) {
+      final storedCompression = Map<String, dynamic>.from(storedCompressionRaw);
+      final sameSource = storedCompression['sourcePath'] == asset.localUri &&
+          storedCompression['sourceBytes'] == sourceBytes &&
+          storedCompression['sourceModifiedMs'] == sourceModifiedMs;
+      if (sameSource) {
+        final cached = File(storedPath);
+        if (await cached.exists() && await cached.length() > 0) {
+          return _PreparedUploadMedia(file: cached, compression: storedCompression);
+        }
       }
     }
 
     final result = await VideoCompressionService.instance.prepareForUpload(
-      XFile(asset.localUri),
+      XFile(sourceFile.path),
       projectId: project.projectId,
       assetId: asset.assetId,
       onProgress: (progress) {
@@ -287,8 +300,8 @@ class CreationPublishService {
           project.projectId,
           CreationPublishStage.preparing,
           requestId: requestId,
-          bytesUploaded: (asset.sizeBytes * bounded).round(),
-          totalBytes: asset.sizeBytes,
+          bytesUploaded: (sourceBytes * bounded).round(),
+          totalBytes: sourceBytes,
         );
       },
     );
@@ -303,13 +316,16 @@ class CreationPublishService {
       'originalBytes': result.originalBytes,
       'uploadBytes': result.compressedBytes,
       'ratio': double.parse(result.compressionRatio.toStringAsFixed(6)),
+      'sourcePath': asset.localUri,
+      'sourceBytes': sourceBytes,
+      'sourceModifiedMs': sourceModifiedMs,
       'sourceWidth': result.sourceWidth,
       'sourceHeight': result.sourceHeight,
       'outputWidth': result.outputWidth,
       'outputHeight': result.outputHeight,
       'durationMs': result.durationMs,
       'engine': 'device-video-compress-3.1.4',
-      'version': 1,
+      'version': 2,
     };
 
     final checkpointed = project.copyWith(
