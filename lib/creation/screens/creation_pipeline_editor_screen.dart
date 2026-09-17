@@ -259,7 +259,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   }
 
   Future<void> _openAudioTool() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.audio,
       allowMultiple: false,
       withData: false,
