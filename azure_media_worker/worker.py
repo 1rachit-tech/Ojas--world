@@ -458,6 +458,7 @@ def process_job(job: dict[str, Any]) -> None:
     content_type = str(job.get('contentType', '')).strip().lower()
     content_length = int(job.get('contentLength') or 0)
     device_compressed = job.get('deviceCompressed') is True
+    device_delivery_ready = job.get('deviceDeliveryReady') is True
 
     if not asset_id or not project_id or not owner_id or not _safe_creation_path(source_path):
         raise ValueError('Invalid creation processing job.')
@@ -506,8 +507,11 @@ def process_job(job: dict[str, Any]) -> None:
         audio_files: list[tuple[dict[str, Any], Path]] = []
         firebase_audio_bucket = None
         audio_storage_paths: list[str] = []
+        # deviceCompressed/deviceDeliveryReady are optimization hints only.
+        # The worker independently probes codec/dimensions and still requires
+        # an identity edit graph before skipping server-side video encoding.
         pass_through = (
-            device_compressed
+            (device_compressed or device_delivery_ready)
             and metadata['codec'].lower() == 'h264'
             and max(metadata['width'], metadata['height']) <= 1280
             and min(metadata['width'], metadata['height']) <= MAX_OUTPUT_WIDTH
@@ -515,8 +519,8 @@ def process_job(job: dict[str, Any]) -> None:
         )
 
         if pass_through:
-            worker_mode = 'device-compressed-pass-through'
-            logging.info('Using device-compressed source directly; server video transcode skipped for %s.', asset_id)
+            worker_mode = 'device-delivery-pass-through'
+            logging.info('Using device-ready source directly; server video transcode skipped for %s.', asset_id)
         else:
             audio_files, firebase_audio_bucket, audio_storage_paths = _download_audio_layers(edit_graph, owner_id, project_id, root)
             worker_mode = _render_edit_graph(str(source), str(processed), metadata, edit_graph, audio_files)
