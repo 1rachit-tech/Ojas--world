@@ -4,6 +4,7 @@ import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
 import {setGlobalOptions} from 'firebase-functions/v2';
 import {onDocumentCreated} from 'firebase-functions/v2/firestore';
+import {defineSecret} from 'firebase-functions/params';
 
 initializeApp();
 
@@ -12,6 +13,9 @@ setGlobalOptions({
   maxInstances: 3,
   minInstances: 0,
 });
+
+const azureQueueConnectionString = defineSecret('AZURE_STORAGE_QUEUE_CONNECTION_STRING');
+const AZURE_PROCESSING_QUEUE = 'ojas-media-processing';
 
 interface ConversationData {
   participants?: unknown;
@@ -104,17 +108,10 @@ function tokenListFromUserData(data: Record<string, unknown>): string[] {
   return [];
 }
 
-function getMediaQueueClient(): QueueClient | null {
-  const connectionString = process.env.AZURE_STORAGE_QUEUE_CONNECTION_STRING?.trim();
-  const queueName = (
-    process.env.AZURE_STORAGE_PROCESSING_QUEUE ?? 'ojas-media-processing'
-  ).trim().toLowerCase();
-
-  if (!connectionString || !queueName) {
-    return null;
-  }
-
-  return QueueClient.fromConnectionString(connectionString, queueName);
+function getMediaQueueClient(connectionString: string): QueueClient | null {
+  const trimmed = connectionString.trim();
+  if (!trimmed) return null;
+  return QueueClient.fromConnectionString(trimmed, AZURE_PROCESSING_QUEUE);
 }
 
 export const sendMessagePush = onDocumentCreated(
@@ -240,7 +237,10 @@ export const sendMessagePush = onDocumentCreated(
 );
 
 export const enqueueCreationMediaProcessing = onDocumentCreated(
-  'creationMedia/{assetId}',
+  {
+    document: 'creationMedia/{assetId}',
+    secrets: [azureQueueConnectionString],
+  },
   async (event) => {
     const snapshot = event.data;
     if (!snapshot) {
@@ -271,12 +271,9 @@ export const enqueueCreationMediaProcessing = onDocumentCreated(
       return;
     }
 
-    const queue = getMediaQueueClient();
+    const queue = getMediaQueueClient(azureQueueConnectionString.value());
     if (!queue) {
-      console.warn(
-        'Azure media processing queue is not configured; leaving media in queued state.',
-      );
-      return;
+      throw new Error('AZURE_STORAGE_QUEUE_CONNECTION_STRING is not configured.');
     }
 
     const job = {
@@ -298,7 +295,7 @@ export const enqueueCreationMediaProcessing = onDocumentCreated(
         {
           processingStatus: 'queued',
           queueEnqueuedAt: FieldValue.serverTimestamp(),
-          queueName: queue.name,
+          queueName: AZURE_PROCESSING_QUEUE,
         },
         {merge: true},
       );
