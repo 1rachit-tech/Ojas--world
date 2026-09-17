@@ -18,9 +18,11 @@ _CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER", "ojas-media")
 _MAX_CHAT_MEDIA_BYTES = 10 * 1024 * 1024
 _MAX_CREATION_VIDEO_BYTES = 512 * 1024 * 1024
 _SAS_TTL_MINUTES = 5
+_PLAYBACK_SAS_TTL_MINUTES = 15
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_SAFE_CREATION_PATH = re.compile(r"^creation/[A-Za-z0-9_-]{1,128}/[A-Za-z0-9_-]{1,128}/[^/]{1,512}$")
 _CREATION_VIDEO_TYPES = {
     "video/mp4",
     "video/quicktime",
@@ -129,6 +131,7 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
             "idleNotificationPolling": False,
             "maxChatMediaBytes": _MAX_CHAT_MEDIA_BYTES,
             "maxCreationVideoBytes": _MAX_CREATION_VIDEO_BYTES,
+            "playbackSasTtlMinutes": _PLAYBACK_SAS_TTL_MINUTES,
             "error": _FIREBASE_ERROR if not _FIREBASE_READY else "",
         },
     )
@@ -331,5 +334,105 @@ def creation_upload_complete(req: func.HttpRequest) -> func.HttpResponse:
             "downloadUrl": f"https://{_ACCOUNT_NAME}.blob.core.windows.net/{_CONTAINER}/{storage_path}",
             "processingStatus": "queued",
             "publishReady": False,
+        },
+    )
+
+
+@app.route(route="media/creation-playback-urls", methods=["POST"])
+def creation_playback_urls(req: func.HttpRequest) -> func.HttpResponse:
+    """Return short-lived read SAS URLs for reels the caller may view."""
+    if not _ACCOUNT_NAME or not _ACCOUNT_KEY:
+        return _json(503, {"error": "Media service is unavailable."})
+
+    decoded = _user_from_request(req)
+    if decoded is None:
+        return _json(401, {"error": "Authentication required."})
+
+    try:
+        data = req.get_json()
+    except ValueError:
+        return _json(400, {"error": "Invalid JSON."})
+
+    uid = str(decoded.get("uid", "")).strip()
+    reel_ids = data.get("reelIds") if isinstance(data, dict) else None
+    if not _SAFE_ID.fullmatch(uid):
+        return _json(401, {"error": "Authentication required."})
+    if not isinstance(reel_ids, list) or not reel_ids or len(reel_ids) > 10:
+        return _json(400, {"error": "Provide between 1 and 10 reel IDs."})
+
+    clean_ids = [str(value).strip() for value in reel_ids]
+    if any(not _SAFE_ID.fullmatch(value) for value in clean_ids) or len(set(clean_ids)) != len(clean_ids):
+        return _json(400, {"error": "Invalid reel IDs."})
+    if not _FIREBASE_READY:
+        return _json(503, {"error": "Media service is unavailable."})
+
+    refs = [firestore.client().collection("reels").document(reel_id) for reel_id in clean_ids]
+    try:
+        snapshots = firestore.client().get_all(refs)
+        snapshot_by_id = {snapshot.id: snapshot for snapshot in snapshots}
+    except Exception:
+        logging.exception("Unable to load reel playback metadata")
+        return _json(503, {"error": "Media service is unavailable."})
+
+    result: dict[str, dict[str, Any]] = {}
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=_PLAYBACK_SAS_TTL_MINUTES)
+
+    for reel_id in clean_ids:
+        snapshot = snapshot_by_id.get(reel_id)
+        if snapshot is None or not snapshot.exists:
+            continue
+        data = snapshot.to_dict() or {}
+        creator_id = str(data.get("creatorId", "")).strip()
+        if not _SAFE_ID.fullmatch(creator_id):
+            continue
+
+        visibility = str(data.get("visibility", "public")).strip().lower()
+        if uid != creator_id and visibility != "public":
+            continue
+
+        provider = str(data.get("mediaProvider", "")).strip().lower()
+        if provider != "azure":
+            continue
+
+        processing_status = str(data.get("mediaProcessingStatus", "")).strip().lower()
+        if processing_status not in {"ready", "published"}:
+            continue
+
+        storage_path = str(
+            data.get("hlsStoragePath") or data.get("mediaStoragePath") or "",
+        ).strip()
+        if (
+            not storage_path
+            or ".." in storage_path
+            or not _SAFE_CREATION_PATH.fullmatch(storage_path)
+            or not storage_path.startswith(f"creation/{creator_id}/")
+        ):
+            continue
+
+        try:
+            blob = _get_blob_client(storage_path)
+            blob.get_blob_properties()
+            sas = generate_blob_sas(
+                account_name=_ACCOUNT_NAME,
+                container_name=_CONTAINER,
+                blob_name=storage_path,
+                account_key=_ACCOUNT_KEY,
+                permission=BlobSasPermissions(read=True),
+                expiry=expiry,
+            )
+            base = f"https://{_ACCOUNT_NAME}.blob.core.windows.net/{_CONTAINER}/{storage_path}"
+            result[reel_id] = {
+                "playbackUrl": f"{base}?{sas}",
+                "expiresAt": expiry.isoformat(),
+            }
+        except Exception:
+            logging.exception("Playback URL generation failed for reel %s", reel_id)
+
+    return _json(
+        200,
+        {
+            "urls": result,
+            "expiresAt": expiry.isoformat(),
+            "ttlMinutes": _PLAYBACK_SAS_TTL_MINUTES,
         },
     )
