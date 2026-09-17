@@ -13,24 +13,15 @@ import 'creation_publish_state_store.dart';
 import 'creation_validation_service.dart';
 
 class CreationPublishResult {
-  const CreationPublishResult({
-    required this.postId,
-    required this.mediaUrl,
-    required this.isProcessing,
-  });
-
+  const CreationPublishResult({required this.postId, required this.mediaUrl, required this.isProcessing});
   final String postId;
   final String mediaUrl;
   final bool isProcessing;
 }
 
 class CreationPublishService {
-  CreationPublishService({
-    FirebaseAuth? auth,
-    FirebaseFirestore? firestore,
-    FirebaseStorage? storage,
-    CreationAzureMediaService? azureMedia,
-  })  : _auth = auth ?? FirebaseAuth.instance,
+  CreationPublishService({FirebaseAuth? auth, FirebaseFirestore? firestore, FirebaseStorage? storage, CreationAzureMediaService? azureMedia})
+      : _auth = auth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
         _storage = storage ?? FirebaseStorage.instance,
         _azureMedia = azureMedia ?? CreationAzureMediaService(auth: auth);
@@ -46,22 +37,10 @@ class CreationPublishService {
       throw const CreationPublishException('Please sign in again before posting.');
     }
 
-    const maxCaptionLength = 2200;
-    final validation = await CreationValidationService.validateProject(
-      project,
-      requirePublishRights: true,
-    );
-    if (!validation.isValid) {
-      throw CreationPublishException(validation.message);
-    }
-    if (project.caption.length > maxCaptionLength) {
-      throw const CreationPublishException('Caption is too long.');
-    }
-
+    final validation = await CreationValidationService.validateProject(project, requirePublishRights: true);
+    if (!validation.isValid) throw CreationPublishException(validation.message);
     if (project.mediaAssets.length != 1 || project.mediaAssets.first.type != 'video') {
-      throw const CreationPublishException(
-        'This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready until the existing post schema is extended.',
-      );
+      throw const CreationPublishException('This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready.');
     }
 
     final asset = project.mediaAssets.first;
@@ -78,9 +57,9 @@ class CreationPublishService {
       final data = existing.data() ?? const <String, dynamic>{};
       final existingUrl = data['videoUrl'] as String? ?? '';
       if (existingUrl.isNotEmpty) {
-        final existingStatus = (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
-        final existingProvider = (data['mediaProvider'] as String? ?? '').toLowerCase();
-        final processing = existingProvider == 'azure' && existingStatus != 'ready' && existingStatus != 'published';
+        final status = (data['mediaProcessingStatus'] as String? ?? '').toLowerCase();
+        final provider = (data['mediaProvider'] as String? ?? '').toLowerCase();
+        final processing = provider == 'azure' && status != 'ready' && status != 'published';
         await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId);
         return CreationPublishResult(postId: postRef.id, mediaUrl: existingUrl, isProcessing: processing);
       }
@@ -117,6 +96,7 @@ class CreationPublishService {
 
     await _saveState(project.projectId, CreationPublishStage.processing, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
     final mediaHash = await _computeMediaHash(asset.localUri);
+    final editGraph = _boundedEditGraph(project);
     await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
     await postRef.set(<String, dynamic>{
@@ -135,6 +115,9 @@ class CreationPublishService {
       'mediaStoragePath': storagePath,
       'mediaProcessingStatus': _azureMedia.isConfigured ? 'queued' : 'uploaded',
       'mediaProcessingVersion': 1,
+      'mediaProcessingMode': 'edit-graph-v1',
+      'editGraphVersion': 1,
+      'editGraph': editGraph,
       'aiGeneratedDisclosure': project.rights['aiGeneratedDisclosure'] == true,
       'copyrightConfirmed': project.rights['copyrightConfirmed'] == true,
       'createdAt': FieldValue.serverTimestamp(),
@@ -168,12 +151,28 @@ class CreationPublishService {
         'recommend': recommendationEligible,
         'processingStatus': processing ? 'queued' : 'uploaded',
         'mediaHash': mediaHash,
+        'editGraphVersion': 1,
       },
     );
     await CreationProjectStore.instance.save(published);
     await _saveState(project.projectId, processing ? CreationPublishStage.processing : CreationPublishStage.published, requestId: publishRequestId, bytesUploaded: asset.sizeBytes, totalBytes: asset.sizeBytes);
 
     return CreationPublishResult(postId: postRef.id, mediaUrl: downloadUrl, isProcessing: processing);
+  }
+
+  Map<String, dynamic> _boundedEditGraph(CreationProject project) {
+    List<Map<String, dynamic>> bounded(List<Map<String, dynamic>> input, int maxItems) => input.take(maxItems).map((item) => Map<String, dynamic>.from(item)).toList(growable: false);
+    final timeline = project.timeline.take(32).map((clip) => clip.toMap()).toList(growable: false);
+    return <String, dynamic>{
+      'version': 1,
+      'timeline': timeline,
+      'audio': bounded(project.audio, 32),
+      'textLayers': bounded(project.textLayers, 64),
+      'stickerLayers': bounded(project.stickerLayers, 64),
+      'effectLayers': bounded(project.effectLayers, 32),
+      'operations': bounded(project.operations, 256),
+      'accessibility': Map<String, dynamic>.from(project.accessibility),
+    };
   }
 
   Future<void> _saveState(String projectId, CreationPublishStage stage, {String? requestId, int bytesUploaded = 0, int totalBytes = 0}) async {
