@@ -37,4 +37,4 @@ jobs:
         run: flutter analyze lib/creation test/creation_*.dart
 
       - name: Run creation tests
-        run: flutter test test/creation_publish_state_test.dart test/creation_post_composer_test.dart
+        run: flutter test test/creation_publish_state_test.dart test/creation_post_composer_test.dart test/creation_edit_engine_test.dart
