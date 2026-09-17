@@ -23,6 +23,9 @@ void main() {
     expect(find.text('Caption'), findsOneWidget);
     expect(find.text('Audience'), findsOneWidget);
     expect(find.text('Engagement & recommendations'), findsOneWidget);
-    expect(find.text('Publish to OJAS'), findsOneWidget);
+    expect(
+      find.widgetWithIcon(FilledButton, Icons.publish_rounded),
+      findsOneWidget,
+    );
   });
 }
