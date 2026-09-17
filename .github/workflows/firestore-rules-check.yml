@@ -1,0 +1,39 @@
+name: Firestore Rules Check
+
+on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.github/workflows/firestore-rules-check.yml'
+  push:
+    branches:
+      - 'feature/creation-pipeline-production'
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.github/workflows/firestore-rules-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Parse Firestore security rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate rules with Firestore emulator
+        run: >-
+          npx --yes firebase-tools@latest emulators:exec
+          --only firestore
+          --project demo-ojas
+          "node -e \"console.log('OJAS Firestore rules parsed successfully')\""
