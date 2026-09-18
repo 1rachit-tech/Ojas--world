@@ -22,6 +22,10 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
 
   bool _loading = true;
   bool _refreshing = false;
+  bool _showsLoading = false;
+  bool _shopLoading = false;
+  bool _showsLoaded = false;
+  bool _shopLoaded = false;
   String _displayName = 'OJAS Creator';
   String _ojasId = '';
   String _bio = '';
@@ -40,11 +44,13 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
+    _tabs.addListener(_handleTabChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_handleTabChanged);
     _tabs.dispose();
     super.dispose();
   }
@@ -57,39 +63,9 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
     }
 
     try {
-      final profileFuture =
-          _firestore.collection('publicProfiles').doc(user.uid).get();
-      final showsFuture = _firestore
-          .collection('reels')
-          .where('creatorId', isEqualTo: user.uid)
-          .limit(30)
-          .get();
-      final shopFuture = _firestore
-          .collection('shopItems')
-          .where('creatorId', isEqualTo: user.uid)
-          .limit(30)
-          .get();
-
-      final results = await Future.wait<dynamic>([
-        profileFuture,
-        showsFuture,
-        shopFuture,
-      ]);
-
-      final profile =
-          results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final shows = results[1] as QuerySnapshot<Map<String, dynamic>>;
-      final shop = results[2] as QuerySnapshot<Map<String, dynamic>>;
-      final profileData = profile.data() ?? const <String, dynamic>{};
-
-      final visibleShows = shows.docs
-          .map(ReelModel.fromFirestore)
-          .where((item) => item.deletedAt == null)
-          .toList(growable: false);
-      final shopItems = shop.docs
-          .map(ShopItemModel.fromFirestore)
-          .where((item) => item.active)
-          .toList(growable: false);
+      final snapshot =
+          await _firestore.collection('publicProfiles').doc(user.uid).get();
+      final profileData = snapshot.data() ?? const <String, dynamic>{};
 
       if (!mounted) return;
       setState(() {
@@ -103,8 +79,6 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
         _followers = _intValue(profileData['followersCount']);
         _following = _intValue(profileData['followingCount']);
         _likes = _intValue(profileData['likesCount']);
-        _shows = visibleShows;
-        _shopItems = shopItems;
         _loading = false;
       });
     } catch (error) {
@@ -117,10 +91,70 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
     }
   }
 
+  void _handleTabChanged() {
+    if (_tabs.indexIsChanging) return;
+    if (_tabs.index == 1 && !_showsLoaded) _loadShows();
+    if (_tabs.index == 2 && !_shopLoaded) _loadShopItems();
+  }
+
+  Future<void> _loadShows() async {
+    final user = _user;
+    if (user == null || _showsLoading) return;
+    setState(() => _showsLoading = true);
+    try {
+      final snapshot = await _firestore
+          .collection('reels')
+          .where('creatorId', isEqualTo: user.uid)
+          .limit(24)
+          .get();
+      final shows = snapshot.docs
+          .map(ReelModel.fromFirestore)
+          .where((item) => item.deletedAt == null)
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _shows = shows;
+        _showsLoaded = true;
+        _showsLoading = false;
+      });
+    } catch (error) {
+      debugPrint('OJAS creator Show library load failed: $error');
+      if (mounted) setState(() => _showsLoading = false);
+    }
+  }
+
+  Future<void> _loadShopItems() async {
+    final user = _user;
+    if (user == null || _shopLoading) return;
+    setState(() => _shopLoading = true);
+    try {
+      final snapshot = await _firestore
+          .collection('shopItems')
+          .where('creatorId', isEqualTo: user.uid)
+          .limit(24)
+          .get();
+      final items = snapshot.docs
+          .map(ShopItemModel.fromFirestore)
+          .where((item) => item.active)
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _shopItems = items;
+        _shopLoaded = true;
+        _shopLoading = false;
+      });
+    } catch (error) {
+      debugPrint('OJAS creator store load failed: $error');
+      if (mounted) setState(() => _shopLoading = false);
+    }
+  }
+
   Future<void> _refresh() async {
     if (_refreshing) return;
     setState(() => _refreshing = true);
     await _load();
+    if (_showsLoaded) await _loadShows();
+    if (_shopLoaded) await _loadShopItems();
     if (mounted) setState(() => _refreshing = false);
   }
 
@@ -468,7 +502,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
   }
 
   Widget _buildShows() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading || _showsLoading) return const Center(child: CircularProgressIndicator());
     if (_shows.isEmpty) {
       return _emptyTab(
         icon: Icons.play_circle_outline_rounded,
@@ -544,7 +578,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
   }
 
   Widget _buildStore() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading || _shopLoading) return const Center(child: CircularProgressIndicator());
     if (_shopItems.isEmpty) {
       return _emptyTab(
         icon: Icons.storefront_outlined,
