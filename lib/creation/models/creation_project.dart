@@ -193,6 +193,8 @@ class CreationTimelineClip {
 }
 
 class CreationProject {
+  static const Object _keepRenderedUri = Object();
+
   CreationProject({
     required this.projectId,
     required this.ownerId,
@@ -256,7 +258,7 @@ class CreationProject {
     Map<String, dynamic>? accessibility,
     Map<String, dynamic>? rights,
     Map<String, dynamic>? publishState,
-    String? renderedUri,
+    Object? renderedUri = _keepRenderedUri,
   }) {
     return CreationProject(
       projectId: projectId,
@@ -279,7 +281,9 @@ class CreationProject {
       accessibility: accessibility ?? this.accessibility,
       rights: rights ?? this.rights,
       publishState: publishState ?? this.publishState,
-      renderedUri: renderedUri ?? this.renderedUri,
+      renderedUri: identical(renderedUri, _keepRenderedUri)
+          ? this.renderedUri
+          : renderedUri as String?,
     );
   }
 
