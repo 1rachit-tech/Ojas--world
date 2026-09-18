@@ -9,25 +9,13 @@ class WorldSearchSheet {
     BuildContext context, {
     String initialQuery = '',
   }) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      useSafeArea: true,
-      builder: (_) {
-        return FractionallySizedBox(
-          heightFactor: 0.96,
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(22),
-            ),
-            child: SearchScreen(
-              initialQuery: initialQuery,
-              embedded: true,
-            ),
-          ),
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(
+          initialQuery: initialQuery,
+          embedded: false,
+        ),
+      ),
     );
   }
 }
