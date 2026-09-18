@@ -188,13 +188,27 @@ class SearchOrchestrator {
 
     try {
       final contextFuture = _featureStore.loadUserContext();
-      final blockedFuture = _safety.blockedCreatorIds();
-      final lexicalFuture = _repository.retrieve(
-        query,
-        entityFilter: tab.entityFilter,
-        limit: 100,
+      final blockedFuture = _safety.blockedCreatorIds().timeout(
+        const Duration(milliseconds: 120),
+        onTimeout: () => null,
       );
-      final semanticFuture = _semantic.retrieve(query, limit: 60);
+      final lexicalFuture = _repository
+          .retrieve(
+            query,
+            entityFilter: tab.entityFilter,
+            limit: 100,
+          )
+          .timeout(
+            const Duration(milliseconds: 220),
+            onTimeout: () => const <SearchIndexRow>[],
+          );
+      final semanticFuture = _semantic
+          .retrieve(query, limit: 60)
+          .timeout(
+            const Duration(milliseconds: 120),
+            onTimeout: () => const <SearchIndexRow>[],
+          )
+          .catchError((_) => const <SearchIndexRow>[]);
 
       final values = await Future.wait<dynamic>([
         contextFuture,
@@ -204,7 +218,11 @@ class SearchOrchestrator {
       ]);
 
       final userContext = values[0] as SearchUserContext;
-      final blocked = values[1] as Set<String>;
+      final blockedValue = values[1] as Set<String>?;
+      if (blockedValue == null) {
+        throw StateError('Search safety context unavailable.');
+      }
+      final blocked = blockedValue;
       final lexical = values[2] as List<SearchIndexRow>;
       final semantic = values[3] as List<SearchIndexRow>;
 
