@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import 'creator_profile_screen.dart';
+import '../features/discovery/search/ui/search_screen.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -342,10 +343,19 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     textInputAction: TextInputAction.search,
                     textCapitalization: TextCapitalization.none,
                     autocorrect: false,
+                    readOnly: true,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SearchScreen(
+                            embedded: false,
+                          ),
+                        ),
+                      );
+                    },
                     enableSuggestions: true,
-                    onChanged: _onSearchChanged,
                     decoration: InputDecoration(
-                      hintText: 'Search OJAS IDs, tags, or sounds...',
+                      hintText: 'Search people, videos, tags, sounds...',
                       hintStyle: const TextStyle(
                         color: Color(0xFF9CA3AF),
                         fontSize: 14,

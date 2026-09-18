@@ -1,3 +1,5 @@
+export {syncPublicProfileSearchIndex, syncReelSearchIndex} from './search_indexer';
+
 import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {getMessaging} from 'firebase-admin/messaging';
