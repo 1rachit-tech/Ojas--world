@@ -161,6 +161,105 @@ class VideoExportService {
     }
   }
 
+
+  Future<VideoExportResult> exportComposition({
+    required Map<String, dynamic> project,
+    required String projectId,
+    void Function(double progress)? onProgress,
+  }) async {
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory(documents.path + '/ojas/exports');
+    await directory.create(recursive: true);
+
+    final outputPath =
+        directory.path + '/' + projectId + '_composition_' +
+        DateTime.now().millisecondsSinceEpoch.toString() + '.mp4';
+
+    final completer = Completer<VideoExportResult>();
+    late final StreamSubscription<Map<String, dynamic>> subscription;
+
+    subscription = _eventStream.listen(
+      (event) {
+        final type = event['type'] as String? ?? '';
+        final eventRequestId = event['requestId'] as String? ?? '';
+
+        if (type == 'progress') {
+          onProgress?.call(
+            ((event['progress'] as num?)?.toDouble() ?? 0) / 100,
+          );
+        }
+
+        if (type == 'completed' && eventRequestId.isNotEmpty) {
+          if (!completer.isCompleted) {
+            completer.complete(
+              VideoExportResult(
+                requestId: eventRequestId,
+                outputPath: event['outputPath'] as String? ?? outputPath,
+                bytes: (event['bytes'] as num?)?.toInt() ?? 0,
+              ),
+            );
+          }
+          return;
+        }
+
+        if (type == 'error' && eventRequestId.isNotEmpty) {
+          if (!completer.isCompleted) {
+            completer.completeError(
+              VideoExportException(
+                event['message'] as String? ??
+                    'Local composition export failed.',
+              ),
+            );
+          }
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stack);
+        }
+      },
+    );
+
+    try {
+      final requestId =
+          await _methods.invokeMethod<String>('startCompositionExport', {
+        'project': project,
+        'outputPath': outputPath,
+      });
+
+      if (requestId == null || requestId.isEmpty) {
+        throw const VideoExportException(
+          'The composition export engine did not start.',
+        );
+      }
+
+      final result = await completer.future.timeout(
+        const Duration(hours: 2),
+        onTimeout: () async {
+          await cancelActiveExport();
+          throw const VideoExportException(
+            'Composition export timed out. Your draft is still safe locally.',
+          );
+        },
+      );
+
+      final output = File(result.outputPath);
+      if (!await output.exists()) {
+        throw const VideoExportException(
+          'Composition export finished without an output file.',
+        );
+      }
+
+      return VideoExportResult(
+        requestId: result.requestId,
+        outputPath: result.outputPath,
+        bytes: await output.length(),
+      );
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
   Future<void> cancelActiveExport() async {
     try {
       await _methods.invokeMethod<void>('cancelExport');
