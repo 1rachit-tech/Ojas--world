@@ -189,7 +189,7 @@ resource analyticsQueue 'Microsoft.ServiceBus/namespaces/queues@2026-01-01' = if
 // Storage Blob Data Owner for the Function App identity.
 // This keeps the deployment/runtime storage path compatible with identity-based connections.
 resource functionStorageRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployBackend) {
-  name: guid(storage.id, functionApp.identity.principalId, 'ojas-function-storage')
+  name: guid(storage.id, functionApp.name, 'ojas-function-storage')
   scope: storage
   properties: {
     roleDefinitionId: subscriptionResourceId(
@@ -204,7 +204,7 @@ resource functionStorageRole 'Microsoft.Authorization/roleAssignments@2022-04-01
 // Service Bus Data Sender for the Function App identity.
 // Add Service Bus Data Receiver as a separate role if the trigger connection is switched to identity-based runtime auth in Azure.
 resource functionServiceBusSenderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployBackend) {
-  name: guid(serviceBus.id, functionApp.identity.principalId, 'ojas-function-servicebus-sender')
+  name: guid(serviceBus.id, functionApp.name, 'ojas-function-servicebus-sender')
   scope: serviceBus
   properties: {
     roleDefinitionId: subscriptionResourceId(
@@ -226,7 +226,7 @@ output serviceBusFqdn string = deployBackend
 
 
 resource functionServiceBusReceiverRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployBackend) {
-  name: guid(serviceBus.id, functionApp.identity.principalId, 'ojas-function-servicebus-receiver')
+  name: guid(serviceBus.id, functionApp.name, 'ojas-function-servicebus-receiver')
   scope: serviceBus
   properties: {
     roleDefinitionId: subscriptionResourceId(
