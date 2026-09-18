@@ -107,9 +107,13 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
           .where('creatorId', isEqualTo: user.uid)
           .limit(24)
           .get();
-      final shows = snapshot.docs
+      final visibleDocs = snapshot.docs.where((doc) {
+        final data = doc.data();
+        return data['deletedAt'] == null &&
+            data['moderationStatus'] != 'deleted';
+      });
+      final shows = visibleDocs
           .map(ReelModel.fromFirestore)
-          .where((item) => item.deletedAt == null)
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
@@ -169,10 +173,10 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
 
   String _compact(int value) {
     if (value >= 1000000) {
-      return (value / 1000000).toStringAsFixed(1) + 'M';
+      return '${(value / 1000000).toStringAsFixed(1)}M';
     }
     if (value >= 1000) {
-      return (value / 1000).toStringAsFixed(1) + 'K';
+      return '${(value / 1000).toStringAsFixed(1)}K';
     }
     return value.toString();
   }
@@ -269,7 +273,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
           CircleAvatar(
             radius: 34,
             backgroundColor: const Color(0xFFE5E7EB),
-            backgroundImage =
+            backgroundImage:
                 _photoUrl.isEmpty ? null : NetworkImage(_photoUrl),
             child: _photoUrl.isEmpty
                 ? Text(
@@ -313,7 +317,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
                 ),
                 if (_ojasId.isNotEmpty)
                   Text(
-                    '@' + _ojasId,
+                    '@$_ojasId',
                     style: const TextStyle(
                       color: Color(0xFF6B7280),
                       fontSize: 12,
@@ -371,7 +375,7 @@ class _CreatorHubScreenState extends State<CreatorHubScreen>
             icon: Icons.video_library_outlined,
             title: 'Published Shows',
             subtitle:
-                _shows.length.toString() + ' loaded from your creator library',
+                '$_shows.length loaded from your creator library',
             onTap: () => _tabs.animateTo(1),
           ),
           const SizedBox(height: 10),
