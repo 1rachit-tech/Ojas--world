@@ -26,7 +26,7 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' = if (d
   name: functionAppName
   location: location
   properties: {
-    retentionInDays: 30
+    retentionInDays: 7
     features: 'EnableLogAccessUsingOnlyResourcePermissions'
   }
   tags: {
@@ -107,8 +107,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployBackend) {
         version: '20'
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: 50
-        instanceMemoryMB: 2048
+        maximumInstanceCount: 2
+        instanceMemoryMB: 1536
       }
     }
     siteConfig: {
