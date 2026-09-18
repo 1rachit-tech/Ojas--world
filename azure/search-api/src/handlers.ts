@@ -1,5 +1,5 @@
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from "@azure/functions";
-import { ServiceBusClient } from "@azure/service-bus";
+import { serviceBusClient } from "./service-bus";
 import { randomUUID } from "node:crypto";
 import { authenticate } from "./auth";
 import { config } from "./config";
@@ -176,9 +176,7 @@ async function publishIndexEvent(
     );
   }
 
-  const client = new ServiceBusClient(
-    config.serviceBusConnection,
-  );
+  const client = serviceBusClient();
   const sender = client.createSender(config.serviceBusQueue);
 
   try {
@@ -221,9 +219,7 @@ export async function eventsHttp(
       return json(202, { accepted: 0, stored: false });
     }
 
-    const client = new ServiceBusClient(
-      config.serviceBusConnection,
-    );
+    const client = serviceBusClient();
     const sender = client.createSender(config.analyticsQueue);
 
     try {
