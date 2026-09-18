@@ -496,34 +496,371 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     }
   }
   Future<void> _setTrim(double start, double end) async {
-    final safeStart = start.clamp(0.0, 0.98);
-    final safeEnd = end.clamp(safeStart + 0.01, 1.0);
+    final safeStart = start.clamp(0.0, 0.98).toDouble();
+    final safeEnd = end.clamp(safeStart + 0.01, 1.0).toDouble();
     final controller = _videoController;
     final durationMs = controller?.value.duration.inMilliseconds ?? 0;
     setState(() {
-      _trimStart = safeStart.toDouble();
-      _trimEnd = safeEnd.toDouble();
-      if (_project.timeline.isNotEmpty && durationMs > 0) {
+      _trimStart = safeStart;
+      _trimEnd = safeEnd;
+      if (_selectedClipIndex < _project.timeline.length && durationMs > 0) {
         final timeline = List<CreationTimelineClip>.from(_project.timeline);
-        timeline[0] = timeline.first.copyWith(
+        timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(
           startMs: 0,
           endMs: durationMs,
           trimInMs: (durationMs * safeStart).round(),
           trimOutMs: (durationMs * safeEnd).round(),
         );
-        _project = _project.copyWith(timeline: timeline);
+        _project = _project.copyWith(
+          timeline: timeline,
+          renderedUri: null,
+        );
+        _previewRevision++;
       }
     });
     if (controller != null && controller.value.isInitialized) {
-      final duration = controller.value.duration;
       await controller.seekTo(
-        Duration(milliseconds: (duration.inMilliseconds * safeStart).round()),
+        Duration(milliseconds: (durationMs * safeStart).round()),
       );
       await controller.pause();
     }
     _scheduleAutosave();
   }
 
+  CreationTimelineClip get _selectedTimelineClip =>
+      _project.timeline[_selectedClipIndex];
+
+  Future<void> _setSelectedSpeed(double speed) async {
+    if (_selectedClipIndex >= _project.timeline.length) return;
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+    timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(
+      speed: speed.clamp(0.5, 2.0).toDouble(),
+    );
+    setState(() {
+      _project = _project.copyWith(
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+    _scheduleAutosave();
+  }
+
+  void _rotateSelected() {
+    if (_selectedClipIndex >= _project.timeline.length) return;
+    final current = _project.timeline[_selectedClipIndex];
+    final nextRotation = (current.rotation + 90) % 360;
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+    timeline[_selectedClipIndex] = current.copyWith(rotation: nextRotation);
+    setState(() {
+      _project = _project.copyWith(
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+    _scheduleAutosave();
+  }
+
+  Future<void> _openScaleSheet() async {
+    if (_selectedClipIndex >= _project.timeline.length) return;
+    double scale = _selectedTimelineClip.scale;
+    final result = await showModalBottomSheet<double>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Scale',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Slider(
+                    value: scale,
+                    min: 0.5,
+                    max: 2.0,
+                    divisions: 30,
+                    label: scale.toStringAsFixed(2),
+                    onChanged: (value) => setSheetState(() => scale = value),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext, scale),
+                      child: const Text('Apply'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (result == null || !mounted) return;
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+    timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(scale: result);
+    setState(() {
+      _project = _project.copyWith(
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+    _scheduleAutosave();
+  }
+
+  double _effectValue(String type) {
+    for (final effect in _project.effectLayers.reversed) {
+      if (effect['assetId'] == _project.mediaAssets[_selectedClipIndex].assetId &&
+          effect['type'] == type) {
+        return (effect['value'] as num?)?.toDouble() ?? 0.0;
+      }
+    }
+    return type == 'saturation' ? 0.0 : 0.0;
+  }
+
+  void _setEffect(String type, double value) {
+    final assetId = _project.mediaAssets[_selectedClipIndex].assetId;
+    final effects = <Map<String, dynamic>>[
+      ..._project.effectLayers.where(
+        (effect) => !(effect['assetId'] == assetId && effect['type'] == type),
+      ),
+    ];
+    if ((type == 'grayscale' && value > 0.5) ||
+        (type != 'grayscale' && value.abs() > 0.001)) {
+      effects.add(<String, dynamic>{
+        'assetId': assetId,
+        'type': type,
+        'value': value,
+      });
+    }
+    setState(() {
+      _project = _project.copyWith(
+        effectLayers: effects,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+  }
+
+  Future<void> _openAdjustSheet() async {
+    if (_project.mediaAssets.isEmpty) return;
+    var brightness = _effectValue('brightness');
+    var contrast = _effectValue('contrast');
+    var saturation = _effectValue('saturation');
+    var grayscale = _project.effectLayers.any(
+      (effect) =>
+          effect['assetId'] == _project.mediaAssets[_selectedClipIndex].assetId &&
+          effect['type'] == 'grayscale',
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Adjust',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  _AdjustSlider(
+                    label: 'Brightness',
+                    value: brightness,
+                    min: -1,
+                    max: 1,
+                    onChanged: (value) => setSheetState(() => brightness = value),
+                  ),
+                  _AdjustSlider(
+                    label: 'Contrast',
+                    value: contrast,
+                    min: -1,
+                    max: 1,
+                    onChanged: (value) => setSheetState(() => contrast = value),
+                  ),
+                  _AdjustSlider(
+                    label: 'Saturation',
+                    value: saturation,
+                    min: -100,
+                    max: 100,
+                    onChanged: (value) => setSheetState(() => saturation = value),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: grayscale,
+                    title: const Text('Grayscale'),
+                    onChanged: (value) => setSheetState(() => grayscale = value),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton(
+                      onPressed: () {
+                        _setEffect('brightness', brightness);
+                        _setEffect('contrast', contrast);
+                        _setEffect('saturation', saturation);
+                        _setEffect('grayscale', grayscale ? 1 : 0);
+                        Navigator.pop(sheetContext);
+                      },
+                      child: const Text('Apply adjustments'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    _scheduleAutosave();
+  }
+
+  Future<void> _openAudioPicker() async {
+    try {
+      final audio = await LocalAudioPickerService.instance.pickAudio();
+      if (audio == null || !mounted) return;
+      setState(() {
+        _project = _project.copyWith(
+          audio: <Map<String, dynamic>>[
+            <String, dynamic>{
+              'localUri': audio.path,
+              'durationMs': audio.durationMs,
+              'volume': 1.0,
+              'startMs': 0,
+            },
+          ],
+          renderedUri: null,
+          updatedAt: DateTime.now(),
+        );
+        _previewRevision++;
+      });
+      _scheduleAutosave();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to import audio.')),
+        );
+      }
+      debugPrint('OJAS audio picker failed: $error');
+    }
+  }
+
+  Future<void> _moveClip(int from, int direction) async {
+    final to = from + direction;
+    if (from < 0 || from >= _project.mediaAssets.length ||
+        to < 0 || to >= _project.mediaAssets.length) return;
+
+    final assets = List<CreationMediaAsset>.from(_project.mediaAssets);
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+    final asset = assets.removeAt(from);
+    assets.insert(to, asset);
+    if (from < timeline.length) {
+      final clip = timeline.removeAt(from);
+      timeline.insert(to, clip);
+    }
+
+    setState(() {
+      _project = _project.copyWith(
+        mediaAssets: assets,
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _selectedClipIndex = to;
+      _previewRevision++;
+    });
+    await _initializeSelectedClip();
+    _scheduleAutosave();
+  }
+
+  Future<void> _deleteClip(int index) async {
+    if (_project.mediaAssets.length <= 1 ||
+        index < 0 || index >= _project.mediaAssets.length) return;
+    final assets = List<CreationMediaAsset>.from(_project.mediaAssets)
+      ..removeAt(index);
+    final timeline = List<CreationTimelineClip>.from(_project.timeline)
+      ..removeAt(index);
+    final nextIndex = _selectedClipIndex >= assets.length
+        ? assets.length - 1
+        : _selectedClipIndex > index
+            ? _selectedClipIndex - 1
+            : _selectedClipIndex;
+    setState(() {
+      _project = _project.copyWith(
+        mediaAssets: assets,
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _selectedClipIndex = nextIndex;
+      _previewRevision++;
+    });
+    await _initializeSelectedClip();
+    _scheduleAutosave();
+  }
+
+  Widget _buildPreview() {
+    if (_project.mediaAssets.isEmpty) {
+      return const Center(
+        child: Text('No media', style: TextStyle(color: Colors.white)),
+      );
+    }
+
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      return AndroidView(
+        key: ValueKey('composition_preview_$_previewRevision'),
+        viewType: 'ojas/composition_preview',
+        creationParams: _project.toMap(),
+        creationParamsCodec: const StandardMessageCodec(),
+      );
+    }
+
+    final asset = _project.mediaAssets[_selectedClipIndex];
+    if (asset.type != 'video') {
+      return Image.file(
+        File(asset.localUri),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const Center(
+          child: Text('Unable to load media', style: TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+    if (_videoInitializing) return const Center(child: CircularProgressIndicator());
+    if (_videoError || _videoController == null || !_videoController!.value.isInitialized) {
+      return const Center(child: Text('Unable to load video', style: TextStyle(color: Colors.white)));
+    }
+    return Center(
+      child: AspectRatio(
+        aspectRatio: _videoController!.value.aspectRatio > 0
+            ? _videoController!.value.aspectRatio
+            : 9 / 16,
+        child: VideoPlayer(_videoController!),
+      ),
+    );
+  }
   Widget _buildPreview() {
     if (_project.mediaAssets.isEmpty) return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
     final asset = _project.mediaAssets.first;
