@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'azure_search_client.dart';
+
 enum SearchEventType {
   searchOpen,
   searchFocus,
@@ -83,6 +85,7 @@ class SearchEventQueue {
   final FirebaseAuth _auth;
   final List<SearchEvent> _pending = <SearchEvent>[];
   String? _uid;
+  bool _flushing = false;
 
   String _key() =>
       'ojas_search_events_v2_' + ((_uid == null || _uid!.isEmpty) ? 'signed_out' : _uid!);
@@ -153,6 +156,41 @@ class SearchEventQueue {
       final payload = _pending.map((event) => event.toLocalMap()).toList();
       await preferences.setString(_key(), jsonEncode(payload));
     } catch (_) {}
+  }
+
+  Future<void> flushRemote(AzureSearchClient client) async {
+    if (_flushing || !client.isConfigured || _pending.isEmpty) {
+      return;
+    }
+
+    _flushing = true;
+    final batch = List<SearchEvent>.from(
+      _pending.take(50),
+    );
+
+    try {
+      await client.recordEvents(
+        batch.map(
+          (event) => SearchEventPayload(
+            sessionId: event.sessionId,
+            eventType: event.eventType.name,
+            createdAt: event.createdAt,
+            query: event.query,
+            resultId: event.resultId,
+            resultType: event.resultType,
+            position: event.position,
+            metadata: event.metadata,
+          ),
+        ).toList(growable: false),
+      );
+
+      _pending.removeRange(0, batch.length);
+      await _persist();
+    } catch (_) {
+      // Keep events locally for the next retry.
+    } finally {
+      _flushing = false;
+    }
   }
 
   Future<void> clear() async {
