@@ -293,6 +293,9 @@ class SearchIndexRow {
     this.trendScore = 0,
     this.region = '',
     this.language = '',
+    this.location = '',
+    this.topicIds = const <String>[],
+    this.isLive = false,
     this.eligible = true,
   });
 
@@ -318,6 +321,9 @@ class SearchIndexRow {
   final double trendScore;
   final String region;
   final String language;
+  final String location;
+  final List<String> topicIds;
+  final bool isLive;
   final bool eligible;
 
   factory SearchIndexRow.fromFirestore(
@@ -353,6 +359,9 @@ class SearchIndexRow {
       trendScore: (data['trendScore'] as num?)?.toDouble() ?? 0,
       region: data['region'] as String? ?? '',
       language: data['language'] as String? ?? '',
+      location: data['location'] as String? ?? '',
+      topicIds: _stringList(data['topicIds']),
+      isLive: data['isLive'] == true,
       eligible: data['eligible'] != false,
     );
   }
