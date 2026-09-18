@@ -1,7 +1,9 @@
 package com.rachit.ojas
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.audio.DefaultGainProvider
@@ -135,11 +137,14 @@ object OjasMediaComposition {
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
 
         if (rotation != 0f || scale != 1f || x != 0f || y != 0f) {
+            val (frameWidth, frameHeight) = sourceDimensions(file, isImage)
+            val translateX = x * frameWidth
+            val translateY = y * frameHeight
             val transform = MatrixTransformation { _: Long ->
                 Matrix().apply {
                     postScale(scale, scale)
                     postRotate(rotation)
-                    postTranslate(x, y)
+                    postTranslate(translateX, translateY)
                 }
             }
             videoEffects.add(transform)
@@ -210,6 +215,41 @@ object OjasMediaComposition {
 
         editedBuilder.setRemoveAudio(removeAudio)
         return editedBuilder.build()
+    }
+
+
+    private fun sourceDimensions(
+        file: File,
+        isImage: Boolean,
+    ): Pair<Float, Float> {
+        return try {
+            if (isImage) {
+                val bounds = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(file.absolutePath, bounds)
+                (bounds.outWidth.coerceAtLeast(1).toFloat()) to
+                    (bounds.outHeight.coerceAtLeast(1).toFloat())
+            } else {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(file.absolutePath)
+                    val width =
+                        retriever.extractMetadata(
+                            MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH,
+                        )?.toFloatOrNull()?.coerceAtLeast(1f) ?: 1f
+                    val height =
+                        retriever.extractMetadata(
+                            MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT,
+                        )?.toFloatOrNull()?.coerceAtLeast(1f) ?: 1f
+                    width to height
+                } finally {
+                    retriever.release()
+                }
+            }
+        } catch (_: Throwable) {
+            1f to 1f
+        }
     }
 
     private fun buildBackgroundAudioItems(raw: Any?): List<EditedMediaItem> {
