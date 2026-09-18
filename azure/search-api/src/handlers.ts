@@ -170,10 +170,18 @@ async function publishIndexEvent(
     return;
   }
 
-  if (!config.serviceBusConnection) {
-    throw new Error(
-      "SEARCH_SERVICE_BUS_CONNECTION is missing.",
-    );
+  if (
+    config.serviceBusAuthMode === "connection_string" &&
+    !config.serviceBusConnection
+  ) {
+    throw new Error("SEARCH_SERVICE_BUS_CONNECTION is missing.");
+  }
+
+  if (
+    config.serviceBusAuthMode === "managed_identity" &&
+    !config.serviceBusFqdn
+  ) {
+    throw new Error("SEARCH_SERVICE_BUS_FQDN is missing.");
   }
 
   const client = serviceBusClient();
@@ -214,7 +222,12 @@ export async function eventsHttp(
       return json(202, { accepted: 0 });
     }
 
-    if (!config.serviceBusConnection) {
+    if (
+      (config.serviceBusAuthMode === "connection_string" &&
+        !config.serviceBusConnection) ||
+      (config.serviceBusAuthMode === "managed_identity" &&
+        !config.serviceBusFqdn)
+    ) {
       // Analytics is deliberately best-effort. Search must not depend on it.
       return json(202, { accepted: 0, stored: false });
     }
