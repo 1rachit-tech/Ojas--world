@@ -52,6 +52,20 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       _videoController = controller;
       await controller.initialize();
       await controller.setLooping(false);
+      final durationMs = controller.value.duration.inMilliseconds;
+      if (_project.timeline.isNotEmpty && durationMs > 0) {
+        final timeline = List<CreationTimelineClip>.from(_project.timeline);
+        final current = timeline.first;
+        final savedTrimOut = current.trimOutMs ?? durationMs;
+        final safeTrimOut = savedTrimOut.clamp(1, durationMs);
+        timeline[0] = current.copyWith(
+          endMs: durationMs,
+          trimOutMs: safeTrimOut,
+        );
+        _project = _project.copyWith(timeline: timeline);
+        _trimStart = (current.trimInMs / durationMs).clamp(0.0, 0.98);
+        _trimEnd = (safeTrimOut / durationMs).clamp(_trimStart + 0.01, 1.0);
+      }
       if (!mounted) {
         await controller.dispose();
         return;
