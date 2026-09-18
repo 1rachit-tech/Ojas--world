@@ -231,14 +231,27 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   Future<void> _setTrim(double start, double end) async {
     final safeStart = start.clamp(0.0, 0.98);
     final safeEnd = end.clamp(safeStart + 0.01, 1.0);
+    final controller = _videoController;
+    final durationMs = controller?.value.duration.inMilliseconds ?? 0;
     setState(() {
       _trimStart = safeStart;
       _trimEnd = safeEnd;
+      if (_project.timeline.isNotEmpty && durationMs > 0) {
+        final timeline = List<CreationTimelineClip>.from(_project.timeline);
+        timeline[0] = timeline.first.copyWith(
+          startMs: 0,
+          endMs: durationMs,
+          trimInMs: (durationMs * safeStart).round(),
+          trimOutMs: (durationMs * safeEnd).round(),
+        );
+        _project = _project.copyWith(timeline: timeline);
+      }
     });
-    final controller = _videoController;
     if (controller != null && controller.value.isInitialized) {
       final duration = controller.value.duration;
-      await controller.seekTo(Duration(milliseconds: (duration.inMilliseconds * safeStart).round()));
+      await controller.seekTo(
+        Duration(milliseconds: (duration.inMilliseconds * safeStart).round()),
+      );
       await controller.pause();
     }
     _scheduleAutosave();
