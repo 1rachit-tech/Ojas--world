@@ -18,6 +18,7 @@ import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import java.io.File
 
+@androidx.media3.common.util.UnstableApi
 @androidx.media3.common.util.ExperimentalApi
 object OjasMediaComposition {
 
