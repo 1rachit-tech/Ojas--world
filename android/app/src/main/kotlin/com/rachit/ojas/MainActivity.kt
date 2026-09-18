@@ -10,6 +10,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.CompositionPlayer
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -42,6 +43,10 @@ class MainActivity : FlutterActivity() {
         flutterEngine.platformViewsController.registry.registerViewFactory(
             "ojas/hls_player",
             OjasHlsPlayerFactory(),
+        )
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "ojas/composition_preview",
+            OjasCompositionPlayerFactory(),
         )
 
         OjasVideoExportBridge(this, flutterEngine)
@@ -162,6 +167,7 @@ private class OjasVideoExportBridge(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "startExport" -> startExport(call, result)
+            "startCompositionExport" -> startCompositionExport(call, result)
             "cancelExport" -> cancelExport(result)
             else -> result.notImplemented()
         }
@@ -285,6 +291,104 @@ private class OjasVideoExportBridge(
         }
     }
 
+
+    private fun startCompositionExport(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
+        if (transformer != null) {
+            result.error("EXPORT_BUSY", "Another video export is already running.", null)
+            return
+        }
+
+        val targetPath = call.argument<String>("outputPath").orEmpty()
+        @Suppress("UNCHECKED_CAST")
+        val project = call.argument<Map<String, Any?>>("project")
+        if (targetPath.isBlank() || project == null) {
+            result.error("INVALID_PROJECT", "The composition project is missing.", null)
+            return
+        }
+
+        try {
+            val target = File(targetPath)
+            target.parentFile?.mkdirs()
+            if (target.exists()) target.delete()
+
+            val id = UUID.randomUUID().toString()
+            requestId = id
+            outputPath = target.absolutePath
+
+            val composition = OjasMediaComposition.build(context, project)
+            val builtTransformer = Transformer.Builder(context)
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .addListener(
+                    object : Transformer.Listener {
+                        override fun onCompleted(
+                            composition: androidx.media3.transformer.Composition,
+                            exportResult: ExportResult,
+                        ) {
+                            handler.removeCallbacks(progressRunnable)
+                            val path = outputPath
+                            val bytes = if (path != null) File(path).length() else 0L
+                            eventSink?.success(
+                                mapOf(
+                                    "type" to "completed",
+                                    "requestId" to id,
+                                    "outputPath" to (path ?: ""),
+                                    "bytes" to bytes,
+                                ),
+                            )
+                            clearState()
+                        }
+
+                        override fun onError(
+                            composition: androidx.media3.transformer.Composition,
+                            exportResult: ExportResult,
+                            exportException: ExportException,
+                        ) {
+                            handler.removeCallbacks(progressRunnable)
+                            val path = outputPath
+                            if (path != null) {
+                                File(path).takeIf { it.exists() }?.delete()
+                            }
+                            eventSink?.success(
+                                mapOf(
+                                    "type" to "error",
+                                    "requestId" to id,
+                                    "message" to (
+                                        exportException.message
+                                            ?: "Local composition export failed."
+                                    ),
+                                ),
+                            )
+                            clearState()
+                        }
+                    },
+                )
+                .build()
+
+            transformer = builtTransformer
+            eventSink?.success(
+                mapOf(
+                    "type" to "started",
+                    "requestId" to id,
+                ),
+            )
+            builtTransformer.start(composition, target.absolutePath)
+            handler.post(progressRunnable)
+            result.success(id)
+        } catch (error: Throwable) {
+            handler.removeCallbacks(progressRunnable)
+            clearState()
+            result.error(
+                "COMPOSITION_EXPORT_FAILED",
+                error.message ?: "Unable to start composition export.",
+                null,
+            )
+        }
+    }
+
     private fun cancelExport(result: MethodChannel.Result) {
         val active = transformer
         val id = requestId
@@ -318,5 +422,52 @@ private class OjasVideoExportBridge(
         transformer = null
         requestId = null
         outputPath = null
+    }
+}
+
+
+@androidx.media3.common.util.ExperimentalApi
+private class OjasCompositionPlayerFactory : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    override fun create(
+        context: Context,
+        viewId: Int,
+        args: Any?,
+    ): PlatformView {
+        @Suppress("UNCHECKED_CAST")
+        val project = (args as? Map<*, *>)?.mapKeys { it.key }?.mapValues { it.value }
+            ?: emptyMap<String, Any?>()
+        return OjasCompositionPlayer(context, project)
+    }
+}
+
+@androidx.media3.common.util.ExperimentalApi
+private class OjasCompositionPlayer(
+    context: Context,
+    private val project: Map<*, *>,
+) : PlatformView {
+    private val playerView = PlayerView(context)
+    private val player: CompositionPlayer
+
+    init {
+        @Suppress("UNCHECKED_CAST")
+        val safeProject = project as Map<String, Any?>
+        val composition = OjasMediaComposition.build(context, safeProject)
+
+        player = CompositionPlayer.Builder(context).build().apply {
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+            setComposition(composition)
+            prepare()
+            playWhenReady = true
+        }
+
+        playerView.useController = false
+        playerView.player = player
+    }
+
+    override fun getView(): View = playerView
+
+    override fun dispose() {
+        playerView.player = null
+        player.release()
     }
 }
