@@ -203,10 +203,9 @@ class SearchRanker {
       if (tf == 0) continue;
 
       final df = documentFrequency[term] ?? 0;
-      final idf = ((documentCount - df + 0.5) /
-              (df + 0.5) +
-          1)
-          math.log(((documentCount - df + 0.5) / (df + 0.5) + 1));
+      final idf = math.log(
+        (documentCount - df + 0.5) / (df + 0.5) + 1,
+      );
 
       final denominator =
           tf + k1 * (1 - b + b * documentLength / averageDocumentLength);
