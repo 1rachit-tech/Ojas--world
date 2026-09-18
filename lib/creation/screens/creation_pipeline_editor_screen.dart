@@ -204,7 +204,6 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                     trailing: _project.privacy == option ? const Icon(Icons.check_circle) : null,
                     onTap: () => Navigator.pop(sheetContext, option),
                   ),
-                ),
               ],
             ),
           ),
