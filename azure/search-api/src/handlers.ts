@@ -50,6 +50,7 @@ export async function searchHttp(
 ): Promise<HttpResponseInit> {
   const user = await authenticate(
     request.headers.get("authorization") ?? undefined,
+    request.headers.get("x-firebase-appcheck") ?? undefined,
   );
 
   if (!user) return json(401, { error: "unauthorized" });
@@ -115,6 +116,7 @@ export async function suggestionsHttp(
 ): Promise<HttpResponseInit> {
   const user = await authenticate(
     request.headers.get("authorization") ?? undefined,
+    request.headers.get("x-firebase-appcheck") ?? undefined,
   );
 
   if (!user) return json(401, { error: "unauthorized" });
@@ -205,6 +207,7 @@ export async function eventsHttp(
 ): Promise<HttpResponseInit> {
   const user = await authenticate(
     request.headers.get("authorization") ?? undefined,
+    request.headers.get("x-firebase-appcheck") ?? undefined,
   );
 
   if (!user) return json(401, { error: "unauthorized" });
