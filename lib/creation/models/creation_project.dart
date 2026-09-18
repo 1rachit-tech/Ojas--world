@@ -43,6 +43,32 @@ class CreationMediaAsset {
   final int orientation;
   final String? normalizedUri;
 
+  CreationMediaAsset copyWith({
+    String? localUri,
+    String? mimeType,
+    int? sizeBytes,
+    int? width,
+    int? height,
+    int? durationMs,
+    DateTime? creationTime,
+    int? orientation,
+    String? normalizedUri,
+  }) {
+    return CreationMediaAsset(
+      assetId: assetId,
+      localUri: localUri ?? this.localUri,
+      type: type,
+      mimeType: mimeType ?? this.mimeType,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      durationMs: durationMs ?? this.durationMs,
+      creationTime: creationTime ?? this.creationTime,
+      orientation: orientation ?? this.orientation,
+      normalizedUri: normalizedUri ?? this.normalizedUri,
+    );
+  }
+
   Map<String, dynamic> toMap() => <String, dynamic>{
         'assetId': assetId,
         'localUri': localUri,
@@ -102,6 +128,36 @@ class CreationTimelineClip {
   final double scale;
   final double x;
   final double y;
+
+  CreationTimelineClip copyWith({
+    String? clipId,
+    String? sourceId,
+    int? startMs,
+    int? endMs,
+    int? trimInMs,
+    int? trimOutMs,
+    double? speed,
+    double? opacity,
+    double? rotation,
+    double? scale,
+    double? x,
+    double? y,
+  }) {
+    return CreationTimelineClip(
+      clipId: clipId ?? this.clipId,
+      sourceId: sourceId ?? this.sourceId,
+      startMs: startMs ?? this.startMs,
+      endMs: endMs ?? this.endMs,
+      trimInMs: trimInMs ?? this.trimInMs,
+      trimOutMs: trimOutMs ?? this.trimOutMs,
+      speed: speed ?? this.speed,
+      opacity: opacity ?? this.opacity,
+      rotation: rotation ?? this.rotation,
+      scale: scale ?? this.scale,
+      x: x ?? this.x,
+      y: y ?? this.y,
+    );
+  }
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'clipId': clipId,
