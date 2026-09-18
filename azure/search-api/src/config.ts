@@ -20,4 +20,14 @@ export const config = {
   firebaseServiceAccountJson: env("FIREBASE_SERVICE_ACCOUNT_JSON"),
   firebaseProjectId: env("FIREBASE_PROJECT_ID"),
   allowAnonymousDev: env("ALLOW_ANONYMOUS_DEV", "false") === "true",
+  reconcileEnabled: env("SEARCH_RECONCILE_ENABLED", "false") === "true",
+  reconcileCron: env("SEARCH_RECONCILE_CRON", "0 0 */6 * * *"),
+  reconcileBatchSize: Math.min(
+    Math.max(Number(env("SEARCH_RECONCILE_BATCH_SIZE", "250")) || 250, 25),
+    500,
+  ),
+  reconcileMaxIndexDocs: Math.min(
+    Math.max(Number(env("SEARCH_RECONCILE_MAX_INDEX_DOCS", "100000")) || 100000, 1000),
+    1000000,
+  ),
 };
