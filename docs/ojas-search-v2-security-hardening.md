@@ -45,7 +45,6 @@ Required GitHub environment secrets:
 - AZURE_LOCATION
 - FIREBASE_SERVICE_ACCOUNT_JSON
 - FIREBASE_PROJECT_ID
-- FIREBASE_APP_CHECK_APP_ID
 - AZURE_SEARCH_INGEST_SECRET
 
 The deployment workflow never puts these values into Flutter source.
