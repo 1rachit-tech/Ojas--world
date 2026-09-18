@@ -37,6 +37,22 @@
       "vectorSearchProfile": "ojas-hnsw-profile"
     }
   ],
+  "semantic": {
+    "configurations": [
+      {
+        "name": "ojas-semantic",
+        "prioritizedFields": {
+          "titleField": { "fieldName": "title" },
+          "prioritizedContentFields": [
+            { "fieldName": "text" }
+          ],
+          "prioritizedKeywordsFields": [
+            { "fieldName": "tags" }
+          ]
+        }
+      }
+    ]
+  },
   "vectorSearch": {
     "algorithms": [
       { "name": "ojas-hnsw", "kind": "hnsw" }
