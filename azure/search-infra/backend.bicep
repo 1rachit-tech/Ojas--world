@@ -122,6 +122,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployBackend) {
           value: 'node'
         }
         {
+          name: 'AzureWebJobsStorage__accountName'
+          value: storage.name
+        }
+        {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsights.properties.ConnectionString
         }
@@ -233,3 +237,7 @@ resource functionServiceBusReceiverRole 'Microsoft.Authorization/roleAssignments
     principalType: 'ServicePrincipal'
   }
 }
+
+output functionPrincipalId string = deployBackend
+  ? functionApp.identity.principalId
+  : ''
