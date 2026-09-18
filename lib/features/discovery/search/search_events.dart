@@ -83,7 +83,6 @@ class SearchEventQueue {
   final FirebaseAuth _auth;
   final List<SearchEvent> _pending = <SearchEvent>[];
   String? _uid;
-  String? _uid;
 
   String _key() =>
       'ojas_search_events_v2_' + ((_uid == null || _uid!.isEmpty) ? 'signed_out' : _uid!);
