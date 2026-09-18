@@ -28,6 +28,13 @@ class VideoExportException implements Exception {
 /// Local-first Android video export bridge.
 ///
 /// Heavy media processing stays on-device through Android Media3 Transformer.
+class VideoExportProgress {
+  const VideoExportProgress({required this.requestId, required this.progress});
+
+  final String requestId;
+  final double progress;
+}
+
 class VideoExportService {
   VideoExportService._();
 
@@ -37,6 +44,11 @@ class VideoExportService {
       MethodChannel('ojas/video_transformer/methods');
   static const EventChannel _events =
       EventChannel('ojas/video_transformer/events');
+
+  final StreamController<VideoExportProgress> _progressController =
+      StreamController<VideoExportProgress>.broadcast();
+
+  Stream<VideoExportProgress> get progressStream => _progressController.stream;
 
   Stream<Map<String, dynamic>> get _eventStream =>
       _events.receiveBroadcastStream().map(
@@ -79,6 +91,15 @@ class VideoExportService {
       (event) {
         final type = event['type'] as String? ?? '';
         final eventRequestId = event['requestId'] as String? ?? '';
+
+        if (type == 'progress') {
+          _progressController.add(
+            VideoExportProgress(
+              requestId: eventRequestId,
+              progress: ((event['progress'] as num?)?.toDouble() ?? 0) / 100,
+            ),
+          );
+        }
 
         if (type == 'completed' && eventRequestId.isNotEmpty) {
           if (!completer.isCompleted) {
@@ -149,6 +170,10 @@ class VideoExportService {
     } finally {
       await subscription.cancel();
     }
+  }
+
+  Future<void> dispose() async {
+    await _progressController.close();
   }
 
   Future<void> cancelActiveExport() async {
