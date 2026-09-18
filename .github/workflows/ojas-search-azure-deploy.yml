@@ -106,6 +106,9 @@ jobs:
             location=${{ secrets.AZURE_LOCATION }}
             deploySearchService=true
             searchServiceName=${{ inputs.search_service_name }}
+            searchSku=${{ inputs.search_sku }}
+            replicaCount=1
+            partitionCount=1
             searchApiPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
             searchWorkerPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
 
@@ -125,7 +128,10 @@ jobs:
         run: |
           FUNCTION_HOST="${{ inputs.function_app_name }}"
           SEARCH_ENDPOINT="${{ steps.search.outputs.endpoint }}"
-          az functionapp config appsettings set             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "$FUNCTION_HOST"             --settings               AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT"               AZURE_SEARCH_INDEX_NAME=ojas-search-v1               AZURE_SEARCH_API_VERSION=2026-04-01               AZURE_SEARCH_AUTH_MODE=managed_identity               AZURE_SEARCH_ENABLE_VECTOR=false               AZURE_SEARCH_ENABLE_SEMANTIC=false               AZURE_SEARCH_EVENT_MODE=servicebus               SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net"               SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events               SEARCH_ANALYTICS_QUEUE=ojas-search-events               SEARCH_RECONCILE_ENABLED=false               FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"               FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON"               AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
+          az functionapp config appsettings set             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "$FUNCTION_HOST"             --settings               AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT"               AZURE_SEARCH_INDEX_NAME=ojas-search-v1               AZURE_SEARCH_API_VERSION=2026-04-01               AZURE_SEARCH_AUTH_MODE=managed_identity               AZURE_SEARCH_ENABLE_VECTOR=false               AZURE_SEARCH_ENABLE_SEMANTIC=false               AZURE_SEARCH_EVENT_MODE=servicebus               SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net"               SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events               SEARCH_ANALYTICS_QUEUE=ojas-search-events               SEARCH_RECONCILE_ENABLED=${{ inputs.reconcile }}
+               SEARCH_RECONCILE_CRON="0 0 */12 * * *"
+               SEARCH_RECONCILE_BATCH_SIZE=250
+               SEARCH_RECONCILE_MAX_INDEX_DOCS=10000               FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"               FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON"               AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
 
       - name: Deploy Function package
         if: ${{ inputs.deploy_function_code == true }}
@@ -140,8 +146,23 @@ jobs:
         run: |
           curl -sS -X PUT             "${SEARCH_ENDPOINT}/indexes/ojas-search-v1?api-version=2026-04-01"             -H "Content-Type: application/json"             -H "api-key: ${SEARCH_API_KEY}"             --data-binary @azure/search-infra/index.schema.json
 
+      - name: Smoke-check deployed Function endpoint
+        if: ${{ inputs.deploy_function_code == true }}
+        run: |
+          FUNCTION_BASE="https://${{ inputs.function_app_name }}/api"
+          echo "Function API base: ${FUNCTION_BASE}"
+          curl -fsS -o /dev/null -w "HTTP %{http_code}\\n" "${FUNCTION_BASE}" || true
+          echo "Expected authenticated routes:"
+          echo "  ${FUNCTION_BASE}/v1/search"
+          echo "  ${FUNCTION_BASE}/v1/search/suggestions"
+          echo "  ${FUNCTION_BASE}/v1/search/events"
+          echo "  ${FUNCTION_BASE}/v1/search/index/events"
+
       - name: Deployment summary
         run: |
-          echo "OJAS Search deployment completed."
-          echo "Vector mode remains disabled until a compatible vectorizer/embedding deployment is configured."
-          echo "Semantic ranking remains disabled until its cost and relevance impact are validated."
+          echo "OJAS Search starter production deployment completed."
+          echo "Flutter build-time base URL: https://${{ inputs.function_app_name }}/api"
+          echo "Firebase bridge URL: https://${{ inputs.function_app_name }}/api"
+          echo "Search SKU: ${{ inputs.search_sku }} | replicas: 1 | partitions: 1"
+          echo "Vector mode remains disabled until a verified embedding/vectorizer deployment is configured."
+          echo "Semantic ranking remains disabled initially to control cost."
