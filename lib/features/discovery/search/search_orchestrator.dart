@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 
+import 'azure_search_client.dart';
 import 'domain/search_models.dart';
 import 'feature_store_client.dart';
 import 'query_processor.dart';
@@ -24,6 +25,7 @@ class SearchOrchestrator {
     SearchResultCache? cache,
     SearchHistoryStore? history,
     SearchEventQueue? events,
+    AzureSearchClient? azureSearch,
     FirebaseAuth? auth,
   })  : _repository = repository ?? SearchRepository(),
         _featureStore = featureStore ?? OjasSearchFeatureStore(),
@@ -33,6 +35,7 @@ class SearchOrchestrator {
         _cache = cache ?? SearchResultCache(),
         _history = history ?? SearchHistoryStore(),
         _events = events ?? SearchEventQueue(),
+        _azureSearch = azureSearch ?? AzureSearchClient(auth: auth),
         _auth = auth ?? FirebaseAuth.instance;
 
   final SearchRepository _repository;
@@ -42,6 +45,7 @@ class SearchOrchestrator {
   final SearchResultCache _cache;
   final SearchHistoryStore _history;
   final SearchEventQueue _events;
+  final AzureSearchClient _azureSearch;
   final FirebaseAuth _auth;
   final SearchQueryProcessor _processor = const SearchQueryProcessor();
   final SearchRanker _ranker = const SearchRanker();
@@ -185,6 +189,31 @@ class SearchOrchestrator {
 
     final uid = _auth.currentUser?.uid;
     final queryKey = _queryKey(query, tab);
+
+    if (_azureSearch.isConfigured) {
+      try {
+        return await _searchAzure(
+          query: query,
+          tab: tab,
+          pageSize: pageSize,
+          cursor: cursor,
+          uid: uid,
+          queryKey: queryKey,
+        );
+      } on StateError catch (error) {
+        if (error.message == 'Search safety context unavailable.') {
+          return SearchPage(
+            results: const <SearchResult>[],
+            query: query,
+            sessionId: sessionId,
+          );
+        }
+        rethrow;
+      } catch (_) {
+        // Azure is the production path, but the legacy path remains a
+        // controlled migration fallback until Azure is fully configured.
+      }
+    }
 
     try {
       final contextFuture = _featureStore.loadUserContext();
@@ -355,6 +384,86 @@ class SearchOrchestrator {
   }
 
   Future<void> recordResultClick(
+  Future<SearchPage> _searchAzure({
+    required SearchQuery query,
+    required SearchTab tab,
+    required int pageSize,
+    required String? cursor,
+    required String? uid,
+    required String queryKey,
+  }) async {
+    final blockedFuture = _safety.blockedCreatorIds().timeout(
+      const Duration(milliseconds: 120),
+      onTimeout: () => null,
+    );
+
+    final azureFuture = _azureSearch.search(
+      query: query.raw,
+      tab: tab,
+      pageSize: pageSize,
+      cursor: cursor,
+    );
+
+    final values = await Future.wait<dynamic>([
+      blockedFuture,
+      azureFuture,
+    ]);
+
+    final blocked = values[0] as Set<String>?;
+    if (blocked == null) {
+      throw StateError('Search safety context unavailable.');
+    }
+
+    final remotePage = values[1] as SearchPage;
+
+    final safeResults = remotePage.results
+        .where((result) => !blocked.contains(result.creatorId))
+        .toList(growable: false);
+
+    for (var index = 0; index < safeResults.length; index++) {
+      _events.enqueue(
+        SearchEvent(
+          sessionId: sessionId,
+          eventType: SearchEventType.resultImpression,
+          createdAt: DateTime.now(),
+          query: query.normalized,
+          resultId: safeResults[index].id,
+          resultType: safeResults[index].entityType.name,
+          position: index,
+        ),
+      );
+    }
+
+    if (safeResults.isNotEmpty) {
+      await _cache.write(
+        queryKey: queryKey,
+        results: safeResults,
+        uid: uid,
+      );
+    } else {
+      _events.enqueue(
+        SearchEvent(
+          sessionId: sessionId,
+          eventType: SearchEventType.searchZeroResult,
+          createdAt: DateTime.now(),
+          query: query.normalized,
+        ),
+      );
+    }
+
+    return SearchPage(
+      results: safeResults,
+      query: query,
+      sessionId: sessionId,
+      cursor: remotePage.cursor,
+      hasMore: remotePage.hasMore,
+      fromCache: remotePage.fromCache,
+      offline: remotePage.offline,
+      didYouMean: remotePage.didYouMean ??
+          (safeResults.isEmpty ? await _didYouMean(query) : null),
+    );
+  }
+
     SearchResult result,
     int position,
     String query,
