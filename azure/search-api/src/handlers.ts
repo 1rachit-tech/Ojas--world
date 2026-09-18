@@ -14,6 +14,7 @@ import {
   suggestAzureIndex,
   upsertDocuments,
 } from "./search-client";
+import { RuleBasedSearchReranker, loadInterestContext } from "./ranker";
 import type {
   SearchIndexEvent,
   SearchRequest,
@@ -78,8 +79,15 @@ export async function searchHttp(
       filter,
     });
 
+    const interestContext = await loadInterestContext(user.uid);
+    const reranker = new RuleBasedSearchReranker();
+    const reranked = reranker.rerank(
+      result.results,
+      interestContext,
+    );
+
     return json(200, {
-      results: result.results,
+      results: reranked,
       query,
       sessionId: randomUUID(),
       cursor: result.nextCursor,
