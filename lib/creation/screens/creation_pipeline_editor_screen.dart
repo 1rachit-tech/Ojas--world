@@ -864,19 +864,31 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   }
   @override
   Widget build(BuildContext context) {
-    final canContinue = !_saving && !_exporting && _project.mediaAssets.isNotEmpty;
+    final canContinue =
+        !_saving && !_exporting && _project.mediaAssets.isNotEmpty;
+    final selectedVideoReady =
+        _videoController?.value.isInitialized == true;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Edit'),
+        title: Text(
+          'Edit · ${_project.mediaAssets.length} clip${_project.mediaAssets.length == 1 ? '' : 's'}',
+        ),
         actions: [
           TextButton(
             onPressed: _saving || _exporting
                 ? null
                 : () => _saveProject(showFeedback: true),
-            child: const Text('Draft', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            child: const Text(
+              'Draft',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -887,22 +899,6 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               fit: StackFit.expand,
               children: [
                 Center(child: _buildPreview()),
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 16,
-                  child: Row(
-                    children: [
-                      _ToolButton(icon: Icons.text_fields_rounded, label: 'Text', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.music_note_rounded, label: 'Audio', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.auto_awesome_rounded, label: 'Effects', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.tune_rounded, label: 'Adjust', onTap: () {}),
-                    ],
-                  ),
-                ),
                 if (_exporting)
                   Positioned.fill(
                     child: ColoredBox(
@@ -919,7 +915,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               const Text(
-                                'Exporting video…',
+                                'Rendering composition…',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
@@ -955,45 +951,296 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
             ),
           ),
           Container(
+            height: MediaQuery.of(context).size.height * 0.43,
             color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              children: [
-                if (_videoController?.value.isInitialized == true) ...[
-                  Row(
-                    children: [
-                      const Text('Trim', style: TextStyle(fontWeight: FontWeight.w800)),
-                      const Spacer(),
-                      Text('${(_trimStart * 100).round()}% — ${(_trimEnd * 100).round()}%'),
-                    ],
-                  ),
-                  RangeSlider(values: RangeValues(_trimStart, _trimEnd), onChanged: (value) => _setTrim(value.start, value.end)),
-                ],
-                Row(
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: _ComposerTile(icon: Icons.subtitles_rounded, title: _captionController.text.isEmpty ? 'Caption' : 'Caption added', onTap: _openCaption)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _ComposerTile(icon: Icons.visibility_outlined, title: _project.privacy, onTap: _openPrivacy)),
+                    Row(
+                      children: [
+                        const Text(
+                          'Timeline',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _project.audio.isNotEmpty
+                              ? 'Music attached'
+                              : 'No music',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 78,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _project.mediaAssets.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final selected = index == _selectedClipIndex;
+                          final asset = _project.mediaAssets[index];
+                          final duration = index < _project.timeline.length
+                              ? _project.timeline[index].trimOutMs
+                                      != null &&
+                                  _project.timeline[index].trimOutMs! >
+                                      _project.timeline[index].trimInMs
+                                  ? ((_project.timeline[index].trimOutMs! -
+                                            _project.timeline[index].trimInMs) /
+                                        1000)
+                                  : (asset.durationMs ?? 0) / 1000
+                              : (asset.durationMs ?? 0) / 1000;
+                          return GestureDetector(
+                            onTap: () => _selectClip(index),
+                            child: Container(
+                              width: 126,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? const Color(0xFF111827)
+                                    : const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: selected
+                                      ? const Color(0xFF111827)
+                                      : const Color(0xFFE5E7EB),
+                                ),
+                              ),
+                              padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        asset.type == 'image'
+                                            ? Icons.image_outlined
+                                            : Icons.movie_outlined,
+                                        color: selected
+                                            ? Colors.white
+                                            : const Color(0xFF111827),
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          'Clip ${index + 1}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: selected
+                                                ? Colors.white
+                                                : const Color(0xFF111827),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        duration.toStringAsFixed(1) + 's',
+                                        style: TextStyle(
+                                          color: selected
+                                              ? Colors.white70
+                                              : const Color(0xFF6B7280),
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Spacer(),
+                                  Row(
+                                    children: [
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 24,
+                                          minHeight: 24,
+                                        ),
+                                        onPressed: index > 0
+                                            ? () => _moveClip(index, -1)
+                                            : null,
+                                        icon: const Icon(Icons.chevron_left_rounded),
+                                        color: selected
+                                            ? Colors.white70
+                                            : const Color(0xFF6B7280),
+                                      ),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 24,
+                                          minHeight: 24,
+                                        ),
+                                        onPressed: index <
+                                                _project.mediaAssets.length - 1
+                                            ? () => _moveClip(index, 1)
+                                            : null,
+                                        icon: const Icon(Icons.chevron_right_rounded),
+                                        color: selected
+                                            ? Colors.white70
+                                            : const Color(0xFF6B7280),
+                                      ),
+                                      const Spacer(),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 24,
+                                          minHeight: 24,
+                                        ),
+                                        onPressed: _project.mediaAssets.length > 1
+                                            ? () => _deleteClip(index)
+                                            : null,
+                                        icon: const Icon(Icons.delete_outline_rounded),
+                                        color: selected
+                                            ? Colors.white70
+                                            : const Color(0xFF9CA3AF),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _EditorAction(
+                          icon: Icons.speed_rounded,
+                          label: '${_selectedTimelineClip.speed.toStringAsFixed(1)}x',
+                          onTap: () => showModalBottomSheet<void>(
+                            context: context,
+                            backgroundColor: Colors.white,
+                            builder: (sheetContext) => SafeArea(
+                              child: Padding(
+                                padding: const EdgeInsets.all(18),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (final speed in <double>[0.5, 1, 1.5, 2])
+                                      ChoiceChip(
+                                        label: Text('${speed}x'),
+                                        selected:
+                                            _selectedTimelineClip.speed == speed,
+                                        onSelected: (_) {
+                                          _setSelectedSpeed(speed);
+                                          Navigator.pop(sheetContext);
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _EditorAction(
+                          icon: Icons.rotate_right_rounded,
+                          label: '${_selectedTimelineClip.rotation.round()}°',
+                          onTap: _rotateSelected,
+                        ),
+                        _EditorAction(
+                          icon: Icons.zoom_in_map_rounded,
+                          label: 'Scale',
+                          onTap: _openScaleSheet,
+                        ),
+                        _EditorAction(
+                          icon: Icons.tune_rounded,
+                          label: 'Adjust',
+                          onTap: _openAdjustSheet,
+                        ),
+                        _EditorAction(
+                          icon: Icons.music_note_rounded,
+                          label: _project.audio.isEmpty ? 'Audio' : 'Music ✓',
+                          onTap: _openAudioPicker,
+                        ),
+                      ],
+                    ),
+                    if (selectedVideoReady) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Text(
+                            'Trim',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${(_trimStart * 100).round()}% — ${(_trimEnd * 100).round()}%',
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      RangeSlider(
+                        values: RangeValues(_trimStart, _trimEnd),
+                        onChanged: (value) =>
+                            _setTrim(value.start, value.end),
+                      ),
+                    ],
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ComposerTile(
+                            icon: Icons.subtitles_rounded,
+                            title: _captionController.text.isEmpty
+                                ? 'Caption'
+                                : 'Caption added',
+                            onTap: _openCaption,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _ComposerTile(
+                            icon: Icons.visibility_outlined,
+                            title: _project.privacy,
+                            onTap: _openPrivacy,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: canContinue ? _openPostComposer : null,
+                        icon: const Icon(Icons.movie_creation_rounded),
+                        label: Text(
+                          _project.renderedUri != null
+                              ? 'Re-render & Continue'
+                              : 'Render & Continue',
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: canContinue ? _openPostComposer : null,
-                    icon: const Icon(Icons.arrow_forward_rounded),
-                    label: const Text('Continue to Post'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
-}
 
 class _ToolButton extends StatelessWidget {
   const _ToolButton({required this.icon, required this.label, required this.onTap});
@@ -1033,6 +1280,93 @@ class _ComposerTile extends StatelessWidget {
       icon: Icon(icon, size: 18),
       label: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+    );
+  }
+}
+
+class _AdjustSlider extends StatelessWidget {
+  const _AdjustSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            Text(
+              value.toStringAsFixed(1),
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.clamp(min, max).toDouble(),
+          min: min,
+          max: max,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _EditorAction extends StatelessWidget {
+  const _EditorAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF3F4F6),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 17, color: const Color(0xFF111827)),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
