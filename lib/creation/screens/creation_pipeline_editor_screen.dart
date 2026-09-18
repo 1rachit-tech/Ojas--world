@@ -351,52 +351,50 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   Future<void> _openPostComposer() async {
     if (_saving || _exporting || _project.mediaAssets.isEmpty) return;
 
-    final asset = _project.mediaAssets.first;
-    if (asset.type != 'video') {
-      final readyProject = _project.copyWith(
-        status: CreationProjectStatus.ready,
-        caption: _captionController.text.trim(),
-        updatedAt: DateTime.now(),
-      );
-      await CreationProjectStore.instance.save(readyProject);
-      if (!mounted) return;
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => CreationPostComposerScreen(project: readyProject),
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+
+    while (timeline.length < _project.mediaAssets.length) {
+      final index = timeline.length;
+      final asset = _project.mediaAssets[index];
+      final duration = asset.durationMs ?? 3000;
+      timeline.add(
+        CreationTimelineClip(
+          clipId: _project.projectId + '_clip_' + index.toString(),
+          sourceId: asset.assetId,
+          startMs: 0,
+          endMs: duration,
+          trimInMs: 0,
+          trimOutMs: duration,
         ),
       );
-      return;
     }
 
-    final controller = _videoController;
-    if (controller == null || !controller.value.isInitialized) return;
-
-    final durationMs = controller.value.duration.inMilliseconds;
-    if (durationMs <= 0) return;
-    final startMs = (durationMs * _trimStart).round();
-    final endMs = (durationMs * _trimEnd).round();
-    if (endMs <= startMs) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a valid trim range.')),
-      );
-      return;
+    final selected = _selectedClipIndex < timeline.length
+        ? timeline[_selectedClipIndex]
+        : null;
+    if (selected != null &&
+        _videoController?.value.isInitialized == true &&
+        _selectedClipIndex < _project.mediaAssets.length &&
+        selected.sourceId ==
+            _project.mediaAssets[_selectedClipIndex].assetId) {
+      final durationMs = _videoController!.value.duration.inMilliseconds;
+      if (durationMs > 0) {
+        timeline[_selectedClipIndex] = selected.copyWith(
+          endMs: durationMs,
+          trimInMs: (durationMs * _trimStart).round(),
+          trimOutMs: (durationMs * _trimEnd).round(),
+        );
+      }
     }
-
-    final timeline = List<CreationTimelineClip>.from(_project.timeline);
-    if (timeline.isEmpty) return;
-    timeline[0] = timeline.first.copyWith(
-      startMs: 0,
-      endMs: durationMs,
-      trimInMs: startMs,
-      trimOutMs: endMs,
-    );
 
     final processingProject = _project.copyWith(
       status: CreationProjectStatus.processing,
       caption: _captionController.text.trim(),
       timeline: timeline,
+      renderedUri: null,
       updatedAt: DateTime.now(),
     );
+
     await CreationProjectStore.instance.save(processingProject);
     if (!mounted) return;
 
@@ -408,27 +406,34 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     });
 
     try {
-      final result = await VideoExportService.instance.exportTrimmedVideo(
-        inputPath: asset.localUri,
+      final result = await VideoExportService.instance.exportComposition(
+        project: processingProject.toMap(),
         projectId: processingProject.projectId,
-        startMs: startMs,
-        endMs: endMs,
         onProgress: (progress) {
           if (!mounted || !_exporting) return;
-          setState(() => _exportProgress = progress.clamp(0.0, 1.0).toDouble());
+          setState(
+            () => _exportProgress = progress.clamp(0.0, 1.0).toDouble(),
+          );
         },
       );
 
-      final exportedAsset = asset.copyWith(
-        normalizedUri: result.outputPath,
-        sizeBytes: result.bytes,
-        durationMs: endMs - startMs,
-      );
+      final finalAssets =
+          List<CreationMediaAsset>.from(processingProject.mediaAssets);
+
+      if (finalAssets.length == 1 && finalAssets.first.type == 'video') {
+        finalAssets[0] = finalAssets.first.copyWith(
+          normalizedUri: result.outputPath,
+          sizeBytes: result.bytes,
+        );
+      }
+
       final readyProject = processingProject.copyWith(
         status: CreationProjectStatus.ready,
-        mediaAssets: <CreationMediaAsset>[exportedAsset],
+        mediaAssets: finalAssets,
+        renderedUri: result.outputPath,
         updatedAt: DateTime.now(),
       );
+
       await CreationProjectStore.instance.save(readyProject);
       if (!mounted) return;
 
@@ -436,6 +441,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         _project = readyProject;
         _exporting = false;
         _exportProgress = 1.0;
+        _previewRevision++;
       });
 
       await Navigator.of(context).push<void>(
@@ -445,31 +451,38 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       );
     } catch (error) {
       if (!mounted) return;
+
       final cancelled = _cancelExportRequested;
       final editingProject = _project.copyWith(
         status: CreationProjectStatus.editing,
+        renderedUri: null,
         updatedAt: DateTime.now(),
       );
+
       await CreationProjectStore.instance.save(editingProject);
+
       setState(() {
         _project = editingProject;
         _exporting = false;
         _exportProgress = 0.0;
       });
+
       if (!cancelled) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               error is VideoExportException
                   ? error.message
-                  : 'Local video export failed.',
+                  : 'Local composition export failed.',
             ),
           ),
         );
       }
     } finally {
       _cancelExportRequested = false;
-      if (mounted && _exporting) setState(() => _exporting = false);
+      if (mounted && _exporting) {
+        setState(() => _exporting = false);
+      }
     }
   }
 
