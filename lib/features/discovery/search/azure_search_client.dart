@@ -36,10 +36,16 @@ class AzureSearchClient {
   final http.Client _http;
 
   String get baseUrl {
-    final value = _configuredBaseUrl.trim();
-    return value.endsWith('/')
-        ? value.substring(0, value.length - 1)
-        : value;
+    var value = _configuredBaseUrl.trim();
+    while (value.endsWith('/')) {
+      value = value.substring(0, value.length - 1);
+    }
+    if (value.isEmpty) return '';
+    // Azure Functions uses the standard /api route prefix.
+    if (!value.endsWith('/api')) {
+      value += '/api';
+    }
+    return value;
   }
 
   bool get isConfigured => baseUrl.isNotEmpty;
