@@ -1,0 +1,27 @@
+{
+  "name": "ojas-search-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OJAS Search API and Azure index worker",
+  "main": "dist/src/index.js",
+  "engines": { "node": "20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "start": "func start",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.0",
+    "@azure/identity": "^4.5.0",
+    "@azure/storage-blob": "^12.27.0",
+    "@azure/service-bus": "^7.9.5",
+    "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.7.0"
+  }
+}

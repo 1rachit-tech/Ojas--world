@@ -1,0 +1,32 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AZURE_SEARCH_ENDPOINT": "https://<search-service>.search.windows.net",
+    "AZURE_SEARCH_INDEX_NAME": "ojas-search-v1",
+    "AZURE_SEARCH_API_VERSION": "2026-04-01",
+    "AZURE_SEARCH_AUTH_MODE": "managed_identity",
+    "AZURE_SEARCH_QUERY_KEY": "",
+    "AZURE_SEARCH_ENABLE_VECTOR": "false",
+    "AZURE_SEARCH_ENABLE_SEMANTIC": "false",
+    "AZURE_SEARCH_VECTOR_FIELD": "textVector",
+    "AZURE_SEARCH_SEMANTIC_CONFIGURATION": "ojas-semantic",
+    "SEARCH_SERVICE_BUS_CONNECTION": "",
+    "SEARCH_SERVICE_BUS_FQDN": "<namespace>.servicebus.windows.net",
+    "SEARCH_SERVICE_BUS_AUTH_MODE": "managed_identity",
+    "SEARCH_SERVICE_BUS_QUEUE": "ojas-search-index-events",
+    "SEARCH_ANALYTICS_QUEUE": "ojas-search-events",
+    "AZURE_SEARCH_EVENT_MODE": "servicebus",
+    "AZURE_SEARCH_INGEST_SECRET": "replace-with-long-random-secret",
+    "FIREBASE_SERVICE_ACCOUNT_JSON": "",
+    "FIREBASE_PROJECT_ID": "",
+    "ALLOW_ANONYMOUS_DEV": "false",
+    "SEARCH_RECONCILE_ENABLED": "false",
+    "SEARCH_RECONCILE_CRON": "0 0 */6 * * *",
+    "SEARCH_RECONCILE_BATCH_SIZE": "250",
+    "SEARCH_RECONCILE_MAX_INDEX_DOCS": "100000",
+    "SEARCH_EVENT_ARCHIVE_STORAGE_URL": "",
+    "SEARCH_EVENT_ARCHIVE_CONTAINER": "ojas-search-events"
+  }
+}

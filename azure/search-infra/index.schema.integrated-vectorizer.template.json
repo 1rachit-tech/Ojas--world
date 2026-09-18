@@ -1,0 +1,81 @@
+{
+  "name": "ojas-search-v1",
+  "description": "OJAS Search v1 with future-ready integrated vectorization. Fill the connection and model fields before enabling vector mode.",
+  "fields": [
+    { "name": "id", "type": "Edm.String", "key": true, "filterable": true, "retrievable": true },
+    { "name": "entityType", "type": "Edm.String", "searchable": true, "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "title", "type": "Edm.String", "searchable": true, "retrievable": true },
+    { "name": "subtitle", "type": "Edm.String", "searchable": true, "retrievable": true },
+    { "name": "text", "type": "Edm.String", "searchable": true, "retrievable": true },
+    { "name": "imageUrl", "type": "Edm.String", "retrievable": true },
+    { "name": "creatorId", "type": "Edm.String", "filterable": true, "retrievable": true },
+    { "name": "contentUrl", "type": "Edm.String", "retrievable": true },
+    { "name": "audioTrackId", "type": "Edm.String", "searchable": true, "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "tags", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "topicIds", "type": "Collection(Edm.String)", "searchable": true, "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "location", "type": "Edm.String", "searchable": true, "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "language", "type": "Edm.String", "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "region", "type": "Edm.String", "filterable": true, "facetable": true, "retrievable": true },
+    { "name": "visibility", "type": "Edm.String", "filterable": true, "retrievable": true },
+    { "name": "eligible", "type": "Edm.Boolean", "filterable": true, "retrievable": true },
+    { "name": "safetyStatus", "type": "Edm.String", "filterable": true, "retrievable": true },
+    { "name": "isLive", "type": "Edm.Boolean", "filterable": true, "retrievable": true },
+    { "name": "views", "type": "Edm.Int64", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "likes", "type": "Edm.Int64", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "saves", "type": "Edm.Int64", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "followers", "type": "Edm.Int64", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "posts", "type": "Edm.Int64", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "algorithmScore", "type": "Edm.Double", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "trendScore", "type": "Edm.Double", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "createdAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true, "retrievable": true },
+    { "name": "updatedAt", "type": "Edm.DateTimeOffset", "filterable": true, "sortable": true, "retrievable": true },
+    {
+      "name": "textVector",
+      "type": "Collection(Edm.Single)",
+      "searchable": true,
+      "retrievable": false,
+      "dimensions": 384,
+      "vectorSearchProfile": "ojas-hnsw-profile"
+    }
+  ],
+  "semantic": {
+    "configurations": [
+      {
+        "name": "ojas-semantic",
+        "prioritizedFields": {
+          "titleField": { "fieldName": "title" },
+          "prioritizedContentFields": [
+            { "fieldName": "text" }
+          ],
+          "prioritizedKeywordsFields": [
+            { "fieldName": "tags" }
+          ]
+        }
+      }
+    ]
+  },
+  "vectorSearch": {
+    "algorithms": [
+      { "name": "ojas-hnsw", "kind": "hnsw" }
+    ],
+    "profiles": [
+      {
+        "name": "ojas-hnsw-profile",
+        "algorithm": "ojas-hnsw",
+        "vectorizer": "ojas-vectorizer"
+      }
+    ],
+    "vectorizers": [
+      {
+        "name": "ojas-vectorizer",
+        "kind": "azureOpenAI",
+        "azureOpenAIParameters": {
+          "resourceUri": "https://<your-azure-openai-resource>.openai.azure.com",
+          "deploymentId": "<your-embedding-deployment>",
+          "modelName": "<your-embedding-model>",
+          "authIdentity": null
+        }
+      }
+    ]
+  }
+}

@@ -449,6 +449,28 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    match /searchIndex/{searchDocumentId} {
+      allow get, list: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId}/searchEvents/{eventId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId)
+          && request.resource.data.sessionId is string
+          && request.resource.data.sessionId.size() <= 128
+          && request.resource.data.eventType is string
+          && request.resource.data.eventType.size() <= 64
+          && request.resource.data.query is string
+          && request.resource.data.query.size() <= 500
+          && request.resource.data.resultId is string
+          && request.resource.data.resultId.size() <= 256
+          && request.resource.data.position is int
+          && request.resource.data.position >= 0
+          && request.resource.data.metadata is map;
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

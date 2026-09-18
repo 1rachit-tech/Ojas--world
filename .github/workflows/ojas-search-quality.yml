@@ -1,0 +1,85 @@
+name: OJAS Search Quality
+
+on:
+  pull_request:
+    paths:
+      - 'lib/features/discovery/search/**'
+      - 'test/search_*.dart'
+      - 'azure/search-api/**'
+      - 'azure/search-infra/**'
+      - 'functions/src/search_indexer.ts'
+      - '.github/workflows/ojas-search-quality.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'lib/features/discovery/search/**'
+      - 'test/search_*.dart'
+      - 'azure/search-api/**'
+      - 'azure/search-infra/**'
+      - 'functions/src/search_indexer.ts'
+      - '.github/workflows/ojas-search-quality.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-search:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/search_query_processor_test.dart test/search_ranker_test.dart
+
+  azure-search-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: azure/search-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+
+  firebase-index-bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+  bicep-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep build --file azure/search-infra/main.bicep
+            az bicep build --file azure/search-infra/backend.bicep
+      - name: Validate Search index JSON
+        run: |
+          python - <<'PY'
+          import json
+          for path in [
+              "azure/search-infra/index.schema.json",
+              "azure/search-infra/index.schema.integrated-vectorizer.template.json",
+          ]:
+              with open(path, "r", encoding="utf-8") as f:
+                  json.load(f)
+              print("valid json:", path)
+          PY
