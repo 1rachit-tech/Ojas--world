@@ -12,7 +12,6 @@ import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.MatrixTransformation
-import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -125,7 +124,7 @@ object OjasMediaComposition {
 
         val mediaItem = mediaBuilder.build()
         val removeAudio = !isImage &&
-            ((clip["originalAudioEnabled"] as? Boolean) == false || opacity <= 0f)
+            (originalVolume <= 0.001f || opacity <= 0f)
 
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
 
@@ -250,6 +249,7 @@ object OjasMediaComposition {
 
             EditedMediaItem.Builder(mediaItem)
                 .setEffects(Effects(processors, emptyList()))
+                .setDurationUs((startMs + durationMs) * 1_000L)
                 .build()
         }
     }
