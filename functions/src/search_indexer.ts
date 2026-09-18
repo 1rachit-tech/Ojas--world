@@ -180,7 +180,7 @@ function numberValue(value: unknown): number {
 
 const AZURE_SEARCH_INGEST_URL = (process.env.AZURE_SEARCH_INGEST_URL ?? '')
   .trim()
-  .replace(/\\/$/, '');
+  .replace(/\/$/, '');
 const AZURE_SEARCH_INGEST_SECRET = (process.env.AZURE_SEARCH_INGEST_SECRET ?? '').trim();
 const MIRROR_FIRESTORE_SEARCH_INDEX =
   (process.env.SEARCH_INDEX_MIRROR_FIRESTORE ?? 'false').toLowerCase() === 'true';
