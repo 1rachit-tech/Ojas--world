@@ -14,6 +14,14 @@ Do not create a toy/demo search. Treat Search as a production discovery subsyste
 6. Never introduce a paid cloud dependency without an explicit deployment switch and a clear cost note.
 7. Never place Azure Search keys, Service Bus secrets, Firebase Admin credentials, embedding secrets or other privileged credentials in Flutter.
 
+## Final implementation target
+
+The existing OJAS Search branch must be completed as one coherent subsystem. Do not leave UI, API, indexing, safety, analytics or deployment as disconnected stubs.
+
+The production cloud choice is Azure.
+
+Firebase may remain the transactional/source-data system and authentication provider during the migration, but Firebase Search indexing is not the production retrieval engine.
+
 ## Target production architecture
 
 Flutter Search UI
@@ -257,6 +265,64 @@ Provide manual deployment workflow only.
 
 ## UI requirements
 
+The Search experience is a first-class OJAS discovery page, not a debug list.
+
+### App surfaces
+- Discover landing/search entry
+- dedicated Search screen
+- typed-query suggestions
+- recent-search surface
+- tabbed results
+- creator result destination
+- Show result destination
+- hashtag destination
+- sound destination
+- topic destination
+- place destination
+- LIVE destination
+- immersive Search Show viewer
+
+### Visual system
+- pure-white/minimal navigation language
+- very light grey content surfaces
+- rounded 16–22px cards where appropriate
+- soft borders and restrained elevation
+- high-contrast black typography
+- compact premium metadata
+- no visual clutter
+- no placeholder picsum/mock content in production Search results
+- no "Reels" or "Shorts" user-facing terminology
+- Show is the OJAS short-video term
+
+### Interaction
+- debounce suggestions
+- stale-request cancellation
+- haptic selection feedback where already supported
+- keyboard-safe scrolling
+- pull/scroll pagination without duplicate requests
+- loading, empty, offline and error states
+- cached-result indicator
+- retry action
+- safe accessibility hit targets
+
+### Result hierarchy
+Creator:
+avatar → display name → @OJAS ID → follower metadata
+
+Show:
+thumbnail → title/caption → creator → views/quality metadata → Show destination
+
+Hashtag/topic/place:
+entity icon → canonical name → supporting metadata
+
+Sound:
+audio icon → sound title → creator/usage context
+
+LIVE:
+live badge → creator/title → current live destination
+
+
+
 Search screen must look premium and modern:
 - generous spacing
 - rounded search field
@@ -327,6 +393,24 @@ If safety fails:
 
 ## Testing gates
 
+Required checks are not optional. Do not merge while any required Search check is red.
+
+Before declaring the subsystem ready:
+1. Flutter query processor tests
+2. Flutter ranking tests
+3. Azure API TypeScript check
+4. Firebase bridge TypeScript build
+5. Azure Bicep validation
+6. Search index JSON validation
+7. weak-network/cache behavior
+8. block/privacy safety cases
+9. pagination/cursor cases
+10. zero-result and suggestion behavior
+
+A failing CI job must be fixed from its actual compiler/test output. Do not bypass required checks or merge with red Search validation.
+
+
+
 Before declaring the subsystem ready:
 1. Flutter query processor tests
 2. Flutter ranking tests
@@ -342,6 +426,42 @@ Before declaring the subsystem ready:
 Never report success unless CI or an equivalent reproducible validation actually passed.
 
 ## Definition of done
+
+The implementation is complete only when all of the following are true:
+- Azure is the declared production Search cloud
+- Flutter Search UI uses a stable backend abstraction
+- Azure Search API is wired
+- Azure authentication boundary is wired
+- safety is enforced server-side and fail-closed
+- Firebase Profile/Show writes can reach the Azure indexing pipeline
+- Service Bus index event path is wired
+- Service Bus analytics path is wired
+- scheduled reconciliation is wired
+- local analytics retry queue is wired
+- Search cache fallback is wired
+- personalization is wired
+- entity-specific result projection is wired
+- cursor pagination is wired
+- modern Search UI is wired to existing OJAS destinations
+- schema/index versioning exists
+- semantic/vector upgrades are feature-gated
+- managed identity/RBAC path exists
+- paid infrastructure provisioning is explicit opt-in
+- secrets are not committed
+- CI validates code and infrastructure
+- all required CI checks are green before merge
+
+## Current delivery gate
+
+The latest known Search CI run exposed Flutter-only compile/test failures caused by:
+- one incorrect relative import in query_processor.dart
+- one duplicate synonym-map key
+
+Those two issues have been corrected on the branch.
+
+The branch must now receive a fresh CI run and remain unmerged until the Flutter Search test job is green.
+
+
 
 Done means:
 - UI is connected to the production abstraction
