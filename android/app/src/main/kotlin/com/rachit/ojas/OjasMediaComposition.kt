@@ -74,8 +74,10 @@ object OjasMediaComposition {
     ): EditedMediaItem? {
         val sourceId = clip["sourceId"]?.toString().orEmpty()
         val asset = assets[sourceId] ?: return null
-        val path = (asset["normalizedUri"]?.toString()?.takeIf { it.isNotBlank() }
-            ?: asset["localUri"]?.toString().orEmpty())
+        // Part 2 renders the editable source timeline. The final composition
+        // is tracked separately in CreationProject.renderedUri, so a stale
+        // Part 1 normalized export must never become the new source clip.
+        val path = asset["localUri"]?.toString().orEmpty()
 
         val file = File(path)
         if (!file.exists() || !file.isFile) return null
