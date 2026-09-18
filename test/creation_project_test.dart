@@ -80,4 +80,43 @@ void main() {
     expect(trimmed.trimInMs, 2500);
     expect(trimmed.trimOutMs, 9000);
   });
+
+  test('CreationProject persists renderedUri and clip audio volume', () {
+    final project = CreationProject.createForAsset(
+      ownerId: 'user-1',
+      localUri: '/tmp/source.mp4',
+      isVideo: true,
+      durationMs: 12000,
+    ).copyWith(
+      renderedUri: '/tmp/final.mp4',
+      timeline: <CreationTimelineClip>[
+        const CreationTimelineClip(
+          clipId: 'clip-1',
+          sourceId: 'asset-1',
+          startMs: 0,
+          endMs: 12000,
+          originalVolume: 0.35,
+        ),
+      ],
+    );
+
+    final restored = CreationProject.fromEncoded(project.encode());
+
+    expect(restored.renderedUri, '/tmp/final.mp4');
+    expect(restored.timeline.single.originalVolume, 0.35);
+  });
+
+  test('CreationProject can explicitly clear renderedUri after an edit', () {
+    final project = CreationProject.createForAsset(
+      ownerId: 'user-1',
+      localUri: '/tmp/source.mp4',
+      isVideo: true,
+    ).copyWith(renderedUri: '/tmp/final.mp4');
+
+    final edited = project.copyWith(renderedUri: null);
+
+    expect(project.renderedUri, '/tmp/final.mp4');
+    expect(edited.renderedUri, isNull);
+  });
+
 }
