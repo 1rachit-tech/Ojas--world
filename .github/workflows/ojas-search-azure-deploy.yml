@@ -15,32 +15,46 @@ on:
         type: boolean
       search_service_name:
         description: 'Globally unique Azure AI Search service name.'
-        required: false
+        required: true
         default: ''
         type: string
       function_app_name:
         description: 'Globally unique Azure Function App name.'
-        required: false
+        required: true
         default: ''
         type: string
       function_plan_name:
         description: 'Azure Flex Consumption plan name.'
-        required: false
+        required: true
         default: ''
         type: string
       storage_account_name:
         description: 'Globally unique Azure Storage account name.'
-        required: false
+        required: true
         default: ''
         type: string
       service_bus_namespace_name:
-        description: 'Azure Service Bus namespace name.'
-        required: false
+        description: 'Service Bus namespace name.'
+        required: true
         default: ''
         type: string
+      search_sku:
+        description: 'Azure AI Search tier. Start with Basic for the lowest dedicated production profile.'
+        required: true
+        default: basic
+        type: choice
+        options:
+          - basic
+          - standard
+      reconcile:
+        description: 'Enable scheduled Firebase-to-Azure reconciliation.'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   validate:
@@ -60,6 +74,12 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
+      - name: Validate Bicep
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep build --file azure/search-infra/main.bicep
+            az bicep build --file azure/search-infra/backend.bicep
 
   deploy:
     needs: validate
@@ -69,10 +89,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure login
+      - name: Azure login with OIDC
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve deployment principal object ID
+        id: deployment_identity
+        shell: bash
+        run: |
+          PRINCIPAL_ID="$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id --output tsv)"
+          test -n "$PRINCIPAL_ID"
+          echo "principal_id=$PRINCIPAL_ID" >> "$GITHUB_OUTPUT"
 
       - name: Verify explicit paid deployment switch
         if: ${{ inputs.provision_paid_resources == true }}
@@ -111,6 +141,7 @@ jobs:
             partitionCount=1
             searchApiPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
             searchWorkerPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
+            deploymentPrincipalId=${{ steps.deployment_identity.outputs.principal_id }}
 
       - name: Prepare Function package
         if: ${{ inputs.deploy_function_code == true }}
@@ -125,47 +156,73 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           AZURE_SEARCH_INGEST_SECRET: ${{ secrets.AZURE_SEARCH_INGEST_SECRET }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_CHECK_APP_ID: ${{ secrets.FIREBASE_APP_CHECK_APP_ID }}
+        shell: bash
         run: |
           FUNCTION_HOST="${{ inputs.function_app_name }}"
           SEARCH_ENDPOINT="${{ steps.search.outputs.endpoint }}"
-          az functionapp config appsettings set             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "$FUNCTION_HOST"             --settings               AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT"               AZURE_SEARCH_INDEX_NAME=ojas-search-v1               AZURE_SEARCH_API_VERSION=2026-04-01               AZURE_SEARCH_AUTH_MODE=managed_identity               AZURE_SEARCH_ENABLE_VECTOR=false               AZURE_SEARCH_ENABLE_SEMANTIC=false               AZURE_SEARCH_EVENT_MODE=servicebus               SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net"               SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events               SEARCH_ANALYTICS_QUEUE=ojas-search-events               SEARCH_RECONCILE_ENABLED=${{ inputs.reconcile }}
-               SEARCH_RECONCILE_CRON="0 0 */12 * * *"
-               SEARCH_RECONCILE_BATCH_SIZE=250
-               SEARCH_RECONCILE_MAX_INDEX_DOCS=10000               FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"               FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON"               AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
+          az functionapp config appsettings set \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --name "$FUNCTION_HOST" \
+            --settings \
+              AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT" \
+              AZURE_SEARCH_INDEX_NAME=ojas-search-v1 \
+              AZURE_SEARCH_API_VERSION=2026-04-01 \
+              AZURE_SEARCH_AUTH_MODE=managed_identity \
+              AZURE_SEARCH_ENABLE_VECTOR=false \
+              AZURE_SEARCH_ENABLE_SEMANTIC=false \
+              AZURE_SEARCH_EVENT_MODE=servicebus \
+              SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net" \
+              SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events \
+              SEARCH_ANALYTICS_QUEUE=ojas-search-events \
+              SEARCH_RECONCILE_ENABLED=${{ inputs.reconcile }} \
+              SEARCH_RECONCILE_CRON="0 0 */12 * * *" \
+              SEARCH_RECONCILE_BATCH_SIZE=250 \
+              SEARCH_RECONCILE_MAX_INDEX_DOCS=10000 \
+              FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+              FIREBASE_APP_CHECK_APP_ID="$FIREBASE_APP_CHECK_APP_ID" \
+              REQUIRE_APP_CHECK=true \
+              FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON" \
+              AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
 
       - name: Deploy Function package
         if: ${{ inputs.deploy_function_code == true }}
         run: |
-          az functionapp deployment source config-zip             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "${{ inputs.function_app_name }}"             --src ojas-search-api.zip
+          az functionapp deployment source config-zip \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ inputs.function_app_name }}" \
+            --src ojas-search-api.zip
 
-      - name: Create or update Azure Search index
+      - name: Create or update Azure Search index with Entra ID
         if: ${{ inputs.provision_paid_resources == true }}
         env:
           SEARCH_ENDPOINT: ${{ steps.search.outputs.endpoint }}
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          SEARCH_SERVICE_NAME: ${{ inputs.search_service_name }}
+        shell: bash
         run: |
-          SEARCH_API_KEY="$(az search admin-key show --resource-group "$AZURE_RESOURCE_GROUP" --service-name "$SEARCH_SERVICE_NAME" --query primaryKey --output tsv)"
-          test -n "$SEARCH_API_KEY"
-          curl -sS -X PUT             "${SEARCH_ENDPOINT}/indexes/ojas-search-v1?api-version=2026-04-01"             -H "Content-Type: application/json"             -H "api-key: ${SEARCH_API_KEY}"             --data-binary @azure/search-infra/index.schema.json
+          SEARCH_TOKEN="$(az account get-access-token --resource https://search.azure.com --query accessToken --output tsv)"
+          test -n "$SEARCH_TOKEN"
+          curl -fsS -X PUT \
+            "${SEARCH_ENDPOINT}/indexes/ojas-search-v1?api-version=2026-04-01" \
+            -H "Authorization: Bearer ${SEARCH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @azure/search-infra/index.schema.json
 
       - name: Smoke-check deployed Function endpoint
         if: ${{ inputs.deploy_function_code == true }}
+        shell: bash
         run: |
           FUNCTION_BASE="https://${{ inputs.function_app_name }}/api"
           echo "Function API base: ${FUNCTION_BASE}"
-          curl -fsS -o /dev/null -w "HTTP %{http_code}\\n" "${FUNCTION_BASE}" || true
-          echo "Expected authenticated routes:"
-          echo "  ${FUNCTION_BASE}/v1/search"
-          echo "  ${FUNCTION_BASE}/v1/search/suggestions"
-          echo "  ${FUNCTION_BASE}/v1/search/events"
-          echo "  ${FUNCTION_BASE}/v1/search/index/events"
+          echo "Search routes are protected by Firebase Auth + Firebase App Check."
+          echo "Endpoint health is validated by authenticated application traffic, not an anonymous probe."
 
       - name: Deployment summary
         run: |
-          echo "OJAS Search starter production deployment completed."
-          echo "Flutter build-time base URL: https://${{ inputs.function_app_name }}/api"
-          echo "Firebase bridge URL: https://${{ inputs.function_app_name }}/api"
+          echo "OJAS Search security-hardened starter deployment completed."
+          echo "Flutter API base: https://${{ inputs.function_app_name }}/api"
           echo "Search SKU: ${{ inputs.search_sku }} | replicas: 1 | partitions: 1"
+          echo "Azure Search local API-key authentication: disabled."
+          echo "Firebase App Check enforcement: enabled."
           echo "Vector mode remains disabled until a verified embedding/vectorizer deployment is configured."
           echo "Semantic ranking remains disabled initially to control cost."
