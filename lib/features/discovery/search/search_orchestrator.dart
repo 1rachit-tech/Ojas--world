@@ -325,6 +325,15 @@ class SearchOrchestrator {
         didYouMean: didYouMean,
       );
     } catch (error) {
+      if (error is StateError &&
+          error.message == 'Search safety context unavailable.') {
+        return SearchPage(
+          results: const <SearchResult>[],
+          query: query,
+          sessionId: sessionId,
+        );
+      }
+
       final cached = await _cache.read(
         queryKey: queryKey,
         uid: uid,
