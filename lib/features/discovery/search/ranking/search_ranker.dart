@@ -190,24 +190,24 @@ class SearchRanker {
     var negative = 0.0;
 
     for (final key in keyCandidates) {
-      positive = positive >
-              (context.creatorAffinity[key] ??
-                  context.topicAffinity[key] ??
-                  context.hashtagAffinity[key] ??
-                  context.soundAffinity[key] ??
-                  context.contentTypeAffinity[key] ??
-                  0)
-          ? positive
-          : (context.creatorAffinity[key] ??
-              context.topicAffinity[key] ??
-              context.hashtagAffinity[key] ??
-              context.soundAffinity[key] ??
-              context.contentTypeAffinity[key] ??
-              0);
+      final candidatePositive = <double>[
+        context.creatorAffinity[key] ?? 0,
+        context.topicAffinity[key] ?? 0,
+        context.hashtagAffinity[key] ?? 0,
+        context.soundAffinity[key] ?? 0,
+        context.contentTypeAffinity[key] ?? 0,
+      ].fold<double>(
+        0,
+        (best, value) => value > best ? value : best,
+      );
+      if (candidatePositive > positive) {
+        positive = candidatePositive;
+      }
 
-      negative = negative > (context.negativeAffinity[key] ?? 0)
-          ? negative
-          : (context.negativeAffinity[key] ?? 0);
+      final candidateNegative = context.negativeAffinity[key] ?? 0;
+      if (candidateNegative > negative) {
+        negative = candidateNegative;
+      }
     }
 
     return ((positive - negative + 5) / 10).clamp(0.0, 1.0);
