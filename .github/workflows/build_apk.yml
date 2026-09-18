@@ -39,7 +39,11 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release
+        env:
+          OJAS_SEARCH_API_BASE_URL: ${{ secrets.OJAS_SEARCH_API_BASE_URL }}
+        run: |
+          flutter build apk --release \
+            --dart-define=OJAS_SEARCH_API_BASE_URL="$OJAS_SEARCH_API_BASE_URL"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
