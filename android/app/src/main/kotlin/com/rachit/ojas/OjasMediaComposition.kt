@@ -123,6 +123,8 @@ object OjasMediaComposition {
         }
 
         val mediaItem = mediaBuilder.build()
+        val originalVolume =
+            (clip["originalVolume"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
         val removeAudio = !isImage &&
             (originalVolume <= 0.001f || opacity <= 0f)
 
@@ -175,8 +177,6 @@ object OjasMediaComposition {
         }
 
         val audioProcessors = mutableListOf<androidx.media3.common.audio.AudioProcessor>()
-        val originalVolume =
-            (clip["originalVolume"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
 
         if (!isImage && !removeAudio && originalVolume < 0.999f) {
             audioProcessors.add(
@@ -220,6 +220,8 @@ object OjasMediaComposition {
 
             val durationMs =
                 (audio["durationMs"] as? Number)?.toLong()?.takeIf { it > 0 } ?: 1_000L
+            val startMs =
+                ((audio["startMs"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
             val volume =
                 (audio["volume"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
 
@@ -227,12 +229,8 @@ object OjasMediaComposition {
                 .setUri(file.toURI().toString())
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(
-                            ((audio["startMs"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
-                        )
-                        .setEndPositionMs(
-                            ((audio["startMs"] as? Number)?.toLong() ?: 0L) + durationMs
-                        )
+                        .setStartPositionMs(startMs)
+                        .setEndPositionMs(startMs + durationMs)
                         .build()
                 )
                 .build()
