@@ -209,7 +209,7 @@ resource functionServiceBusSenderRole 'Microsoft.Authorization/roleAssignments@2
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
-      '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+      '69a216fc-b8fb-44d8-bc22-1f3c2cd27a39'
     )
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
