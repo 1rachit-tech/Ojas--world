@@ -270,6 +270,7 @@ export async function searchAzureIndex(args: {
 export async function suggestAzureIndex(
   query: string,
   limit = 8,
+  filter = "eligible eq true and visibility eq 'public'",
 ): Promise<Array<{
   text: string;
   subtitle: string;
@@ -283,7 +284,7 @@ export async function suggestAzureIndex(
     search: query,
     top: Math.min(Math.max(limit, 1), 20),
     select: "id,entityType,title,subtitle,imageUrl",
-    filter: "eligible eq true and visibility eq 'public'",
+    filter,
   });
 
   const values = Array.isArray(payload.value)
