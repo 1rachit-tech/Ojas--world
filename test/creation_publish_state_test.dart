@@ -22,6 +22,45 @@ void main() {
     expect(restored.requestId, 'request-1');
   });
 
+  test('upload checkpoint round-trips and reports resumable progress', () {
+    final state = CreationPublishState(
+      projectId: 'project-1',
+      stage: CreationPublishStage.uploading,
+      requestId: 'request-1',
+      uploadStoragePath: 'creation/u1/project-1/asset-1/asset-1.mp4',
+      uploadSourceFingerprint: '/support/asset-1_720p.mp4|16777216',
+      uploadBytes: 16 * 1024 * 1024,
+      uploadTotalBytes: 24 * 1024 * 1024,
+      uploadBlockSize: 8 * 1024 * 1024,
+    );
+
+    expect(state.hasUploadCheckpoint, isTrue);
+    expect(state.uploadProgress, closeTo(2 / 3, 0.0001));
+
+    final restored = CreationPublishState.fromMap(state.toMap());
+    expect(restored.hasUploadCheckpoint, isTrue);
+    expect(restored.uploadStoragePath, state.uploadStoragePath);
+    expect(restored.uploadSourceFingerprint, state.uploadSourceFingerprint);
+    expect(restored.uploadBytes, 16 * 1024 * 1024);
+    expect(restored.uploadBlockSize, 8 * 1024 * 1024);
+  });
+
+  test('misaligned upload checkpoint is rejected as resumable state', () {
+    final state = CreationPublishState(
+      projectId: 'project-1',
+      stage: CreationPublishStage.uploading,
+      requestId: 'request-1',
+      uploadStoragePath: 'creation/u1/project-1/asset-1/asset-1.mp4',
+      uploadSourceFingerprint: 'stale',
+      uploadBytes: 7 * 1024 * 1024,
+      uploadTotalBytes: 24 * 1024 * 1024,
+      uploadBlockSize: 8 * 1024 * 1024,
+    );
+
+    expect(state.hasUploadCheckpoint, isFalse);
+    expect(state.uploadProgress, closeTo(7 / 24, 0.0001));
+  });
+
   test('composer preserves structured mentions and hashtags', () {
     const composer = CreationPostComposer(
       caption: 'Hello @rachit #ojas',

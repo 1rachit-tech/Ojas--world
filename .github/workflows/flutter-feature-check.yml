@@ -59,7 +59,10 @@ jobs:
           lib/creation/screens/published_shows_screen.dart
           lib/creation/screens/creation_pipeline_editor_screen.dart
           lib/creation/services/creation_checkpoint_store.dart
+          lib/creation/models/creation_publish_state.dart
+          lib/creation/services/creation_azure_media_service.dart
           lib/creation/services/creation_publish_service.dart
+          lib/creation/services/creation_publish_recovery_service.dart
           lib/creation/services/published_show_edit_service.dart
           lib/services/azure_media_playback_service.dart
 

@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
 
-import '../../screens/create_screen.dart';
 import '../models/creation_project.dart';
 import '../services/creation_checkpoint_store.dart';
 import '../services/creation_project_store.dart';
+import '../services/creation_publish_recovery_service.dart';
+import '../services/creation_publish_service.dart';
 import 'creation_pipeline_editor_screen.dart';
 import 'published_shows_screen.dart';
 
@@ -20,14 +22,52 @@ class CreationHubScreen extends StatefulWidget {
 
 class _CreationHubScreenState extends State<CreationHubScreen> {
   final ImagePicker _picker = ImagePicker();
+  final CreationPublishRecoveryService _recovery =
+      const CreationPublishRecoveryService();
+
   bool _loading = false;
+  bool _recovering = false;
+  List<CreationPublishRecoveryItem> _recoveryItems =
+      const <CreationPublishRecoveryItem>[];
 
   String get _ownerId => FirebaseAuth.instance.currentUser?.uid ?? '';
 
+  @override
+  void initState() {
+    super.initState();
+    _loadRecovery();
+  }
+
+  Future<void> _loadRecovery() async {
+    final ownerId = _ownerId;
+    if (ownerId.isEmpty) {
+      if (mounted) {
+        setState(
+          () => _recoveryItems = const <CreationPublishRecoveryItem>[],
+        );
+      }
+      return;
+    }
+    try {
+      final items = await _recovery.list(ownerId: ownerId);
+      if (!mounted) return;
+      setState(() => _recoveryItems = items.take(3).toList(growable: false));
+    } catch (error) {
+      debugPrint('OJAS publish recovery scan failed: $error');
+    }
+  }
+
   Future<void> _openCamera() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => const CreateScreen()),
+    if (_ownerId.isEmpty) {
+      _show('Please sign in before creating content.');
+      return;
+    }
+    final video = await _picker.pickVideo(
+      source: ImageSource.camera,
+      maxDuration: const Duration(minutes: 15),
     );
+    if (video == null || !mounted) return;
+    await _openVideoProject(video);
   }
 
   Future<void> _pickMedia({bool multi = false}) async {
@@ -48,19 +88,8 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
       if (files.isEmpty || !mounted) return;
 
       final assets = <CreationMediaAsset>[];
-      for (final selected in files) {
-        final file = File(selected.path);
-        final size = await file.length();
-        final isVideo = _isVideoPath(selected.path);
-        assets.add(
-          CreationMediaAsset(
-            assetId: '${DateTime.now().microsecondsSinceEpoch}_${assets.length}',
-            localUri: selected.path,
-            type: isVideo ? 'video' : 'image',
-            mimeType: isVideo ? 'video/*' : 'image/*',
-            sizeBytes: size,
-          ),
-        );
+      for (var index = 0; index < files.length; index++) {
+        assets.add(await _buildAsset(files[index], index));
       }
 
       final projectId = '${_ownerId}_${DateTime.now().microsecondsSinceEpoch}';
@@ -73,7 +102,7 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
             clipId: '${projectId}_clip_$index',
             sourceId: asset.assetId,
             startMs: 0,
-            endMs: asset.durationMs ?? 0,
+            endMs: (asset.durationMs ?? 1000).clamp(1, 900000).toInt(),
           ),
         );
       }
@@ -83,7 +112,9 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
         ownerId: _ownerId,
         createdAt: now,
         updatedAt: now,
-        creationType: CreationType.post,
+        creationType: assets.length == 1 && assets.first.type == 'video'
+            ? CreationType.show
+            : CreationType.post,
         status: CreationProjectStatus.editing,
         mediaAssets: assets,
         timeline: timeline,
@@ -97,11 +128,75 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
           builder: (_) => CreationPipelineEditorScreen(project: project),
         ),
       );
+      await _loadRecovery();
     } catch (error) {
       _show('Unable to import media: $error');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _openVideoProject(XFile selected) async {
+    final asset = await _buildAsset(selected, 0);
+    final durationMs = (asset.durationMs ?? 1000).clamp(1, 900000).toInt();
+    final projectId = '${_ownerId}_${DateTime.now().microsecondsSinceEpoch}';
+    final now = DateTime.now();
+    final project = CreationProject(
+      projectId: projectId,
+      ownerId: _ownerId,
+      createdAt: now,
+      updatedAt: now,
+      creationType: CreationType.show,
+      status: CreationProjectStatus.editing,
+      mediaAssets: <CreationMediaAsset>[asset.copyWithDuration(durationMs)],
+      timeline: <CreationTimelineClip>[
+        CreationTimelineClip(
+          clipId: '${projectId}_clip_0',
+          sourceId: asset.assetId,
+          startMs: 0,
+          endMs: durationMs,
+        ),
+      ],
+    );
+    await CreationProjectStore.instance.save(project);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CreationPipelineEditorScreen(project: project),
+      ),
+    );
+    await _loadRecovery();
+  }
+
+  Future<CreationMediaAsset> _buildAsset(XFile selected, int index) async {
+    final file = File(selected.path);
+    if (!await file.exists()) {
+      throw const FileSystemException('Selected media is no longer available.');
+    }
+    final size = await file.length();
+    if (size <= 0) {
+      throw const FileSystemException('Selected media is empty.');
+    }
+    final isVideo = _isVideoPath(selected.path);
+    int? durationMs;
+    if (isVideo) {
+      final controller = VideoPlayerController.file(file);
+      try {
+        await controller.initialize();
+        durationMs = controller.value.duration.inMilliseconds;
+      } finally {
+        await controller.dispose();
+      }
+    }
+
+    return CreationMediaAsset(
+      assetId: '${DateTime.now().microsecondsSinceEpoch}_$index',
+      localUri: selected.path,
+      type: isVideo ? 'video' : 'image',
+      mimeType: isVideo ? 'video/*' : 'image/*',
+      sizeBytes: size,
+      durationMs: durationMs,
+    );
   }
 
   bool _isVideoPath(String path) {
@@ -111,6 +206,29 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
         lower.endsWith('.m4v') ||
         lower.endsWith('.webm') ||
         lower.endsWith('.avi');
+  }
+
+  Future<void> _resumePublish(CreationPublishRecoveryItem item) async {
+    if (_recovering) return;
+    setState(() => _recovering = true);
+    try {
+      final result = await _recovery.resume(item);
+      if (!mounted) return;
+      final message = result.isProcessing
+          ? 'Upload recovered. OJAS is processing the Show.'
+          : 'Publishing recovered successfully.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await _loadRecovery();
+    } catch (error) {
+      if (!mounted) return;
+      final message = error is CreationPublishException
+          ? error.message
+          : 'Could not resume this publish: $error';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      await _loadRecovery();
+    } finally {
+      if (mounted) setState(() => _recovering = false);
+    }
   }
 
   Future<void> _openDrafts() async {
@@ -193,6 +311,7 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                                     builder: (_) => CreationPipelineEditorScreen(project: project),
                                   ),
                                 );
+                                await _loadRecovery();
                               },
                             );
                           },
@@ -240,6 +359,14 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
               'Create, edit and publish from one project pipeline.',
               style: TextStyle(color: Color(0xFF6B7280), fontSize: 14, height: 1.35),
             ),
+            if (_recoveryItems.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _RecoveryCard(
+                items: _recoveryItems,
+                busy: _recovering,
+                onResume: _resumePublish,
+              ),
+            ],
             const SizedBox(height: 24),
             Row(
               children: [
@@ -247,8 +374,8 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                   child: _EntryCard(
                     icon: Icons.videocam_rounded,
                     title: 'Camera',
-                    subtitle: 'Record new media',
-                    onTap: _openCamera,
+                    subtitle: 'Record directly into the production Show pipeline',
+                    onTap: _loading ? null : _openCamera,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -301,15 +428,84 @@ class _CreationHubScreenState extends State<CreationHubScreen> {
                 'Preview',
                 'Post composition',
                 'Privacy & safety',
-                'Upload & publish',
-                'Server render & moderation',
-                'Secure playback',
+                'Device preparation',
+                'Resumable upload & publish',
+                'Server validation, render & moderation',
+                'Secure Home / Show playback',
               ],
             ),
             const SizedBox(height: 14),
             const _ArchitectureNote(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RecoveryCard extends StatelessWidget {
+  const _RecoveryCard({
+    required this.items,
+    required this.busy,
+    required this.onResume,
+  });
+
+  final List<CreationPublishRecoveryItem> items;
+  final bool busy;
+  final Future<void> Function(CreationPublishRecoveryItem item) onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = items.first;
+    final percent = (item.progress * 100).round().clamp(0, 100);
+    final label = item.resumable
+        ? 'Upload interrupted — $percent% ready to resume'
+        : 'Publish needs attention — resume when ready';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.sync_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Publish recovery', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+          const SizedBox(height: 12),
+          if (item.progress > 0)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: item.progress.clamp(0.0, 1.0).toDouble(),
+                minHeight: 6,
+                backgroundColor: Colors.white12,
+              ),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: busy ? null : () => onResume(item),
+              icon: busy
+                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.play_arrow_rounded),
+              label: Text(busy ? 'Recovering…' : 'Resume publish'),
+            ),
+          ),
+          if (items.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('${items.length - 1} more publish task(s) need attention.', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            ),
+        ],
       ),
     );
   }
@@ -353,7 +549,7 @@ class _EntryCard extends StatelessWidget {
               const SizedBox(height: 16),
               Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
               const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+              Text(subtitle, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12, height: 1.35)),
             ],
           ),
         ),
@@ -392,7 +588,7 @@ class _PipelineCard extends StatelessWidget {
                     child: Text('${entry.key + 1}', style: const TextStyle(color: Colors.white, fontSize: 10)),
                   ),
                   const SizedBox(width: 10),
-                  Text(entry.value, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Expanded(child: Text(entry.value, style: const TextStyle(color: Colors.white70, fontSize: 12))),
                 ],
               ),
             ),
@@ -416,9 +612,25 @@ class _ArchitectureNote extends StatelessWidget {
         border: Border.all(color: const Color(0xFFFDE68A)),
       ),
       child: const Text(
-        'Media originals stay local. Project state is saved locally first. Heavy media processing is routed through the existing OJAS Azure architecture after its creation-media endpoint is verified. No new paid backend is enabled by this screen.',
+        'Original gallery media stays local. The editor checkpoints project state locally. Device preparation happens before cloud upload. Upload resumes from confirmed Azure blocks after interruption. Server processing is used only when validation or a real edit requires it. No new paid backend is enabled by this screen.',
         style: TextStyle(color: Color(0xFF78350F), fontSize: 12, height: 1.45),
       ),
     );
   }
+}
+
+extension on CreationMediaAsset {
+  CreationMediaAsset copyWithDuration(int durationMs) => CreationMediaAsset(
+        assetId: assetId,
+        localUri: localUri,
+        type: type,
+        mimeType: mimeType,
+        sizeBytes: sizeBytes,
+        width: width,
+        height: height,
+        durationMs: durationMs,
+        creationTime: creationTime,
+        orientation: orientation,
+        normalizedUri: normalizedUri,
+      );
 }

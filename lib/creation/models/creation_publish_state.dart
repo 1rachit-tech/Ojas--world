@@ -19,6 +19,11 @@ class CreationPublishState {
     this.errorCode,
     this.errorMessage,
     this.updatedAt,
+    this.uploadStoragePath,
+    this.uploadSourceFingerprint,
+    this.uploadBytes = 0,
+    this.uploadTotalBytes = 0,
+    this.uploadBlockSize = 0,
   });
 
   final String projectId;
@@ -30,11 +35,35 @@ class CreationPublishState {
   final String? errorMessage;
   final DateTime? updatedAt;
 
+  /// Durable local upload checkpoint metadata. No SAS token is stored here.
+  final String? uploadStoragePath;
+  final String? uploadSourceFingerprint;
+  final int uploadBytes;
+  final int uploadTotalBytes;
+  final int uploadBlockSize;
+
   double get progress {
     if (totalBytes <= 0) return 0;
     final value = bytesUploaded / totalBytes;
     return value.clamp(0.0, 1.0);
   }
+
+  double get uploadProgress {
+    if (uploadTotalBytes <= 0) return 0;
+    final value = uploadBytes / uploadTotalBytes;
+    return value.clamp(0.0, 1.0);
+  }
+
+  bool get hasUploadCheckpoint =>
+      uploadStoragePath != null &&
+      uploadStoragePath!.isNotEmpty &&
+      uploadSourceFingerprint != null &&
+      uploadSourceFingerprint!.isNotEmpty &&
+      uploadBytes > 0 &&
+      uploadTotalBytes > 0 &&
+      uploadBlockSize > 0 &&
+      uploadBytes <= uploadTotalBytes &&
+      (uploadBytes == uploadTotalBytes || uploadBytes % uploadBlockSize == 0);
 
   bool get isTerminal =>
       stage == CreationPublishStage.published ||
@@ -48,6 +77,11 @@ class CreationPublishState {
     String? errorCode,
     String? errorMessage,
     DateTime? updatedAt,
+    String? uploadStoragePath,
+    String? uploadSourceFingerprint,
+    int? uploadBytes,
+    int? uploadTotalBytes,
+    int? uploadBlockSize,
   }) {
     return CreationPublishState(
       projectId: projectId,
@@ -58,6 +92,11 @@ class CreationPublishState {
       errorCode: errorCode ?? this.errorCode,
       errorMessage: errorMessage ?? this.errorMessage,
       updatedAt: updatedAt ?? DateTime.now(),
+      uploadStoragePath: uploadStoragePath ?? this.uploadStoragePath,
+      uploadSourceFingerprint: uploadSourceFingerprint ?? this.uploadSourceFingerprint,
+      uploadBytes: uploadBytes ?? this.uploadBytes,
+      uploadTotalBytes: uploadTotalBytes ?? this.uploadTotalBytes,
+      uploadBlockSize: uploadBlockSize ?? this.uploadBlockSize,
     );
   }
 
@@ -70,6 +109,11 @@ class CreationPublishState {
         'errorCode': errorCode,
         'errorMessage': errorMessage,
         'updatedAt': updatedAt?.toIso8601String(),
+        'uploadStoragePath': uploadStoragePath,
+        'uploadSourceFingerprint': uploadSourceFingerprint,
+        'uploadBytes': uploadBytes,
+        'uploadTotalBytes': uploadTotalBytes,
+        'uploadBlockSize': uploadBlockSize,
       };
 
   factory CreationPublishState.fromMap(Map<String, dynamic> map) {
@@ -87,6 +131,11 @@ class CreationPublishState {
       errorCode: map['errorCode'] as String?,
       errorMessage: map['errorMessage'] as String?,
       updatedAt: DateTime.tryParse(map['updatedAt'] as String? ?? ''),
+      uploadStoragePath: map['uploadStoragePath'] as String?,
+      uploadSourceFingerprint: map['uploadSourceFingerprint'] as String?,
+      uploadBytes: (map['uploadBytes'] as num?)?.toInt() ?? 0,
+      uploadTotalBytes: (map['uploadTotalBytes'] as num?)?.toInt() ?? 0,
+      uploadBlockSize: (map['uploadBlockSize'] as num?)?.toInt() ?? 0,
     );
   }
 }
