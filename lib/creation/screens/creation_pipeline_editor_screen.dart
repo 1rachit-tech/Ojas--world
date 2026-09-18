@@ -57,14 +57,14 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         final timeline = List<CreationTimelineClip>.from(_project.timeline);
         final current = timeline.first;
         final savedTrimOut = current.trimOutMs ?? durationMs;
-        final safeTrimOut = savedTrimOut.clamp(1, durationMs);
+        final safeTrimOut = savedTrimOut.clamp(1, durationMs).toInt();
         timeline[0] = current.copyWith(
           endMs: durationMs,
           trimOutMs: safeTrimOut,
         );
         _project = _project.copyWith(timeline: timeline);
-        _trimStart = (current.trimInMs / durationMs).clamp(0.0, 0.98);
-        _trimEnd = (safeTrimOut / durationMs).clamp(_trimStart + 0.01, 1.0);
+        _trimStart = (current.trimInMs / durationMs).clamp(0.0, 0.98).toDouble();
+        _trimEnd = (safeTrimOut / durationMs).clamp(_trimStart + 0.01, 1.0).toDouble();
       }
       if (!mounted) {
         await controller.dispose();
@@ -281,7 +281,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         endMs: endMs,
         onProgress: (progress) {
           if (!mounted || !_exporting) return;
-          setState(() => _exportProgress = progress.clamp(0.0, 1.0));
+          setState(() => _exportProgress = progress.clamp(0.0, 1.0).toDouble());
         },
       );
 
