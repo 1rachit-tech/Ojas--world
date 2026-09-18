@@ -121,9 +121,16 @@ export async function suggestionsHttp(
 
     // Suggestions are intentionally filtered to eligible public content.
     // The final search endpoint applies viewer-specific block filtering.
+    const safety = await loadSafetyContext(user);
+    const filter = odataFilterForSafety(
+      safety.blockedCreatorIds,
+      "all",
+    );
+
     const values = await suggestAzureIndex(
       query,
       boundedPageSize(body.limit ?? 8),
+      filter,
     );
 
     return json(200, { suggestions: values });
@@ -167,6 +174,65 @@ async function publishIndexEvent(
   } finally {
     await sender.close();
     await client.close();
+  }
+}
+
+
+export async function eventsHttp(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const user = await authenticate(
+    request.headers.get("authorization") ?? undefined,
+  );
+
+  if (!user) return json(401, { error: "unauthorized" });
+
+  try {
+    const body = await readJson<{
+      events?: Array<Record<string, unknown>>;
+    }>(request);
+
+    const events = Array.isArray(body.events)
+      ? body.events.slice(0, 100)
+      : [];
+
+    if (events.length === 0) {
+      return json(202, { accepted: 0 });
+    }
+
+    if (!config.serviceBusConnection) {
+      // Analytics is deliberately best-effort. Search must not depend on it.
+      return json(202, { accepted: 0, stored: false });
+    }
+
+    const client = new ServiceBusClient(
+      config.serviceBusConnection,
+    );
+    const sender = client.createSender(config.analyticsQueue);
+
+    try {
+      await sender.sendMessages(
+        events.map((event) => ({
+          body: {
+            ...event,
+            uid: user.uid,
+            receivedAt: new Date().toISOString(),
+          },
+        })),
+      );
+    } finally {
+      await sender.close();
+      await client.close();
+    }
+
+    return json(202, {
+      accepted: events.length,
+      stored: true,
+    });
+  } catch (error) {
+    context.error("OJAS Search analytics ingest failed.", error);
+    return json(202, { accepted: 0, stored: false });
   }
 }
 
@@ -246,6 +312,13 @@ app.http("searchSuggestions", {
   authLevel: "anonymous",
   route: "v1/search/suggestions",
   handler: suggestionsHttp,
+});
+
+app.http("searchEvents", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  route: "v1/search/events",
+  handler: eventsHttp,
 });
 
 app.http("searchIndexIngest", {
