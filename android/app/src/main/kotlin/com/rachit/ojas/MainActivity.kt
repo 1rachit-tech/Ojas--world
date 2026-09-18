@@ -1,6 +1,8 @@
 package com.rachit.ojas
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +17,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 import android.os.Bundle
@@ -33,9 +36,83 @@ import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
 
 class MainActivity : FlutterActivity() {
+    private var pendingAudioResult: MethodChannel.Result? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
+    }
+
+    private fun pickAudioFile(result: MethodChannel.Result) {
+        if (pendingAudioResult != null) {
+            result.error("PICKER_BUSY", "Another audio picker request is already active.", null)
+            return
+        }
+
+        pendingAudioResult = result
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "audio/*"
+            },
+            AUDIO_PICK_REQUEST,
+        )
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != AUDIO_PICK_REQUEST) return
+
+        val result = pendingAudioResult
+        pendingAudioResult = null
+        if (result == null) return
+
+        if (resultCode != RESULT_OK || data?.data == null) {
+            result.success(null)
+            return
+        }
+
+        try {
+            val uri = data.data as Uri
+            val directory = File(filesDir, "ojas/audio")
+            directory.mkdirs()
+
+            val name = "audio_" + System.currentTimeMillis() + ".bin"
+            val target = File(directory, name)
+
+            contentResolver.openInputStream(uri).use { input ->
+                requireNotNull(input) { "Unable to open selected audio." }
+                FileOutputStream(target).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
+            val durationMs = runCatching {
+                android.media.MediaMetadataRetriever().run {
+                    setDataSource(target.absolutePath)
+                    extractMetadata(
+                        android.media.MediaMetadataRetriever.METADATA_KEY_DURATION,
+                    )?.toLongOrNull() ?: 0L
+                }
+            }.getOrDefault(0L)
+
+            result.success(
+                mapOf(
+                    "path" to target.absolutePath,
+                    "durationMs" to durationMs,
+                ),
+            )
+        } catch (error: Throwable) {
+            result.error(
+                "AUDIO_PICK_FAILED",
+                error.message ?: "Unable to import audio.",
+                null,
+            )
+        }
+    }
+
+    companion object {
+        private const val AUDIO_PICK_REQUEST = 9217
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -50,6 +127,16 @@ class MainActivity : FlutterActivity() {
         )
 
         OjasVideoExportBridge(this, flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "ojas/audio_picker",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickAudio" -> pickAudioFile(result)
+                else -> result.notImplemented()
+            }
+        }
 
     }
 }
