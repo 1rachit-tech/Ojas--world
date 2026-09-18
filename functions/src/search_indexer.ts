@@ -269,6 +269,15 @@ async function writeReelIndex(
       trendScore: numberValue(data.trendScore),
       language: detectLanguage(rawText),
       region: safeString(data.region),
+      location: typeof data.location === 'string' ? data.location.trim() : '',
+      topicIds: Array.isArray(data.topicIds)
+        ? data.topicIds
+            .filter((value): value is string => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0)
+            .slice(0, 30)
+        : [],
+      isLive: data.isLive === true,
       eligible,
       visibility: eligible ? 'public' : 'restricted',
       shardKey: shardFor(reelId),
