@@ -38,7 +38,13 @@ class CreationValidationService {
         continue;
       }
 
-      final file = File(asset.localUri);
+      final normalized = asset.normalizedUri;
+      final normalizedFile = normalized == null || normalized.isEmpty
+          ? null
+          : File(normalized);
+      final file = normalizedFile != null && await normalizedFile.exists()
+          ? normalizedFile
+          : File(asset.localUri);
       if (!await file.exists()) {
         errors.add('A selected media file is no longer available.');
         continue;
