@@ -1,0 +1,22 @@
+export function env(name: string, fallback = ""): string {
+  return (process.env[name] ?? fallback).trim();
+}
+
+export const config = {
+  searchEndpoint: env("AZURE_SEARCH_ENDPOINT").replace(/\/$/, ""),
+  searchIndex: env("AZURE_SEARCH_INDEX_NAME", "ojas-search-v1"),
+  searchApiVersion: env("AZURE_SEARCH_API_VERSION", "2026-04-01"),
+  searchAuthMode: env("AZURE_SEARCH_AUTH_MODE", "managed_identity"),
+  searchQueryKey: env("AZURE_SEARCH_QUERY_KEY"),
+  enableVector: env("AZURE_SEARCH_ENABLE_VECTOR", "false") === "true",
+  enableSemantic: env("AZURE_SEARCH_ENABLE_SEMANTIC", "false") === "true",
+  vectorField: env("AZURE_SEARCH_VECTOR_FIELD", "textVector"),
+  semanticConfiguration: env("AZURE_SEARCH_SEMANTIC_CONFIGURATION", "ojas-semantic"),
+  serviceBusConnection: env("SEARCH_SERVICE_BUS_CONNECTION"),
+  serviceBusQueue: env("SEARCH_SERVICE_BUS_QUEUE", "ojas-search-index-events"),
+  eventMode: env("AZURE_SEARCH_EVENT_MODE", "servicebus"),
+  ingestSecret: env("AZURE_SEARCH_INGEST_SECRET"),
+  firebaseServiceAccountJson: env("FIREBASE_SERVICE_ACCOUNT_JSON"),
+  firebaseProjectId: env("FIREBASE_PROJECT_ID"),
+  allowAnonymousDev: env("ALLOW_ANONYMOUS_DEV", "false") === "true",
+};
