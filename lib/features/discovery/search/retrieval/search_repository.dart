@@ -180,6 +180,46 @@ class SearchRepository {
   }) {
     final hashtags = <String, SearchIndexRow>{};
     final sounds = <String, SearchIndexRow>{};
+    final topics = <String, SearchIndexRow>{};
+    final places = <String, SearchIndexRow>{};
+    final live = <String, SearchIndexRow>{};
+
+    void addSimple(
+      Map<String, SearchIndexRow> target, {
+      required String id,
+      required SearchEntityType type,
+      required String title,
+      required String subtitle,
+      required double score,
+    }) {
+      if (id.trim().isEmpty || score <= 0) return;
+      final key = id.trim().toLowerCase();
+      final existing = target[key];
+      if (existing == null) {
+        target[key] = SearchIndexRow(
+          id: key,
+          entityType: type,
+          title: title,
+          subtitle: subtitle,
+          text: title,
+          posts: 1,
+          trendScore: score,
+        );
+        return;
+      }
+      target[key] = SearchIndexRow(
+        id: existing.id,
+        entityType: existing.entityType,
+        title: existing.title,
+        subtitle: existing.subtitle,
+        text: existing.text,
+        audioTrackId: existing.audioTrackId,
+        location: existing.location,
+        topicIds: existing.topicIds,
+        posts: existing.posts + 1,
+        trendScore: existing.trendScore + score,
+      );
+    }
 
     for (final row in source) {
       if (row.entityType != SearchEntityType.content) continue;
@@ -187,67 +227,83 @@ class SearchRepository {
       for (final tag in row.tags) {
         final normalized = tag.trim().toLowerCase();
         if (normalized.isEmpty) continue;
-
-        final score =
-            SearchQueryProcessor.textSimilarity(query.normalized, normalized);
-        if (score <= 0) continue;
-
-        hashtags.putIfAbsent(
+        final score = SearchQueryProcessor.textSimilarity(
+          query.normalized,
           normalized,
-          () => SearchIndexRow(
-            id: normalized,
-            entityType: SearchEntityType.hashtag,
-            title: normalized.startsWith('#')
-                ? normalized
-                : '#' + normalized,
-            subtitle: 'OJAS hashtag',
-            text: normalized,
-            tags: <String>[normalized],
-            posts: 1,
-          ),
         );
-        final current = hashtags[normalized]!;
-        hashtags[normalized] = SearchIndexRow(
-          id: current.id,
-          entityType: current.entityType,
-          title: current.title,
-          subtitle: current.subtitle,
-          text: current.text,
-          tags: current.tags,
-          posts: current.posts + 1,
-          trendScore: current.trendScore + score,
+        addSimple(
+          hashtags,
+          id: normalized,
+          type: SearchEntityType.hashtag,
+          title: normalized.startsWith('#') ? normalized : '#' + normalized,
+          subtitle: 'OJAS hashtag',
+          score: score,
         );
       }
 
       final sound = row.audioTrackId.trim();
       if (sound.isNotEmpty) {
-        final score =
-            SearchQueryProcessor.textSimilarity(query.normalized, sound);
-        if (score > 0) {
-          final existing = sounds[sound];
-          if (existing == null) {
-            sounds[sound] = SearchIndexRow(
-              id: sound,
-              entityType: SearchEntityType.sound,
-              title: sound,
-              subtitle: row.creatorId,
-              text: sound,
-              audioTrackId: sound,
-              posts: 1,
-              trendScore: score,
-            );
-          } else {
-            sounds[sound] = SearchIndexRow(
-              id: existing.id,
-              entityType: existing.entityType,
-              title: existing.title,
-              subtitle: existing.subtitle,
-              text: existing.text,
-              audioTrackId: existing.audioTrackId,
-              posts: existing.posts + 1,
-              trendScore: existing.trendScore + score,
-            );
-          }
+        final score = SearchQueryProcessor.textSimilarity(
+          query.normalized,
+          sound,
+        );
+        addSimple(
+          sounds,
+          id: sound,
+          type: SearchEntityType.sound,
+          title: sound,
+          subtitle: row.creatorId,
+          score: score,
+        );
+      }
+
+      for (final topic in row.topicIds) {
+        final normalized = topic.trim();
+        if (normalized.isEmpty) continue;
+        final score = SearchQueryProcessor.textSimilarity(
+          query.normalized,
+          normalized,
+        );
+        addSimple(
+          topics,
+          id: normalized,
+          type: SearchEntityType.topic,
+          title: normalized,
+          subtitle: 'OJAS topic',
+          score: score,
+        );
+      }
+
+      final location = row.location.trim();
+      if (location.isNotEmpty) {
+        final score = SearchQueryProcessor.textSimilarity(
+          query.normalized,
+          location,
+        );
+        addSimple(
+          places,
+          id: location,
+          type: SearchEntityType.place,
+          title: location,
+          subtitle: 'Place',
+          score: score,
+        );
+      }
+
+      if (row.isLive) {
+        final score = SearchQueryProcessor.textSimilarity(
+          query.normalized,
+          row.title,
+        );
+        if (query.intent == SearchEntityType.live || score > 0) {
+          addSimple(
+            live,
+            id: row.id,
+            type: SearchEntityType.live,
+            title: row.title,
+            subtitle: row.creatorId,
+            score: score > 0 ? score : 0.25,
+          );
         }
       }
     }
@@ -258,11 +314,23 @@ class SearchRepository {
     if (entityFilter == SearchEntityType.sound) {
       return sounds.values.toList(growable: false);
     }
+    if (entityFilter == SearchEntityType.topic) {
+      return topics.values.toList(growable: false);
+    }
+    if (entityFilter == SearchEntityType.place) {
+      return places.values.toList(growable: false);
+    }
+    if (entityFilter == SearchEntityType.live) {
+      return live.values.toList(growable: false);
+    }
 
     if (entityFilter == null) {
       return <SearchIndexRow>[
         ...hashtags.values,
         ...sounds.values,
+        ...topics.values,
+        ...places.values,
+        ...live.values,
       ];
     }
 
