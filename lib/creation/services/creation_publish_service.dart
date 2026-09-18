@@ -49,7 +49,14 @@ class CreationPublishService {
       );
     }
 
-    final source = File(project.mediaAssets.first.localUri);
+    final asset = project.mediaAssets.first;
+    final normalizedPath = asset.normalizedUri;
+    final normalizedFile = normalizedPath == null || normalizedPath.isEmpty
+        ? null
+        : File(normalizedPath);
+    final source = normalizedFile != null && await normalizedFile.exists()
+        ? normalizedFile
+        : File(asset.localUri);
     final postRef = _firestore.collection('reels').doc(project.projectId);
     final publishState = project.publishState;
     final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
