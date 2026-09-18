@@ -156,9 +156,12 @@ function buildBody(args: {
   vector: boolean;
   semantic: boolean;
 }): Record<string, unknown> {
+  const requestedPageSize = Math.min(Math.max(args.pageSize, 1), 50);
+  const semanticCandidateCount = args.semantic ? 50 : requestedPageSize + 1;
+
   const body: Record<string, unknown> = {
     search: args.query,
-    top: Math.min(Math.max(args.pageSize, 1), 50) + 1,
+    top: semanticCandidateCount,
     skip: args.skip,
     filter: args.filter,
     select: [
@@ -184,7 +187,7 @@ function buildBody(args: {
         kind: "text",
         text: args.query,
         fields: config.vectorField,
-        k: 100,
+        k: 50,
       },
     ];
   }
