@@ -9,9 +9,19 @@ class SearchQueryProcessor {
     final normalized = normalize(raw);
     final tokens = _tokenize(normalized);
     final aliases = <String>{...tokens};
+    for (final token in tokens) {
+      if (token.startsWith('#') || token.startsWith('@')) {
+        final bare = token.substring(1).trim();
+        if (bare.isNotEmpty) aliases.add(bare);
+      }
+    }
 
     for (final token in tokens) {
-      final transliterated = _transliterate(token);
+      final sourceToken =
+          token.startsWith('#') || token.startsWith('@')
+              ? token.substring(1)
+              : token;
+      final transliterated = _transliterate(sourceToken);
       if (transliterated.isNotEmpty) {
         aliases.add(transliterated);
       }
