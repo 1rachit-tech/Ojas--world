@@ -91,10 +91,25 @@ class SearchOrchestrator {
       return results.take(8).toList(growable: false);
     }
 
-    final repositorySuggestions = await _repository.suggest(
-      query,
-      limit: 8,
-    );
+    var repositorySuggestions = const <SearchSuggestion>[];
+
+    if (_azureSearch.isConfigured) {
+      try {
+        repositorySuggestions = await _azureSearch.suggestions(
+          query,
+          limit: 8,
+        );
+      } catch (_) {
+        // Fall back to the legacy suggestion index during Azure rollout.
+      }
+    }
+
+    if (repositorySuggestions.isEmpty) {
+      repositorySuggestions = await _repository.suggest(
+        query,
+        limit: 8,
+      );
+    }
 
     final output = <SearchSuggestion>[];
     final seen = <String>{};
