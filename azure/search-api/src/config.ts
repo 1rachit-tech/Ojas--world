@@ -32,4 +32,9 @@ export const config = {
     Math.max(Number(env("SEARCH_RECONCILE_MAX_INDEX_DOCS", "100000")) || 100000, 1000),
     1000000,
   ),
+  eventArchiveStorageAccountUrl: env("SEARCH_EVENT_ARCHIVE_STORAGE_URL"),
+  eventArchiveContainer: env(
+    "SEARCH_EVENT_ARCHIVE_CONTAINER",
+    "ojas-search-events",
+  ),
 };
