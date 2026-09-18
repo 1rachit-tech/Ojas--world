@@ -1,0 +1,147 @@
+name: OJAS Search Azure Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      provision_paid_resources:
+        description: 'Provision Azure resources (this can create charges).'
+        required: true
+        default: false
+        type: boolean
+      deploy_function_code:
+        description: 'Deploy the Azure Search Function App code.'
+        required: true
+        default: false
+        type: boolean
+      search_service_name:
+        description: 'Globally unique Azure AI Search service name.'
+        required: false
+        default: ''
+        type: string
+      function_app_name:
+        description: 'Globally unique Azure Function App name.'
+        required: false
+        default: ''
+        type: string
+      function_plan_name:
+        description: 'Azure Flex Consumption plan name.'
+        required: false
+        default: ''
+        type: string
+      storage_account_name:
+        description: 'Globally unique Azure Storage account name.'
+        required: false
+        default: ''
+        type: string
+      service_bus_namespace_name:
+        description: 'Azure Service Bus namespace name.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate Azure Search API
+        working-directory: azure/search-api
+        run: |
+          npm install --no-audit --no-fund
+          npm run check
+      - name: Validate Firebase indexing bridge
+        working-directory: functions
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+  deploy:
+    needs: validate
+    if: ${{ inputs.provision_paid_resources || inputs.deploy_function_code }}
+    runs-on: ubuntu-latest
+    environment: azure-search-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Verify explicit paid deployment switch
+        if: ${{ inputs.provision_paid_resources == true }}
+        run: |
+          echo "Azure resource provisioning was explicitly enabled."
+          echo "This action can create billable resources."
+
+      - name: Deploy Azure Search backend infrastructure
+        if: ${{ inputs.provision_paid_resources == true }}
+        id: backend
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          template: ./azure/search-infra/backend.bicep
+          parameters: >
+            location=${{ secrets.AZURE_LOCATION }}
+            deployBackend=true
+            storageAccountName=${{ inputs.storage_account_name }}
+            functionAppName=${{ inputs.function_app_name }}
+            functionAppPlanName=${{ inputs.function_plan_name }}
+            serviceBusNamespaceName=${{ inputs.service_bus_namespace_name }}
+
+      - name: Deploy Azure Search
+        if: ${{ inputs.provision_paid_resources == true }}
+        id: search
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          template: ./azure/search-infra/main.bicep
+          parameters: >
+            location=${{ secrets.AZURE_LOCATION }}
+            deploySearchService=true
+            searchServiceName=${{ inputs.search_service_name }}
+            searchApiPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
+            searchWorkerPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
+
+      - name: Prepare Function package
+        if: ${{ inputs.deploy_function_code == true }}
+        working-directory: azure/search-api
+        run: |
+          npm install --omit=dev --no-audit --no-fund
+          npm run build
+          zip -r ../../ojas-search-api.zip host.json package.json dist node_modules >/dev/null
+
+      - name: Configure Function App settings
+        if: ${{ inputs.deploy_function_code == true }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          AZURE_SEARCH_INGEST_SECRET: ${{ secrets.AZURE_SEARCH_INGEST_SECRET }}
+        run: |
+          FUNCTION_HOST="${{ inputs.function_app_name }}"
+          SEARCH_ENDPOINT="${{ steps.search.outputs.endpoint }}"
+          az functionapp config appsettings set             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "$FUNCTION_HOST"             --settings               AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT"               AZURE_SEARCH_INDEX_NAME=ojas-search-v1               AZURE_SEARCH_API_VERSION=2026-04-01               AZURE_SEARCH_AUTH_MODE=managed_identity               AZURE_SEARCH_ENABLE_VECTOR=false               AZURE_SEARCH_ENABLE_SEMANTIC=false               AZURE_SEARCH_EVENT_MODE=servicebus               SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net"               SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events               SEARCH_ANALYTICS_QUEUE=ojas-search-events               SEARCH_RECONCILE_ENABLED=false               FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"               FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON"               AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
+
+      - name: Deploy Function package
+        if: ${{ inputs.deploy_function_code == true }}
+        run: |
+          az functionapp deployment source config-zip             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"             --name "${{ inputs.function_app_name }}"             --src ojas-search-api.zip
+
+      - name: Create or update Azure Search index
+        if: ${{ inputs.provision_paid_resources == true }}
+        env:
+          SEARCH_ENDPOINT: ${{ steps.search.outputs.endpoint }}
+          SEARCH_API_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+        run: |
+          curl -sS -X PUT             "${SEARCH_ENDPOINT}/indexes/ojas-search-v1?api-version=2026-04-01"             -H "Content-Type: application/json"             -H "api-key: ${SEARCH_API_KEY}"             --data-binary @azure/search-infra/index.schema.json
+
+      - name: Deployment summary
+        run: |
+          echo "OJAS Search deployment completed."
+          echo "Vector mode remains disabled until a compatible vectorizer/embedding deployment is configured."
+          echo "Semantic ranking remains disabled until its cost and relevance impact are validated."
