@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../../models/ojs_video.dart';
-import '../../../screens/audio_reels_screen.dart';
-import '../../../screens/creator_profile_screen.dart';
-import '../../../services/engagement_service.dart';
-import '../../../services/video_engine_service.dart';
-import '../../../widgets/ojs_video_page.dart';
-import '../../../widgets/share_bottom_sheet.dart';
+import '../../../../models/ojs_video.dart';
+import '../../../../screens/audio_reels_screen.dart';
+import '../../../../screens/creator_profile_screen.dart';
+import '../../../../services/engagement_service.dart';
+import '../../../../services/video_engine_service.dart';
+import '../../../../widgets/ojs_video_page.dart';
+import '../../../../widgets/share_bottom_sheet.dart';
 import '../domain/search_models.dart';
 
 class SearchViewerScreen extends StatefulWidget {
