@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/creation_project.dart';
 import '../services/creation_project_store.dart';
+import '../services/local_audio_picker_service.dart';
 import '../services/video_export_service.dart';
 import 'creation_post_composer_screen.dart';
 
@@ -29,6 +30,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   bool _exporting = false;
   bool _cancelExportRequested = false;
   double _exportProgress = 0.0;
+  int _selectedClipIndex = 0;
+  int _previewRevision = 0;
   late final TextEditingController _captionController;
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
@@ -39,40 +42,159 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     WidgetsBinding.instance.addObserver(this);
     _project = widget.project;
     _captionController = TextEditingController(text: _project.caption);
-    _initializeMedia();
+    _prepareEditor();
   }
 
-  Future<void> _initializeMedia() async {
-    if (_project.mediaAssets.isEmpty || _project.mediaAssets.first.type != 'video') {
+
+  Future<void> _prepareEditor() async {
+    await _hydrateTimelineMetadata();
+    await _initializeSelectedClip();
+  }
+
+  Future<void> _hydrateTimelineMetadata() async {
+    if (_project.mediaAssets.isEmpty) return;
+
+    final assets = List<CreationMediaAsset>.from(_project.mediaAssets);
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+
+    for (var i = 0; i < assets.length; i++) {
+      final asset = assets[i];
+
+      if (asset.type == 'image') {
+        final duration = asset.durationMs ?? 3000;
+        assets[i] = asset.copyWith(
+          durationMs: duration,
+        );
+
+        if (i < timeline.length) {
+          final clip = timeline[i];
+          final trimOut = clip.trimOutMs == null || clip.trimOutMs! <= 0
+              ? duration
+              : clip.trimOutMs!.clamp(1, duration);
+          timeline[i] = clip.copyWith(
+            startMs: clip.startMs,
+            endMs: duration,
+            trimInMs: 0,
+            trimOutMs: trimOut,
+          );
+        }
+        continue;
+      }
+
+      try {
+        final controller =
+            VideoPlayerController.file(File(asset.localUri));
+        await controller.initialize();
+        final duration = controller.value.duration.inMilliseconds;
+        await controller.dispose();
+
+        if (duration <= 0) continue;
+
+        assets[i] = asset.copyWith(
+          durationMs: duration,
+        );
+
+        if (i < timeline.length) {
+          final clip = timeline[i];
+          final trimIn = clip.trimInMs.clamp(0, duration);
+          final trimOut = (clip.trimOutMs == null || clip.trimOutMs! <= trimIn)
+              ? duration
+              : clip.trimOutMs!.clamp(trimIn + 1, duration);
+          timeline[i] = clip.copyWith(
+            endMs: duration,
+            trimInMs: trimIn,
+            trimOutMs: trimOut,
+          );
+        }
+      } catch (error) {
+        debugPrint('OJAS metadata hydration failed for clip $i: $error');
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _project = _project.copyWith(
+        mediaAssets: assets,
+        timeline: timeline,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+
+    await CreationProjectStore.instance.save(_project);
+  }
+
+  Future<void> _initializeSelectedClip() async {
+    _videoController?.dispose();
+    _videoController = null;
+
+    if (_project.mediaAssets.isEmpty ||
+        _selectedClipIndex >= _project.mediaAssets.length) {
       if (mounted) setState(() => _videoInitializing = false);
       return;
     }
+
+    final asset = _project.mediaAssets[_selectedClipIndex];
+
+    if (asset.type != 'video') {
+      if (mounted) {
+        setState(() {
+          _videoInitializing = false;
+          _videoError = false;
+          _trimStart = 0.0;
+          _trimEnd = 1.0;
+        });
+      }
+      return;
+    }
+
     try {
-      final controller = VideoPlayerController.file(File(_project.mediaAssets.first.localUri));
+      if (mounted) {
+        setState(() {
+          _videoInitializing = true;
+          _videoError = false;
+        });
+      }
+
+      final controller =
+          VideoPlayerController.file(File(asset.localUri));
       _videoController = controller;
       await controller.initialize();
       await controller.setLooping(false);
+
       final durationMs = controller.value.duration.inMilliseconds;
-      if (_project.timeline.isNotEmpty && durationMs > 0) {
-        final timeline = List<CreationTimelineClip>.from(_project.timeline);
-        final current = timeline.first;
-        final savedTrimOut = current.trimOutMs == null || current.trimOutMs! <= 0
-            ? durationMs
-            : current.trimOutMs!;
-        final safeTrimOut = savedTrimOut.clamp(1, durationMs).toInt();
-        timeline[0] = current.copyWith(
+      final timeline = List<CreationTimelineClip>.from(_project.timeline);
+
+      if (_selectedClipIndex < timeline.length && durationMs > 0) {
+        final current = timeline[_selectedClipIndex];
+        final trimIn = current.trimInMs.clamp(0, durationMs);
+        final trimOut =
+            (current.trimOutMs == null || current.trimOutMs! <= trimIn)
+                ? durationMs
+                : current.trimOutMs!.clamp(trimIn + 1, durationMs);
+
+        timeline[_selectedClipIndex] = current.copyWith(
           endMs: durationMs,
-          trimOutMs: safeTrimOut,
+          trimInMs: trimIn,
+          trimOutMs: trimOut,
         );
+
         _project = _project.copyWith(timeline: timeline);
-        _trimStart = (current.trimInMs / durationMs).clamp(0.0, 0.98).toDouble();
-        _trimEnd = (safeTrimOut / durationMs).clamp(_trimStart + 0.01, 1.0).toDouble();
+        _trimStart = (trimIn / durationMs).clamp(0.0, 0.98).toDouble();
+        _trimEnd =
+            (trimOut / durationMs).clamp(_trimStart + 0.01, 1.0).toDouble();
       }
+
       if (!mounted) {
         await controller.dispose();
         return;
       }
-      setState(() => _videoInitializing = false);
+
+      setState(() {
+        _videoInitializing = false;
+        _videoError = false;
+        _previewRevision++;
+      });
     } catch (error) {
       debugPrint('Creation editor media initialization failed: $error');
       if (mounted) {
@@ -82,6 +204,17 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         });
       }
     }
+  }
+
+  Future<void> _selectClip(int index) async {
+    if (_exporting || index < 0 || index >= _project.mediaAssets.length) {
+      return;
+    }
+
+    setState(() {
+      _selectedClipIndex = index;
+    });
+    await _initializeSelectedClip();
   }
 
   @override
