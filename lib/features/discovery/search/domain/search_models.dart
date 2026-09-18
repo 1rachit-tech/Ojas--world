@@ -96,9 +96,12 @@ class SearchQuery {
     for (final token in aliases) {
       final clean = token.trim();
       if (clean.isEmpty) continue;
-      final max = clean.length < 12 ? clean.length : 12;
+      final root = (clean.startsWith('#') || clean.startsWith('@'))
+          ? clean.substring(1)
+          : clean;
+      final max = root.length < 12 ? root.length : 12;
       for (var length = 1; length <= max; length++) {
-        values.add(clean.substring(0, length));
+        values.add(root.substring(0, length));
       }
     }
     return values.take(30).toList(growable: false);
