@@ -513,6 +513,7 @@ private class OjasVideoExportBridge(
 }
 
 
+@androidx.media3.common.util.UnstableApi
 @androidx.media3.common.util.ExperimentalApi
 private class OjasCompositionPlayerFactory : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
     override fun create(
@@ -527,6 +528,7 @@ private class OjasCompositionPlayerFactory : PlatformViewFactory(StandardMessage
     }
 }
 
+@androidx.media3.common.util.UnstableApi
 @androidx.media3.common.util.ExperimentalApi
 private class OjasCompositionPlayer(
     context: Context,
