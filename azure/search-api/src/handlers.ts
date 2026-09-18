@@ -60,7 +60,7 @@ function validTab(value: unknown): NonNullable<SearchRequest["tab"]> {
     return "all";
   }
 
-  return value as SearchRequest["tab"];
+  return value as NonNullable<SearchRequest["tab"]>;
 }
 
 function safeQuery(value: unknown): string {
