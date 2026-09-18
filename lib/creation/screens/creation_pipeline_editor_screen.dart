@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/creation_project.dart';
 import '../services/creation_project_store.dart';
+import '../services/video_export_service.dart';
 import 'creation_post_composer_screen.dart';
 
 class CreationPipelineEditorScreen extends StatefulWidget {
@@ -25,6 +26,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   bool _saving = false;
   bool _videoInitializing = true;
   bool _videoError = false;
+  bool _exporting = false;
+  bool _cancelExportRequested = false;
+  double _exportProgress = 0.0;
   late final TextEditingController _captionController;
   double _trimStart = 0.0;
   double _trimEnd = 1.0;
