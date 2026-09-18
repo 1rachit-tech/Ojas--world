@@ -14,6 +14,7 @@ import {
   suggestAzureIndex,
   upsertDocuments,
 } from "./search-client";
+import { projectEntityTab } from "./entity-projection";
 import { RuleBasedSearchReranker, loadInterestContext } from "./ranker";
 import type {
   SearchIndexEvent,
@@ -79,12 +80,18 @@ export async function searchHttp(
       filter,
     });
 
+    const projected = projectEntityTab(
+      result.results,
+      tab,
+      query,
+    );
+
     const interestContext = await loadInterestContext(user.uid);
     const reranker = new RuleBasedSearchReranker();
     const reranked = reranker.rerank(
-      result.results,
+      projected,
       interestContext,
-    );
+    ).slice(0, boundedPageSize(body.pageSize));
 
     return json(200, {
       results: reranked,
