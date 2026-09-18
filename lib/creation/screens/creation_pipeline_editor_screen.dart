@@ -500,7 +500,6 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
