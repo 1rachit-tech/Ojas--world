@@ -13,6 +13,8 @@ export const config = {
   vectorField: env("AZURE_SEARCH_VECTOR_FIELD", "textVector"),
   semanticConfiguration: env("AZURE_SEARCH_SEMANTIC_CONFIGURATION", "ojas-semantic"),
   serviceBusConnection: env("SEARCH_SERVICE_BUS_CONNECTION"),
+  serviceBusFqdn: env("SEARCH_SERVICE_BUS_FQDN"),
+  serviceBusAuthMode: env("SEARCH_SERVICE_BUS_AUTH_MODE", "managed_identity"),
   serviceBusQueue: env("SEARCH_SERVICE_BUS_QUEUE", "ojas-search-index-events"),
   analyticsQueue: env("SEARCH_ANALYTICS_QUEUE", "ojas-search-events"),
   eventMode: env("AZURE_SEARCH_EVENT_MODE", "servicebus"),
