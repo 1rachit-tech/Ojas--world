@@ -50,6 +50,10 @@ jobs:
           --no-fatal-warnings
           lib/screens/creator_profile_screen.dart
           lib/services/reel_lifecycle_service.dart
+          lib/models/reel_model.dart
+          lib/models/ojs_video.dart
+          lib/screens/ojs_feed_screen.dart
+          lib/creation/services/creation_metadata_pipeline_service.dart
           lib/services/reel_feed_service.dart
           lib/services/home_feed_service.dart
           lib/services/video_compression_service.dart
@@ -70,6 +74,7 @@ jobs:
         run: >-
           flutter test
           test/creation_publish_state_test.dart
+          test/creation_metadata_pipeline_test.dart
           test/creation_post_composer_test.dart
           test/creation_edit_engine_test.dart
           test/video_compression_policy_test.dart
