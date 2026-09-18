@@ -43,13 +43,33 @@ class CreationPublishService {
       throw CreationPublishException(validation.message);
     }
 
-    if (project.mediaAssets.length != 1 || project.mediaAssets.first.type != 'video') {
+    final renderedPath = project.renderedUri;
+    final renderedFile = renderedPath == null || renderedPath.isEmpty
+        ? null
+        : File(renderedPath);
+
+    if (renderedFile != null && await renderedFile.exists()) {
+      // Final composition output takes priority over individual source assets.
+    } else if (project.mediaAssets.length != 1 ||
+        project.mediaAssets.first.type != 'video') {
       throw const CreationPublishException(
-        'This publishing path currently accepts one video. Multi-media and image publishing remain draft-ready until an existing post schema is verified.',
+        'A final rendered composition is required before publishing multi-media projects.',
       );
     }
 
-    final source = File(project.mediaAssets.first.localUri);
+    final File source;
+    if (renderedFile != null && await renderedFile.exists()) {
+      source = renderedFile;
+    } else {
+      final asset = project.mediaAssets.first;
+      final normalizedPath = asset.normalizedUri;
+      final normalizedFile = normalizedPath == null || normalizedPath.isEmpty
+          ? null
+          : File(normalizedPath);
+      source = normalizedFile != null && await normalizedFile.exists()
+          ? normalizedFile
+          : File(asset.localUri);
+    }
     final postRef = _firestore.collection('reels').doc(project.projectId);
     final publishState = project.publishState;
     final allowComments = publishState['allowComments'] is bool ? publishState['allowComments'] as bool : true;
