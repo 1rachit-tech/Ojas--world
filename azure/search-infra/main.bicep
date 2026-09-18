@@ -89,7 +89,7 @@ resource searchDeploymentServiceContributorRole 'Microsoft.Authorization/roleAss
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
-      '7cae816b-3f29-4b8c-8d5d-6f55b6d8af87'
+      '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
     )
     principalId: deploymentPrincipalId
     principalType: 'ServicePrincipal'
