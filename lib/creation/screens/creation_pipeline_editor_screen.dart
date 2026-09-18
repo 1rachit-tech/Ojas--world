@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/creation_project.dart';
@@ -861,39 +862,6 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       ),
     );
   }
-  Widget _buildPreview() {
-    if (_project.mediaAssets.isEmpty) return const Center(child: Text('No media', style: TextStyle(color: Colors.white)));
-    final asset = _project.mediaAssets.first;
-    if (asset.type != 'video') {
-      return Image.file(
-        File(asset.localUri),
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const Center(child: Text('Unable to load image', style: TextStyle(color: Colors.white))),
-      );
-    }
-    if (_videoInitializing) return const Center(child: CircularProgressIndicator());
-    if (_videoError || _videoController == null || !_videoController!.value.isInitialized) {
-      return const Center(child: Text('Unable to load video', style: TextStyle(color: Colors.white)));
-    }
-    final controller = _videoController!;
-    return GestureDetector(
-      onTap: () async {
-        if (controller.value.isPlaying) {
-          await controller.pause();
-        } else {
-          await controller.play();
-        }
-        if (mounted) setState(() {});
-      },
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio > 0 ? controller.value.aspectRatio : 9 / 16,
-          child: VideoPlayer(controller),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final canContinue = !_saving && !_exporting && _project.mediaAssets.isNotEmpty;
