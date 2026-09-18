@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../domain/search_models.dart';
 import '../query_processor.dart';
 
@@ -12,8 +14,23 @@ class SearchRanker {
     int limit = 20,
   }) {
     final ranked = <SearchResult>[];
+    final candidateList = candidates.toList(growable: false);
+    final documentFrequency = <String, int>{};
+    var totalDocumentLength = 0;
 
-    for (final candidate in candidates) {
+    for (final candidate in candidateList) {
+      final terms = _candidateTerms(candidate).toSet();
+      totalDocumentLength += terms.length;
+      for (final term in terms) {
+        documentFrequency[term] = (documentFrequency[term] ?? 0) + 1;
+      }
+    }
+
+    final averageDocumentLength = candidateList.isEmpty
+        ? 1.0
+        : totalDocumentLength / candidateList.length;
+
+    for (final candidate in candidateList) {
       if (!candidate.eligible) continue;
       if (entityFilter != null && candidate.entityType != entityFilter) {
         continue;
@@ -23,7 +40,13 @@ class SearchRanker {
         continue;
       }
 
-      final queryScore = _queryScore(query, candidate);
+      final queryScore = _queryScore(
+        query,
+        candidate,
+        documentFrequency,
+        candidateList.length,
+        averageDocumentLength,
+      );
       if (queryScore <= 0) continue;
 
       final popularity = _popularity(candidate);
@@ -144,34 +167,85 @@ class SearchRanker {
     return output.take(limit).toList(growable: false);
   }
 
-  double _queryScore(SearchQuery query, SearchIndexRow candidate) {
-    final values = <String>{
-      candidate.title,
-      candidate.subtitle,
-      candidate.text,
-      ...candidate.tokens,
-      ...candidate.tags,
-    };
+  double _queryScore(
+    SearchQuery query,
+    SearchIndexRow candidate,
+    Map<String, int> documentFrequency,
+    int documentCount,
+    double averageDocumentLength,
+  ) {
+    final terms = _candidateTerms(candidate);
+    if (terms.isEmpty || documentCount == 0) return 0;
 
-    var best = 0.0;
-    for (final value in values) {
-      final normalized = value.toLowerCase();
-      for (final token in query.aliases) {
-        final score = SearchQueryProcessor.textSimilarity(token, normalized);
-        if (score > best) best = score;
-      }
+    final frequencies = <String, int>{};
+    for (final term in terms) {
+      frequencies[term] = (frequencies[term] ?? 0) + 1;
+    }
+
+    final queryTerms = <String>{};
+    for (final alias in query.aliases) {
+      final normalized = alias.trim().toLowerCase();
+      if (normalized.isNotEmpty) queryTerms.add(normalized);
+    }
+    if (queryTerms.isEmpty) {
+      queryTerms.addAll(
+        query.tokens.map((token) => token.toLowerCase()),
+      );
+    }
+
+    const k1 = 1.2;
+    const b = 0.75;
+    final documentLength = terms.length;
+    var score = 0.0;
+
+    for (final term in queryTerms) {
+      final tf = frequencies[term] ?? 0;
+      if (tf == 0) continue;
+
+      final df = documentFrequency[term] ?? 0;
+      final idf = ((documentCount - df + 0.5) /
+              (df + 0.5) +
+          1)
+          math.log(((documentCount - df + 0.5) / (df + 0.5) + 1));
+
+      final denominator =
+          tf + k1 * (1 - b + b * documentLength / averageDocumentLength);
+      score += idf * ((tf * (k1 + 1)) / denominator);
     }
 
     final exactTitle = SearchQueryProcessor.textSimilarity(
       query.normalized,
       candidate.title,
     );
-    if (exactTitle > best) best = exactTitle;
 
-    if (best == 0 && query.intent == candidate.entityType) {
+    final normalizedScore = (score / 8.0).clamp(0.0, 1.0);
+    final combined = normalizedScore * 0.78 + exactTitle * 0.22;
+
+    if (combined == 0 && query.intent == candidate.entityType) {
       return 0.08;
     }
-    return best;
+    return combined.clamp(0.0, 1.0);
+  }
+
+  List<String> _candidateTerms(SearchIndexRow candidate) {
+    final source = <String>[
+      candidate.title,
+      candidate.subtitle,
+      candidate.text,
+      ...candidate.tokens,
+      ...candidate.tags,
+    ];
+
+    return source
+        .expand(
+          (value) => value
+              .toLowerCase()
+              .split(RegExp(r'\s+'))
+              .where((token) => token.trim().isNotEmpty),
+        )
+        .map((token) => token.replaceAll(RegExp(r'^[#@]'), ''))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
   }
 
   double _personal(
