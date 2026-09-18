@@ -214,6 +214,7 @@ class CreationProject {
     this.accessibility = const <String, dynamic>{},
     this.rights = const <String, dynamic>{},
     this.publishState = const <String, dynamic>{},
+    this.renderedUri,
   });
 
   final String projectId;
@@ -236,6 +237,7 @@ class CreationProject {
   final Map<String, dynamic> accessibility;
   final Map<String, dynamic> rights;
   final Map<String, dynamic> publishState;
+  final String? renderedUri;
 
   CreationProject copyWith({
     DateTime? updatedAt,
@@ -254,6 +256,7 @@ class CreationProject {
     Map<String, dynamic>? accessibility,
     Map<String, dynamic>? rights,
     Map<String, dynamic>? publishState,
+    String? renderedUri,
   }) {
     return CreationProject(
       projectId: projectId,
@@ -276,6 +279,7 @@ class CreationProject {
       accessibility: accessibility ?? this.accessibility,
       rights: rights ?? this.rights,
       publishState: publishState ?? this.publishState,
+      renderedUri: renderedUri ?? this.renderedUri,
     );
   }
 
@@ -300,6 +304,7 @@ class CreationProject {
         'accessibility': accessibility,
         'rights': rights,
         'publishState': publishState,
+        'renderedUri': renderedUri,
       };
 
   String encode() => jsonEncode(toMap());
@@ -351,6 +356,7 @@ class CreationProject {
       accessibility: _map(map['accessibility']),
       rights: _map(map['rights']),
       publishState: _map(map['publishState']),
+      renderedUri: map['renderedUri'] as String?,
     );
   }
 
