@@ -56,7 +56,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
       if (_project.timeline.isNotEmpty && durationMs > 0) {
         final timeline = List<CreationTimelineClip>.from(_project.timeline);
         final current = timeline.first;
-        final savedTrimOut = current.trimOutMs ?? durationMs;
+        final savedTrimOut = current.trimOutMs == null || current.trimOutMs! <= 0
+            ? durationMs
+            : current.trimOutMs!;
         final safeTrimOut = savedTrimOut.clamp(1, durationMs).toInt();
         timeline[0] = current.copyWith(
           endMs: durationMs,
@@ -354,8 +356,8 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     final controller = _videoController;
     final durationMs = controller?.value.duration.inMilliseconds ?? 0;
     setState(() {
-      _trimStart = safeStart;
-      _trimEnd = safeEnd;
+      _trimStart = safeStart.toDouble();
+      _trimEnd = safeEnd.toDouble();
       if (_project.timeline.isNotEmpty && durationMs > 0) {
         final timeline = List<CreationTimelineClip>.from(_project.timeline);
         timeline[0] = timeline.first.copyWith(
