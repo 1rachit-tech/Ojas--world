@@ -326,29 +326,43 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildSearchField() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Row(
         children: [
           if (widget.embedded)
-            IconButton(
-              tooltip: 'Back',
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: Color(0xFF111827),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Color(0xFF101828),
+                ),
               ),
             ),
           Expanded(
-            child: Container(
-              height: 46,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 52,
               decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(15),
+                color: const Color(0xFFF7F8FA),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: _focused
-                      ? const Color(0xFFD1D5DB)
-                      : Colors.transparent,
+                      ? const Color(0xFF101828)
+                      : const Color(0xFFE4E7EC),
+                  width: _focused ? 1.2 : 1,
                 ),
+                boxShadow: _focused
+                    ? const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x12000000),
+                          blurRadius: 18,
+                          offset: Offset(0, 7),
+                        ),
+                      ]
+                    : const <BoxShadow>[],
               ),
               child: TextField(
                 controller: _controller,
@@ -359,20 +373,28 @@ class _SearchScreenState extends State<SearchScreen> {
                 enableSuggestions: true,
                 onSubmitted: (_) => _submit(),
                 style: const TextStyle(
-                  color: Color(0xFF111827),
+                  color: Color(0xFF101828),
                   fontSize: 15,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                 ),
                 decoration: InputDecoration(
                   border: InputBorder.none,
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: Color(0xFF6B7280),
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(left: 14, right: 8),
+                    child: Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF667085),
+                    ),
                   ),
-                  hintText: 'Search people, videos, tags, sounds...',
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 0,
+                    minHeight: 0,
+                  ),
+                  hintText: 'Search creators, Show, tags & sounds',
                   hintStyle: const TextStyle(
-                    color: Color(0xFF9CA3AF),
+                    color: Color(0xFF98A2B3),
                     fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                   suffixIcon: _controller.text.isEmpty
                       ? null
@@ -381,28 +403,35 @@ class _SearchScreenState extends State<SearchScreen> {
                           onPressed: _clear,
                           icon: const Icon(
                             Icons.close_rounded,
-                            color: Color(0xFF6B7280),
-                            size: 20,
+                            color: Color(0xFF667085),
+                            size: 19,
                           ),
                         ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 15,
+                    horizontal: 0,
+                  ),
                 ),
               ),
             ),
           ),
-          if (widget.embedded)
-            const SizedBox(width: 8)
-          else
+          if (!widget.embedded) ...[
+            const SizedBox(width: 8),
             TextButton(
               onPressed: () => _focusNode.unfocus(),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF101828),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
               child: const Text(
                 'Cancel',
                 style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
                 ),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -410,31 +439,47 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildTabs() {
     return SizedBox(
-      height: 42,
+      height: 46,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.fromLTRB(16, 1, 16, 7),
         scrollDirection: Axis.horizontal,
         itemCount: SearchTab.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 7),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, index) {
           final tab = SearchTab.values[index];
           final selected = tab == _selectedTab;
-          return ChoiceChip(
-            selected: selected,
-            showCheckmark: false,
-            label: Text(tab.label),
-            onSelected: (_) => _selectTab(tab),
-            selectedColor: const Color(0xFF111827),
-            backgroundColor: Colors.white,
-            side: BorderSide(
-              color: selected
-                  ? const Color(0xFF111827)
-                  : const Color(0xFFE5E7EB),
-            ),
-            labelStyle: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF374151),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          return Material(
+            color: selected
+                ? const Color(0xFF101828)
+                : const Color(0xFFF7F8FA),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _selectTab(tab),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected
+                        ? const Color(0xFF101828)
+                        : const Color(0xFFE4E7EC),
+                  ),
+                ),
+                child: Text(
+                  tab.label,
+                  style: TextStyle(
+                    color: selected
+                        ? Colors.white
+                        : const Color(0xFF475467),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
             ),
           );
         },
@@ -443,97 +488,172 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildRecent() {
-    if (_history.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 40),
-          child: Text(
-            'Search OJAS for creators, sounds, hashtags, videos and more.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 10, 12, 4),
-          child: Row(
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: <Color>[
+                Color(0xFFF7F8FA),
+                Color(0xFFFFFFFF),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE4E7EC)),
+          ),
+          child: const Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Recent searches',
-                  style: TextStyle(
-                    color: Color(0xFF111827),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
+              CircleAvatar(
+                radius: 23,
+                backgroundColor: Color(0xFF101828),
+                child: Icon(
+                  Icons.travel_explore_rounded,
+                  color: Colors.white,
+                  size: 22,
                 ),
               ),
-              TextButton(
-                onPressed: _clearHistory,
-                child: const Text(
-                  'Clear all',
-                  style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                  ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Discover OJAS',
+                      style: TextStyle(
+                        color: Color(0xFF101828),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Creators, Show, sounds, hashtags, topics and places — all in one search.',
+                      style: TextStyle(
+                        color: Color(0xFF667085),
+                        fontSize: 12.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        ..._history.map(
-          (query) => ListTile(
-            dense: true,
-            leading: const Icon(
-              Icons.history_rounded,
-              color: Color(0xFF6B7280),
-              size: 20,
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Recent searches',
+                style: TextStyle(
+                  color: Color(0xFF101828),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
-            title: Text(
-              query,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 14,
+            if (_history.isNotEmpty)
+              TextButton(
+                onPressed: _clearHistory,
+                child: const Text(
+                  'Clear',
+                  style: TextStyle(
+                    color: Color(0xFF667085),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        if (_history.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Text(
+              'Your recent searches will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF98A2B3),
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            trailing: IconButton(
-              tooltip: 'Remove',
-              icon: const Icon(
-                Icons.close_rounded,
-                color: Color(0xFF9CA3AF),
-                size: 18,
+          )
+        else
+          ..._history.map(
+            (query) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () {
+                    _controller.text = query;
+                    _submit();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 11, 8, 11),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.history_rounded,
+                          color: Color(0xFF667085),
+                          size: 19,
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Text(
+                            query,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF344054),
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _deleteHistory(query),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF98A2B3),
+                            size: 17,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              onPressed: () => _deleteHistory(query),
             ),
-            onTap: () {
-              _controller.text = query;
-              _submit();
-            },
           ),
-        ),
       ],
     );
   }
 
   Widget _buildSuggestions() {
     if (_loadingSuggestions) {
-      return const Padding(
-        padding: EdgeInsets.all(18),
-        child: LinearProgressIndicator(
-          minHeight: 2,
-          color: Color(0xFF111827),
+      return const Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.1,
+            color: Color(0xFF101828),
+          ),
         ),
       );
     }
@@ -541,10 +661,16 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_suggestions.isEmpty) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.only(top: 60),
+          padding: EdgeInsets.symmetric(horizontal: 40),
           child: Text(
-            'No suggestions yet',
-            style: TextStyle(color: Color(0xFF9CA3AF)),
+            'No live suggestions yet. Keep typing to search the full OJAS index.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF98A2B3),
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       );
@@ -552,37 +678,65 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return ListView.separated(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.fromLTRB(14, 7, 14, 24),
       itemCount: _suggestions.length,
-      separatorBuilder: (_, __) =>
-          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, index) {
         final item = _suggestions[index];
-        return ListTile(
-          minVerticalPadding: 6,
-          leading: _SuggestionIcon(suggestion: item),
-          title: Text(
-            item.text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
+        return Material(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(17),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(17),
+            onTap: () => _selectSuggestion(item),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 13,
+                vertical: 11,
+              ),
+              child: Row(
+                children: [
+                  _SuggestionIcon(suggestion: item),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF101828),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (item.subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            item.subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF667085),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_upward_rounded,
+                    color: Color(0xFF98A2B3),
+                    size: 18,
+                  ),
+                ],
+              ),
             ),
           ),
-          subtitle: item.subtitle.isEmpty
-              ? null
-              : Text(
-                  item.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                  ),
-                ),
-          onTap: () => _selectSuggestion(item),
         );
       },
     );
@@ -723,41 +877,68 @@ class _SearchScreenState extends State<SearchScreen> {
     final showSuggestions = _focused && !_submitted;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF9FAFB),
       appBar: widget.embedded
           ? null
           : AppBar(
-              backgroundColor: Colors.white,
+              backgroundColor: const Color(0xFFF9FAFB),
               surfaceTintColor: Colors.transparent,
               elevation: 0,
+              toolbarHeight: 54,
+              titleSpacing: 16,
               title: const Text(
-                'Search',
+                'Discover',
                 style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18,
+                  color: Color(0xFF101828),
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-              centerTitle: true,
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFFEAECF0),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.tune_rounded,
+                      color: Color(0xFF475467),
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ],
             ),
       body: SafeArea(
+        top: widget.embedded,
         child: Column(
           children: [
             _buildSearchField(),
             _buildTabs(),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Expanded(
-              child: showSuggestions
-                  ? (_controller.text.trim().isEmpty
-                      ? _buildRecent()
-                      : _buildSuggestions())
-                  : _buildResults(),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: showSuggestions
+                    ? (_controller.text.trim().isEmpty
+                        ? _buildRecent()
+                        : _buildSuggestions())
+                    : _buildResults(),
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
 }
 
 class _SuggestionIcon extends StatelessWidget {
@@ -811,89 +992,206 @@ class _SearchResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isVisual = result.entityType == SearchEntityType.content;
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 4,
-      ),
-      leading: _Leading(result: result),
-      title: Text(
-        result.title.isEmpty ? 'OJAS result' : result.title,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Color(0xFF111827),
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (result.subtitle.isNotEmpty)
-            Text(
-              result.entityType == SearchEntityType.person &&
-                      !result.subtitle.startsWith('@')
-                  ? '@' + result.subtitle
-                  : result.subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 12,
-              ),
+    final visual = result.entityType == SearchEntityType.content;
+    final accent = switch (result.entityType) {
+      SearchEntityType.person => const Color(0xFFEEF2FF),
+      SearchEntityType.content => const Color(0xFFF4F3FF),
+      SearchEntityType.hashtag => const Color(0xFFFFF7ED),
+      SearchEntityType.sound => const Color(0xFFFDF2F8),
+      SearchEntityType.topic => const Color(0xFFECFDF3),
+      SearchEntityType.place => const Color(0xFFEFF8FF),
+      SearchEntityType.live => const Color(0xFFFFF1F2),
+      SearchEntityType.generic => const Color(0xFFF2F4F7),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFEAECF0)),
             ),
-          const SizedBox(height: 3),
-          Text(
-            _meta(result),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF9CA3AF),
-              fontSize: 11,
+            child: Row(
+              children: [
+                _Leading(result: result),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              result.title.isEmpty
+                                  ? 'OJAS result'
+                                  : result.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF101828),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                height: 1.15,
+                              ),
+                            ),
+                          ),
+                          if (result.entityType == SearchEntityType.live)
+                            const _MiniBadge(
+                              label: 'LIVE',
+                              background: Color(0xFFFFE4E6),
+                              foreground: Color(0xFFBE123C),
+                            ),
+                        ],
+                      ),
+                      if (result.subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          result.entityType == SearchEntityType.person &&
+                                  !result.subtitle.startsWith('@')
+                              ? '@' + result.subtitle
+                              : result.subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF667085),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: accent,
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Text(
+                              _typeLabel(result.entityType),
+                              style: const TextStyle(
+                                color: Color(0xFF344054),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              _meta(result),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF98A2B3),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            visual
+                                ? Icons.play_circle_fill_rounded
+                                : Icons.chevron_right_rounded,
+                            color: const Color(0xFF98A2B3),
+                            size: visual ? 21 : 18,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
-      trailing: isVisual
-          ? const Icon(
-              Icons.play_arrow_rounded,
-              color: Color(0xFF111827),
-            )
-          : const Icon(
-              Icons.chevron_right_rounded,
-              color: Color(0xFF9CA3AF),
-            ),
-      onTap: onTap,
     );
   }
 
+  String _typeLabel(SearchEntityType type) {
+    return switch (type) {
+      SearchEntityType.person => 'Creator',
+      SearchEntityType.content => 'Show',
+      SearchEntityType.hashtag => 'Hashtag',
+      SearchEntityType.sound => 'Sound',
+      SearchEntityType.topic => 'Topic',
+      SearchEntityType.place => 'Place',
+      SearchEntityType.live => 'LIVE',
+      SearchEntityType.generic => 'Search',
+    };
+  }
+
   String _meta(SearchResult result) {
+    final views = result.extra['views'];
+    final followers = result.extra['followers'];
+
     switch (result.entityType) {
       case SearchEntityType.person:
-        final followers = result.extra['followers'];
         return followers is num
             ? followers.toInt().toString() + ' followers'
             : 'OJAS creator';
       case SearchEntityType.content:
-        final views = result.extra['views'];
         return views is num
             ? views.toInt().toString() + ' views'
             : 'OJAS Show';
       case SearchEntityType.hashtag:
-        return 'Hashtag';
+        return 'Community topic';
       case SearchEntityType.sound:
-        return 'Sound';
+        return 'Audio discovery';
       case SearchEntityType.topic:
-        return 'Topic';
+        return 'Topic discovery';
       case SearchEntityType.place:
-        return 'Place';
+        return 'Place discovery';
       case SearchEntityType.live:
-        return 'LIVE';
+        return 'Live now';
       case SearchEntityType.generic:
-        return 'Search';
+        return 'Search result';
     }
+  }
+}
+
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
   }
 }
 
