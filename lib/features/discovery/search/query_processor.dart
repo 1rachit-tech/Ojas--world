@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import '../domain/search_models.dart';
+import 'domain/search_models.dart';
 
 class SearchQueryProcessor {
   const SearchQueryProcessor();
@@ -200,7 +200,7 @@ class SearchQueryProcessor {
     'गाना': <String>{'song', 'music', 'audio'},
     'गाने': <String>{'song', 'songs', 'music', 'audio'},
     'गीत': <String>{'song', 'songs', 'music'},
-    'संगीत': <String>{'music', 'song'},
+    'संगीत': <String>{'music', 'song', 'songs'},
     'बारिश': <String>{'barish', 'baarish', 'rain'},
     'बारिस': <String>{'barish', 'baarish', 'rain'},
     'क्रिकेट': <String>{'cricket', 'kriket'},
@@ -212,7 +212,6 @@ class SearchQueryProcessor {
     'यात्रा': <String>{'travel', 'trip'},
     'नृत्य': <String>{'dance'},
     'डांस': <String>{'dance'},
-    'संगीत': <String>{'music', 'songs'},
     'song': <String>{'गाना', 'music'},
     'songs': <String>{'गाने', 'music'},
     'rain': <String>{'बारिश', 'barish', 'baarish'},
