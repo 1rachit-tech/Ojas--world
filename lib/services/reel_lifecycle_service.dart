@@ -52,6 +52,8 @@ class ReelLifecycleService {
     bool? allowComments,
     bool? recommendationEligible,
     String? reusePolicy,
+    List<String>? hashtags,
+    List<String>? mentions,
   }) async {
     await _call('manageReel', <String, dynamic>{
       'operation': 'edit',
@@ -61,6 +63,8 @@ class ReelLifecycleService {
       if (allowComments != null) 'allowComments': allowComments,
       if (recommendationEligible != null) 'recommendationEligible': recommendationEligible,
       if (reusePolicy != null) 'reusePolicy': reusePolicy,
+      if (hashtags != null) 'hashtags': hashtags,
+      if (mentions != null) 'mentions': mentions,
     });
   }
 
@@ -79,6 +83,13 @@ class ReelLifecycleService {
     required String reusePolicy,
     required bool aiGeneratedDisclosure,
     required bool copyrightConfirmed,
+    List<String>? hashtags,
+    List<String>? mentions,
+    List<String>? shopItemIds,
+    List<String>? searchTokens,
+    String? audioTrackId,
+    Map<String, dynamic>? audioMetadata,
+    Map<String, dynamic>? location,
   }) async {
     await _call('manageReel', <String, dynamic>{
       'operation': 'replace-media',
@@ -97,6 +108,13 @@ class ReelLifecycleService {
       'reusePolicy': reusePolicy,
       'aiGeneratedDisclosure': aiGeneratedDisclosure,
       'copyrightConfirmed': copyrightConfirmed,
+      if (hashtags != null) 'hashtags': hashtags,
+      if (mentions != null) 'mentions': mentions,
+      if (shopItemIds != null) 'shopItemIds': shopItemIds,
+      if (searchTokens != null) 'searchTokens': searchTokens,
+      if (audioTrackId != null) 'audioTrackId': audioTrackId,
+      if (audioMetadata != null) 'audioMetadata': audioMetadata,
+      if (location != null) 'location': location,
     });
   }
 
