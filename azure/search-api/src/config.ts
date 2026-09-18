@@ -21,6 +21,8 @@ export const config = {
   ingestSecret: env("AZURE_SEARCH_INGEST_SECRET"),
   firebaseServiceAccountJson: env("FIREBASE_SERVICE_ACCOUNT_JSON"),
   firebaseProjectId: env("FIREBASE_PROJECT_ID"),
+  firebaseAppCheckAppId: env("FIREBASE_APP_CHECK_APP_ID"),
+  requireAppCheck: env("REQUIRE_APP_CHECK", "true") === "true",
   allowAnonymousDev: env("ALLOW_ANONYMOUS_DEV", "false") === "true",
   reconcileEnabled: env("SEARCH_RECONCILE_ENABLED", "false") === "true",
   reconcileCron: env("SEARCH_RECONCILE_CRON", "0 0 */6 * * *"),
