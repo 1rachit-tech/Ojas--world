@@ -72,7 +72,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
           final clip = timeline[i];
           final trimOut = clip.trimOutMs == null || clip.trimOutMs! <= 0
               ? duration
-              : clip.trimOutMs!.clamp(1, duration);
+              : clip.trimOutMs!.clamp(1, duration).toInt();
           timeline[i] = clip.copyWith(
             startMs: clip.startMs,
             endMs: duration,
@@ -98,10 +98,10 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
         if (i < timeline.length) {
           final clip = timeline[i];
-          final trimIn = clip.trimInMs.clamp(0, duration);
+          final trimIn = clip.trimInMs.clamp(0, duration).toInt();
           final trimOut = (clip.trimOutMs == null || clip.trimOutMs! <= trimIn)
               ? duration
-              : clip.trimOutMs!.clamp(trimIn + 1, duration);
+              : clip.trimOutMs!.clamp(trimIn + 1, duration).toInt();
           timeline[i] = clip.copyWith(
             endMs: duration,
             trimInMs: trimIn,
@@ -169,11 +169,11 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
       if (_selectedClipIndex < timeline.length && durationMs > 0) {
         final current = timeline[_selectedClipIndex];
-        final trimIn = current.trimInMs.clamp(0, durationMs);
+        final trimIn = current.trimInMs.clamp(0, durationMs).toInt();
         final trimOut =
             (current.trimOutMs == null || current.trimOutMs! <= trimIn)
                 ? durationMs
-                : current.trimOutMs!.clamp(trimIn + 1, durationMs);
+                : current.trimOutMs!.clamp(trimIn + 1, durationMs).toInt();
 
         timeline[_selectedClipIndex] = current.copyWith(
           endMs: durationMs,
