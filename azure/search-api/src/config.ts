@@ -14,6 +14,7 @@ export const config = {
   semanticConfiguration: env("AZURE_SEARCH_SEMANTIC_CONFIGURATION", "ojas-semantic"),
   serviceBusConnection: env("SEARCH_SERVICE_BUS_CONNECTION"),
   serviceBusQueue: env("SEARCH_SERVICE_BUS_QUEUE", "ojas-search-index-events"),
+  analyticsQueue: env("SEARCH_ANALYTICS_QUEUE", "ojas-search-events"),
   eventMode: env("AZURE_SEARCH_EVENT_MODE", "servicebus"),
   ingestSecret: env("AZURE_SEARCH_INGEST_SECRET"),
   firebaseServiceAccountJson: env("FIREBASE_SERVICE_ACCOUNT_JSON"),
