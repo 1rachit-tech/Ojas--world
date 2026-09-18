@@ -38,6 +38,22 @@
       "vectorSearchProfile": "ojas-hnsw-profile"
     }
   ],
+  "semantic": {
+    "configurations": [
+      {
+        "name": "ojas-semantic",
+        "prioritizedFields": {
+          "titleField": { "fieldName": "title" },
+          "prioritizedContentFields": [
+            { "fieldName": "text" }
+          ],
+          "prioritizedKeywordsFields": [
+            { "fieldName": "tags" }
+          ]
+        }
+      }
+    ]
+  },
   "vectorSearch": {
     "algorithms": [
       { "name": "ojas-hnsw", "kind": "hnsw" }
@@ -55,9 +71,9 @@
         "kind": "azureOpenAI",
         "azureOpenAIParameters": {
           "resourceUri": "https://<your-azure-openai-resource>.openai.azure.com",
-          "deploymentName": "<your-embedding-deployment>",
+          "deploymentId": "<your-embedding-deployment>",
           "modelName": "<your-embedding-model>",
-          "apiKey": "<store-in-Key-Vault-and-deploy-through-secure-pipeline>"
+          "authIdentity": null
         }
       }
     ]
