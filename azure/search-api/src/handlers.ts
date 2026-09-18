@@ -26,6 +26,9 @@ function json(status: number, body: unknown): HttpResponseInit {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
     },
     jsonBody: body,
   };
@@ -37,6 +40,32 @@ function boundedPageSize(value: unknown): number {
   }
 
   return Math.min(Math.max(Math.floor(value), 1), 50);
+}
+
+function validTab(value: unknown): SearchRequest["tab"] {
+  const allowed = new Set([
+    "all",
+    "top",
+    "people",
+    "videos",
+    "posts",
+    "hashtags",
+    "sounds",
+    "topics",
+    "live",
+    "places",
+  ]);
+
+  if (typeof value !== "string" || !allowed.has(value)) {
+    return "all";
+  }
+
+  return value as SearchRequest["tab"];
+}
+
+function safeQuery(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, 256);
 }
 
 async function readJson<T>(request: HttpRequest): Promise<T> {
@@ -59,9 +88,8 @@ export async function searchHttp(
     ensureSafetyConfiguration();
 
     const body = await readJson<SearchRequest>(request);
-    const query =
-      typeof body.query === "string" ? body.query.trim() : "";
-    const tab = body.tab ?? "all";
+    const query = safeQuery(body.query);
+    const tab = validTab(body.tab);
 
     if (!query) {
       return json(400, { error: "query_required" });
@@ -129,8 +157,7 @@ export async function suggestionsHttp(
       limit?: number;
     }>(request);
 
-    const query =
-      typeof body.query === "string" ? body.query.trim() : "";
+    const query = safeQuery(body.query);
 
     if (!query) {
       return json(200, { suggestions: [] });
@@ -146,7 +173,7 @@ export async function suggestionsHttp(
 
     const values = await suggestAzureIndex(
       query,
-      boundedPageSize(body.limit ?? 8),
+      Math.min(boundedPageSize(body.limit ?? 8), 20),
       filter,
     );
 
@@ -218,7 +245,9 @@ export async function eventsHttp(
     }>(request);
 
     const events = Array.isArray(body.events)
-      ? body.events.slice(0, 100)
+      ? body.events
+          .slice(0, 100)
+          .filter((event) => JSON.stringify(event).length <= 8192)
       : [];
 
     if (events.length === 0) {
