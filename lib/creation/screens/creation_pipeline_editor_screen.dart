@@ -659,53 +659,133 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     _scheduleAutosave();
   }
 
-  Future<void> _openScaleSheet() async {
+  Future<void> _openTransformSheet() async {
     if (_selectedClipIndex >= _project.timeline.length) return;
+
     double scale = _selectedTimelineClip.scale;
-    final result = await showModalBottomSheet<double>(
+    double x = _selectedTimelineClip.x;
+    double y = _selectedTimelineClip.y;
+    double opacity = _selectedTimelineClip.opacity;
+
+    final result = await showModalBottomSheet<Map<String, double>>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            Widget slider({
+              required String title,
+              required double value,
+              required double min,
+              required double max,
+              required int divisions,
+              required ValueChanged<double> onChanged,
+            }) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Scale',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                    ),
+                  Row(
+                    children: [
+                      Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      Text(
+                        value.toStringAsFixed(2),
+                        style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                      ),
+                    ],
                   ),
                   Slider(
-                    value: scale,
-                    min: 0.5,
-                    max: 2.0,
-                    divisions: 30,
-                    label: scale.toStringAsFixed(2),
-                    onChanged: (value) => setSheetState(() => scale = value),
-                  ),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: FilledButton(
-                      onPressed: () => Navigator.pop(sheetContext, scale),
-                      child: const Text('Apply'),
-                    ),
+                    value: value.clamp(min, max).toDouble(),
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    onChanged: onChanged,
                   ),
                 ],
+              );
+            }
+
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Transform',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    slider(
+                      title: 'Scale',
+                      value: scale,
+                      min: 0.5,
+                      max: 2.0,
+                      divisions: 30,
+                      onChanged: (value) => setSheetState(() => scale = value),
+                    ),
+                    slider(
+                      title: 'Horizontal position',
+                      value: x,
+                      min: -1,
+                      max: 1,
+                      divisions: 40,
+                      onChanged: (value) => setSheetState(() => x = value),
+                    ),
+                    slider(
+                      title: 'Vertical position',
+                      value: y,
+                      min: -1,
+                      max: 1,
+                      divisions: 40,
+                      onChanged: (value) => setSheetState(() => y = value),
+                    ),
+                    slider(
+                      title: 'Opacity',
+                      value: opacity,
+                      min: 0,
+                      max: 1,
+                      divisions: 20,
+                      onChanged: (value) => setSheetState(() => opacity = value),
+                    ),
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(
+                          sheetContext,
+                          <String, double>{
+                            'scale': scale,
+                            'x': x,
+                            'y': y,
+                            'opacity': opacity,
+                          },
+                        ),
+                        child: const Text('Apply transform'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
         );
       },
     );
+
     if (result == null || !mounted) return;
     final timeline = List<CreationTimelineClip>.from(_project.timeline);
-    timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(scale: result);
+    timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(
+      scale: result['scale'],
+      x: result['x'],
+      y: result['y'],
+      opacity: result['opacity'],
+    );
     setState(() {
       _project = _project.copyWith(
         timeline: timeline,
@@ -1255,9 +1335,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                           onTap: _openOriginalVolumeSheet,
                         ),
                         _EditorAction(
-                          icon: Icons.zoom_in_map_rounded,
-                          label: 'Scale',
-                          onTap: _openScaleSheet,
+                          icon: Icons.open_in_full_rounded,
+                          label: 'Transform',
+                          onTap: _openTransformSheet,
                         ),
                         _EditorAction(
                           icon: Icons.tune_rounded,
