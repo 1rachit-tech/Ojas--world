@@ -30,7 +30,7 @@ export async function authenticate(
   authorizationHeader: string | undefined,
 ): Promise<AuthenticatedUser | null> {
   const raw = authorizationHeader ?? "";
-  const match = raw.match(/^Bearer\\s+(.+)$/i);
+  const match = raw.match(/^Bearer\s+(.+)$/i);
 
   if (!match) {
     return config.allowAnonymousDev ? { uid: "anonymous-dev" } : null;
