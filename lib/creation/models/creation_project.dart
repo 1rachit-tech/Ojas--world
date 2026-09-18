@@ -114,6 +114,7 @@ class CreationTimelineClip {
     this.scale = 1.0,
     this.x = 0.0,
     this.y = 0.0,
+    this.originalVolume = 1.0,
   });
 
   final String clipId;
@@ -128,6 +129,7 @@ class CreationTimelineClip {
   final double scale;
   final double x;
   final double y;
+  final double originalVolume;
 
   CreationTimelineClip copyWith({
     String? clipId,
@@ -142,6 +144,7 @@ class CreationTimelineClip {
     double? scale,
     double? x,
     double? y,
+    double? originalVolume,
   }) {
     return CreationTimelineClip(
       clipId: clipId ?? this.clipId,
@@ -156,6 +159,7 @@ class CreationTimelineClip {
       scale: scale ?? this.scale,
       x: x ?? this.x,
       y: y ?? this.y,
+      originalVolume: originalVolume ?? this.originalVolume,
     );
   }
 
@@ -172,6 +176,7 @@ class CreationTimelineClip {
         'scale': scale,
         'x': x,
         'y': y,
+        'originalVolume': originalVolume,
       };
 
   factory CreationTimelineClip.fromMap(Map<String, dynamic> map) {
@@ -188,6 +193,7 @@ class CreationTimelineClip {
       scale: (map['scale'] as num?)?.toDouble() ?? 1.0,
       x: (map['x'] as num?)?.toDouble() ?? 0.0,
       y: (map['y'] as num?)?.toDouble() ?? 0.0,
+      originalVolume: (map['originalVolume'] as num?)?.toDouble() ?? 1.0,
     );
   }
 }
