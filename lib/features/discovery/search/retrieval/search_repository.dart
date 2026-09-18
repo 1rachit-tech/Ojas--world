@@ -136,8 +136,12 @@ class SearchRepository {
         final profiles = await _firestore
             .collection('publicProfiles')
             .orderBy('ojasId')
-            .startAt([query.normalized])
-            .endAt([query.normalized + '\uf8ff'])
+            .startAt([
+              query.normalized.replaceFirst(RegExp(r'^[@#]'), ''),
+            ])
+            .endAt([
+              query.normalized.replaceFirst(RegExp(r'^[@#]'), '') + '\uf8ff',
+            ])
             .limit(12)
             .get();
 
