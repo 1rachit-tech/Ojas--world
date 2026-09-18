@@ -46,5 +46,23 @@ jobs:
       - name: Set up Firebase CLI
         run: npm install -g firebase-tools --no-audit --no-fund
 
+      - name: Configure Azure Search bridge environment
+        working-directory: functions
+        env:
+          AZURE_SEARCH_INGEST_URL: ${{ secrets.AZURE_SEARCH_INGEST_URL }}
+          AZURE_SEARCH_INGEST_SECRET: ${{ secrets.AZURE_SEARCH_INGEST_SECRET }}
+        run: |
+          if [[ -n "$AZURE_SEARCH_INGEST_URL" && -n "$AZURE_SEARCH_INGEST_SECRET" ]]; then
+            printf '%s\n' \
+              "AZURE_SEARCH_INGEST_URL=$AZURE_SEARCH_INGEST_URL" \
+              "AZURE_SEARCH_INGEST_SECRET=$AZURE_SEARCH_INGEST_SECRET" \
+              "SEARCH_INDEX_MIRROR_FIRESTORE=false" \
+              > .env.ojas-e8161
+            echo "Azure Search bridge configuration prepared for Firebase Functions."
+          else
+            rm -f .env.ojas-e8161
+            echo "Azure Search bridge secrets are not configured; Firebase indexing stays on the existing fallback path."
+          fi
+
       - name: Deploy Firebase Functions
         run: firebase deploy --only functions --project ojas-e8161 --non-interactive
