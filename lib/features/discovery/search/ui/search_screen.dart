@@ -5,9 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../screens/creator_profile_screen.dart';
-import '../../../screens/hashtag_feed_screen.dart';
-import '../../../screens/sound_detail_screen.dart';
+import '../../../../screens/creator_profile_screen.dart';
+import '../../../../screens/hashtag_feed_screen.dart';
+import '../../../../screens/sound_detail_screen.dart';
 import '../domain/search_models.dart';
 import '../search_history.dart';
 import '../search_orchestrator.dart';
