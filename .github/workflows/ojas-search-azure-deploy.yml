@@ -142,8 +142,11 @@ jobs:
         if: ${{ inputs.provision_paid_resources == true }}
         env:
           SEARCH_ENDPOINT: ${{ steps.search.outputs.endpoint }}
-          SEARCH_API_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          SEARCH_SERVICE_NAME: ${{ inputs.search_service_name }}
         run: |
+          SEARCH_API_KEY="$(az search admin-key show --resource-group "$AZURE_RESOURCE_GROUP" --service-name "$SEARCH_SERVICE_NAME" --query primaryKey --output tsv)"
+          test -n "$SEARCH_API_KEY"
           curl -sS -X PUT             "${SEARCH_ENDPOINT}/indexes/ojas-search-v1?api-version=2026-04-01"             -H "Content-Type: application/json"             -H "api-key: ${SEARCH_API_KEY}"             --data-binary @azure/search-infra/index.schema.json
 
       - name: Smoke-check deployed Function endpoint
