@@ -1,5 +1,5 @@
 import {createHash} from 'crypto';
-import {getFirestore, FieldValue} from 'firebase-admin/firestore';
+import {getFirestore} from 'firebase-admin/firestore';
 import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 
 type SearchEntity = 'person' | 'content';
@@ -178,6 +178,162 @@ function numberValue(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+const AZURE_SEARCH_INGEST_URL = (process.env.AZURE_SEARCH_INGEST_URL ?? '')
+  .trim()
+  .replace(/\\/$/, '');
+const AZURE_SEARCH_INGEST_SECRET = (process.env.AZURE_SEARCH_INGEST_SECRET ?? '').trim();
+const MIRROR_FIRESTORE_SEARCH_INDEX =
+  (process.env.SEARCH_INDEX_MIRROR_FIRESTORE ?? 'false').toLowerCase() === 'true';
+
+function isoDate(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  if (value && typeof value === 'object') {
+    const maybeTimestamp = value as {toDate?: unknown};
+    if (typeof maybeTimestamp.toDate === 'function') {
+      const date = maybeTimestamp.toDate() as Date;
+      if (date instanceof Date && !Number.isNaN(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+
+  return null;
+}
+
+function toAzureDocument(
+  entityType: SearchEntity,
+  entityId: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    id: entityType + '_' + entityId,
+    entityType,
+    title: safeString(payload.title),
+    subtitle: safeString(payload.subtitle),
+    text: safeString(payload.text),
+    imageUrl: safeString(payload.imageUrl),
+    creatorId: safeString(payload.creatorId),
+    contentUrl: safeString(payload.contentUrl),
+    audioTrackId: safeString(payload.audioTrackId),
+    tags: Array.isArray(payload.tags)
+      ? payload.tags.filter((value): value is string => typeof value === 'string')
+      : [],
+    topicIds: Array.isArray(payload.topicIds)
+      ? payload.topicIds.filter((value): value is string => typeof value === 'string')
+      : [],
+    location: safeString(payload.location),
+    language: safeString(payload.language),
+    region: safeString(payload.region),
+    visibility: safeString(payload.visibility) || 'public',
+    eligible: payload.eligible !== false,
+    safetyStatus: safeString(payload.safetyStatus) || 'clean',
+    isLive: payload.isLive === true,
+    views: numberValue(payload.views),
+    likes: numberValue(payload.likes),
+    saves: numberValue(payload.saves),
+    followers: numberValue(payload.followers),
+    posts: numberValue(payload.posts),
+    algorithmScore: numberValue(payload.algorithmScore),
+    trendScore: numberValue(payload.trendScore),
+    createdAt: isoDate(payload.createdAt),
+    updatedAt: isoDate(payload.updatedAt) ?? new Date().toISOString(),
+  };
+}
+
+function eventId(
+  operation: string,
+  entityType: SearchEntity,
+  entityId: string,
+  version: number,
+): string {
+  return createHash('sha1')
+    .update(operation + '|' + entityType + '|' + entityId + '|' + version)
+    .digest('hex');
+}
+
+async function publishSearchIndexEvent(
+  operation: 'upsert' | 'delete',
+  entityType: SearchEntity,
+  entityId: string,
+  payload?: Record<string, unknown>,
+): Promise<void> {
+  const document = payload
+    ? toAzureDocument(entityType, entityId, payload)
+    : undefined;
+
+  if (AZURE_SEARCH_INGEST_URL) {
+    if (!AZURE_SEARCH_INGEST_SECRET) {
+      throw new Error(
+        'AZURE_SEARCH_INGEST_SECRET is required when Azure Search ingest is enabled.',
+      );
+    }
+
+    const event = {
+      eventId: eventId(operation, entityType, entityId, 2),
+      operation,
+      entityType,
+      entityId,
+      version: 2,
+      occurredAt: new Date().toISOString(),
+      ...(document ? {document} : {}),
+    };
+
+    const response = await fetch(
+      AZURE_SEARCH_INGEST_URL + '/v1/search/index/events',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-ojas-index-secret': AZURE_SEARCH_INGEST_SECRET,
+        },
+        body: JSON.stringify(event),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        'Azure Search ingest returned ' +
+          response.status +
+          ': ' +
+          (await response.text()).slice(0, 500),
+      );
+    }
+  }
+
+  const shouldMirror =
+    !AZURE_SEARCH_INGEST_URL || MIRROR_FIRESTORE_SEARCH_INDEX;
+
+  const ref = db()
+    .collection('searchIndex')
+    .doc(entityType + '_' + entityId);
+
+  if (operation === 'delete') {
+    await ref.delete();
+    return;
+  }
+
+  if (shouldMirror) {
+    await ref.set(
+      {
+        ...(payload ?? {}),
+        entityId,
+        entityType,
+        updatedAt: new Date().toISOString(),
+      },
+      {merge: true},
+    );
+  }
+}
+
+
 async function writeProfileIndex(
   userId: string,
   data: Record<string, unknown>,
@@ -203,8 +359,8 @@ async function writeProfileIndex(
     tokens: terms.tokens,
     prefixes: terms.prefixes,
     tags: [],
-    createdAt: data.createdAt ?? FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: isoDate(data.createdAt) ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     followers: numberValue(data.followersCount),
     posts: numberValue(data.postsCount),
     likes: numberValue(data.likesCount),
@@ -222,9 +378,7 @@ async function writeProfileIndex(
     searchIndexVersion: 2,
   };
 
-  await db().collection('searchIndex').doc('person_' + userId).set(payload, {
-    merge: true,
-  });
+  await publishSearchIndexEvent('upsert', 'person', userId, payload);
 }
 
 async function writeReelIndex(
@@ -244,10 +398,13 @@ async function writeReelIndex(
     data.searchEligible !== false &&
     visibility !== 'private';
 
-  await db().collection('searchIndex').doc('content_' + reelId).set(
+  await publishSearchIndexEvent(
+    'upsert',
+    'content',
+    reelId,
     {
       entityId: reelId,
-      entityType: 'content' as SearchEntity,
+      entityType: 'content',
       title: caption || 'OJAS Show',
       subtitle: safeString(data.creatorId),
       text: rawText,
@@ -258,8 +415,8 @@ async function writeReelIndex(
       tokens: terms.tokens,
       prefixes: terms.prefixes,
       tags: hashtags,
-      createdAt: data.createdAt ?? FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: isoDate(data.createdAt) ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       views: numberValue(data.views),
       likes: numberValue(data.likes ?? data.likesCount),
       saves: numberValue(data.saves),
@@ -280,13 +437,15 @@ async function writeReelIndex(
       isLive: data.isLive === true,
       eligible,
       visibility: eligible ? 'public' : 'restricted',
+      safetyStatus:
+        safeString(data.safetyStatus) ||
+        (eligible ? 'clean' : 'restricted'),
       shardKey: shardFor(reelId),
       contentType: 'video',
       sourceCollection: 'reels',
       sourceId: reelId,
       searchIndexVersion: 2,
     },
-    {merge: true},
   );
 }
 
@@ -296,7 +455,7 @@ export const syncPublicProfileSearchIndex = onDocumentWritten(
     const after = event.data?.after;
     const userId = event.params.userId;
     if (!after || !after.exists) {
-      await db().collection('searchIndex').doc('person_' + userId).delete();
+      await publishSearchIndexEvent('delete', 'person', userId);
       return;
     }
     await writeProfileIndex(userId, after.data() ?? {});
@@ -309,7 +468,7 @@ export const syncReelSearchIndex = onDocumentWritten(
     const after = event.data?.after;
     const reelId = event.params.reelId;
     if (!after || !after.exists) {
-      await db().collection('searchIndex').doc('content_' + reelId).delete();
+      await publishSearchIndexEvent('delete', 'content', reelId);
       return;
     }
     await writeReelIndex(reelId, after.data() ?? {});
