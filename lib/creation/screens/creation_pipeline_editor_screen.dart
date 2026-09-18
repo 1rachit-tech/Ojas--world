@@ -25,6 +25,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   late CreationProject _project;
   VideoPlayerController? _videoController;
   Timer? _autosaveTimer;
+  Timer? _previewRefreshTimer;
   bool _saving = false;
   bool _videoInitializing = true;
   bool _videoError = false;
@@ -231,9 +232,18 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autosaveTimer?.cancel();
+    _previewRefreshTimer?.cancel();
     _captionController.dispose();
     _videoController?.dispose();
     super.dispose();
+  }
+
+  void _schedulePreviewRefresh() {
+    _previewRefreshTimer?.cancel();
+    _previewRefreshTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() => _previewRevision++);
+    });
   }
 
   void _scheduleAutosave() {
@@ -516,7 +526,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
           timeline: timeline,
           renderedUri: null,
         );
-        _previewRevision++;
+        _schedulePreviewRefresh();
       }
     });
     if (controller != null && controller.value.isInitialized) {
@@ -528,8 +538,92 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
     _scheduleAutosave();
   }
 
-  CreationTimelineClip get _selectedTimelineClip =>
-      _project.timeline[_selectedClipIndex];
+  CreationTimelineClip get _selectedTimelineClip {
+    if (_project.timeline.isEmpty) {
+      return const CreationTimelineClip(
+        clipId: 'empty',
+        sourceId: 'empty',
+        startMs: 0,
+        endMs: 1,
+      );
+    }
+    final index = _selectedClipIndex
+        .clamp(0, _project.timeline.length - 1)
+        .toInt();
+    return _project.timeline[index];
+  }
+
+  Future<void> _openOriginalVolumeSheet() async {
+    if (_project.timeline.isEmpty ||
+        _selectedClipIndex >= _project.timeline.length) return;
+
+    double volume = _selectedTimelineClip.originalVolume;
+    final result = await showModalBottomSheet<double>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Original audio',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${(volume * 100).round()}%',
+                    style: const TextStyle(color: Color(0xFF6B7280)),
+                  ),
+                  Slider(
+                    value: volume,
+                    min: 0,
+                    max: 1,
+                    divisions: 20,
+                    onChanged: (value) =>
+                        setSheetState(() => volume = value),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(sheetContext, volume),
+                      child: const Text('Apply'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) return;
+    final timeline = List<CreationTimelineClip>.from(_project.timeline);
+    timeline[_selectedClipIndex] = timeline[_selectedClipIndex].copyWith(
+      originalVolume: result,
+    );
+    setState(() {
+      _project = _project.copyWith(
+        timeline: timeline,
+        renderedUri: null,
+        updatedAt: DateTime.now(),
+      );
+      _previewRevision++;
+    });
+    _scheduleAutosave();
+  }
 
   Future<void> _setSelectedSpeed(double speed) async {
     if (_selectedClipIndex >= _project.timeline.length) return;
@@ -1154,6 +1248,11 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                           icon: Icons.rotate_right_rounded,
                           label: '${_selectedTimelineClip.rotation.round()}°',
                           onTap: _rotateSelected,
+                        ),
+                        _EditorAction(
+                          icon: Icons.volume_up_rounded,
+                          label: '${(_selectedTimelineClip.originalVolume * 100).round()}%',
+                          onTap: _openOriginalVolumeSheet,
                         ),
                         _EditorAction(
                           icon: Icons.zoom_in_map_rounded,
