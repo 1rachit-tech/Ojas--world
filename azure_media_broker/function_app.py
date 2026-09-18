@@ -111,6 +111,8 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
         "maxChatMediaBytes": _MAX_CHAT_MEDIA_BYTES,
         "maxCreationVideoBytes": _MAX_CREATION_VIDEO_BYTES,
         "maxCreationAudioBytes": _MAX_CREATION_AUDIO_BYTES,
+        "maxUploadBytes": _MAX_CREATION_VIDEO_BYTES,
+        "maxUploadBytes": _MAX_CREATION_VIDEO_BYTES,
         "playbackSasTtlMinutes": _PLAYBACK_SAS_TTL_MINUTES,
         "error": _FIREBASE_ERROR if not _FIREBASE_READY else "",
     })

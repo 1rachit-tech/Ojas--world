@@ -27,6 +27,16 @@ export async function searchPublicReels(request: SearchRequest) {
       postId: typeof item.postId === 'string' ? item.postId : '',
       creatorId: typeof item.creatorId === 'string' ? item.creatorId : '',
       caption: typeof item.caption === 'string' ? item.caption : '',
+      hashtags: Array.isArray(item.hashtags)
+        ? item.hashtags.filter((value): value is string => typeof value === 'string').slice(0, 32)
+        : [],
+      mentions: Array.isArray(item.mentions)
+        ? item.mentions.filter((value): value is string => typeof value === 'string').slice(0, 32)
+        : [],
+      shopItemIds: Array.isArray(item.shopItemIds)
+        ? item.shopItemIds.filter((value): value is string => typeof value === 'string').slice(0, 32)
+        : [],
+      audioTrackId: typeof item.audioTrackId === 'string' ? item.audioTrackId : '',
     }));
 
   return {results: results.slice(0, MAX_RESULTS)};

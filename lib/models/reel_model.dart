@@ -19,6 +19,8 @@ class ReelModel {
     required this.algorithmScore,
     required this.createdAt,
     this.audioTrackId = '',
+    this.hashtags = const <String>[],
+    this.mentions = const <String>[],
   });
 
   final String id;
@@ -38,6 +40,8 @@ class ReelModel {
   final double algorithmScore;
   final DateTime createdAt;
   final String audioTrackId;
+  final List<String> hashtags;
+  final List<String> mentions;
 
   ReelModel copyWith({
     String? thumbnailUrl,
@@ -61,6 +65,8 @@ class ReelModel {
       algorithmScore: algorithmScore,
       createdAt: createdAt,
       audioTrackId: audioTrackId,
+      hashtags: hashtags,
+      mentions: mentions,
     );
   }
 
@@ -88,7 +94,14 @@ class ReelModel {
       algorithmScore: (data['algorithmScore'] as num?)?.toDouble() ?? 0.0,
       createdAt: _readDateTime(data['createdAt']),
       audioTrackId: data['audioTrackId'] as String? ?? '',
+      hashtags: _stringList(data['hashtags']),
+      mentions: _stringList(data['mentions']),
     );
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const <String>[];
+    return value.whereType<String>().map((item) => item.trim()).where((item) => item.isNotEmpty).take(32).toList(growable: false);
   }
 
   static DateTime _readDateTime(Object? value) {

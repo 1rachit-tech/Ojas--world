@@ -138,7 +138,7 @@ class _OjsFeedScreenState extends State<OjsFeedScreen> {
       likes: reel.likes + (_likeDeltas[reel.id] ?? 0),
       comments: reel.comments,
       shares: reel.shares,
-      tags: const <String>[],
+      tags: reel.hashtags,
       products: const <Map<String, dynamic>>[],
       isVerified: false,
       viralScore: reel.algorithmScore,

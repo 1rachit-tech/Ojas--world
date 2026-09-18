@@ -17,6 +17,10 @@ const MAX_AUDIO_LAYERS = 32;
 const MAX_STICKER_LAYERS = 64;
 const MAX_EFFECT_LAYERS = 32;
 const MAX_OPERATIONS = 256;
+const MAX_HASHTAGS = 32;
+const MAX_MENTIONS = 32;
+const MAX_SHOP_ITEM_IDS = 32;
+const MAX_SEARCH_TOKENS = 100;
 
 function requireUid(request: CallableRequest): string {
   const uid = request.auth?.uid;
@@ -42,6 +46,43 @@ function normalizeReusePolicy(value: unknown, fallback = 'allowed'): string {
 }
 
 function finiteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
+
+function boundedStringList(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== 'string') continue;
+    const item = raw.trim();
+    if (!item || item.length > maxLength || seen.has(item)) continue;
+    seen.add(item);
+    output.push(item);
+    if (output.length >= maxItems) break;
+  }
+  return output;
+}
+
+function boundedMetadataMap(value: unknown, maxEntries = 12): Record<string, string | number | boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const output: Record<string, string | number | boolean> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>).slice(0, maxEntries)) {
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(key)) continue;
+    if (typeof raw === 'string' && raw.length <= 512) output[key] = raw;
+    else if (typeof raw === 'number' && Number.isFinite(raw)) output[key] = raw;
+    else if (typeof raw === 'boolean') output[key] = raw;
+  }
+  return output;
+}
+
+function captionTokens(caption: string): string[] {
+  return Array.from(new Set(
+    caption.toLowerCase()
+      .replace(/[^a-z0-9_#@\s]/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.replace(/^[@#]/, ''))
+      .filter((token) => token.length >= 2 && token.length <= 64),
+  )).slice(0, MAX_SEARCH_TOKENS);
+}
 function isBoundedString(value: unknown, maxLength: number): boolean { return typeof value === 'string' && value.length <= maxLength; }
 
 function validStoragePath(path: string, ownerId: string, projectId: string, assetId: string): boolean {
@@ -155,7 +196,21 @@ export async function manageReelLifecycle(request: CallableRequest): Promise<Cal
     const allowComments = typeof data.allowComments === 'boolean' ? data.allowComments : reel.allowComments === true;
     const recommendationEligible = visibility === 'public' && data.recommendationEligible === true;
     const reusePolicy = normalizeReusePolicy(data.reusePolicy ?? reel.reusePolicy, 'allowed');
-    await reelRef.update({caption, visibility, allowComments, recommendationEligible, reusePolicy, moderationStatus: 'pending', updatedAt: FieldValue.serverTimestamp(), editedAt: FieldValue.serverTimestamp()});
+    const hashtags = boundedStringList(data.hashtags ?? reel.hashtags, MAX_HASHTAGS, 64);
+    const mentions = boundedStringList(data.mentions ?? reel.mentions, MAX_MENTIONS, 64);
+    await reelRef.update({
+      caption,
+      visibility,
+      allowComments,
+      recommendationEligible,
+      reusePolicy,
+      hashtags,
+      mentions,
+      searchTokens: captionTokens(caption),
+      moderationStatus: 'pending',
+      updatedAt: FieldValue.serverTimestamp(),
+      editedAt: FieldValue.serverTimestamp(),
+    });
     return {ok: true, operation: 'edit', postId};
   }
 
@@ -197,6 +252,15 @@ export async function manageReelLifecycle(request: CallableRequest): Promise<Cal
     const allowComments = typeof data.allowComments === 'boolean' ? data.allowComments : reel.allowComments === true;
     const recommendationEligible = visibility === 'public' && data.recommendationEligible === true;
     const reusePolicy = normalizeReusePolicy(data.reusePolicy ?? reel.reusePolicy, 'allowed');
+    const hashtags = boundedStringList(data.hashtags ?? reel.hashtags, MAX_HASHTAGS, 64);
+    const mentions = boundedStringList(data.mentions ?? reel.mentions, MAX_MENTIONS, 64);
+    const shopItemIds = boundedStringList(data.shopItemIds ?? reel.shopItemIds, MAX_SHOP_ITEM_IDS, 128);
+    const searchTokens = boundedStringList(data.searchTokens ?? reel.searchTokens, MAX_SEARCH_TOKENS, 64);
+    const audioTrackId = typeof data.audioTrackId === 'string'
+      ? data.audioTrackId.trim().slice(0, 128)
+      : (typeof reel.audioTrackId === 'string' ? reel.audioTrackId : '');
+    const audioMetadata = boundedMetadataMap(data.audioMetadata ?? reel.audioMetadata);
+    const location = boundedMetadataMap(data.location ?? reel.location);
 
     await reelRef.update({
       mediaAssetId,
@@ -213,6 +277,13 @@ export async function manageReelLifecycle(request: CallableRequest): Promise<Cal
       recommendationEligible,
       allowComments,
       reusePolicy,
+      hashtags,
+      mentions,
+      shopItemIds,
+      searchTokens,
+      audioTrackId,
+      audioMetadata,
+      location,
       editGraphVersion: 2,
       editGraph,
       aiGeneratedDisclosure: data.aiGeneratedDisclosure === true,
@@ -315,11 +386,32 @@ export async function moderateAndIndexReel(snapshot: ReelSnapshot): Promise<void
     await searchRef.delete();
     return;
   }
-  const tokens = Array.from(new Set(caption.toLowerCase().replace(/[^a-z0-9_#@\s]/g, ' ').split(/\s+/).map((token) => token.startsWith('#') ? token.slice(1) : token).filter((token) => token.length >= 2 && token.length <= 64))).slice(0, 100);
-  await searchRef.set({postId: reelId, creatorId, caption, tokens, visibility, moderationStatus, createdAt: data.createdAt ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()}, {merge: true});
+  const indexedTokens = boundedStringList(data.searchTokens, MAX_SEARCH_TOKENS, 64);
+  const tokens = Array.from(new Set([
+    ...captionTokens(caption),
+    ...indexedTokens.map((token) => token.toLowerCase().replace(/^[@#]/, '')),
+  ])).filter((token) => token.length >= 2 && token.length <= 64).slice(0, MAX_SEARCH_TOKENS);
+  const hashtags = boundedStringList(data.hashtags, MAX_HASHTAGS, 64);
+  const mentions = boundedStringList(data.mentions, MAX_MENTIONS, 64);
+  const shopItemIds = boundedStringList(data.shopItemIds, MAX_SHOP_ITEM_IDS, 128);
+  const audioTrackId = typeof data.audioTrackId === 'string' ? data.audioTrackId.trim().slice(0, 128) : '';
+  await searchRef.set({
+    postId: reelId,
+    creatorId,
+    caption,
+    tokens,
+    hashtags,
+    mentions,
+    shopItemIds,
+    audioTrackId,
+    visibility,
+    moderationStatus,
+    createdAt: data.createdAt ?? FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
 }
 
 export function shouldReprocessReel(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
-  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'serverMediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph', 'reusePolicy'];
+  const fields = ['caption', 'creatorId', 'visibility', 'copyrightConfirmed', 'mediaHash', 'serverMediaHash', 'mediaProvider', 'mediaProcessingStatus', 'recommendationEligible', 'deletedAt', 'editGraph', 'reusePolicy', 'hashtags', 'mentions', 'shopItemIds', 'searchTokens', 'audioTrackId', 'audioMetadata', 'location'];
   return fields.some((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null));
 }

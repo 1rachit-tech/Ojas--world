@@ -9,6 +9,7 @@ import '../../services/media_hash_service.dart';
 import '../../services/reel_lifecycle_service.dart';
 import '../../services/video_compression_service.dart';
 import '../models/creation_project.dart';
+import 'creation_metadata_pipeline_service.dart';
 import '../models/creation_publish_state.dart';
 import 'creation_azure_media_service.dart';
 import 'creation_project_store.dart';
@@ -178,6 +179,7 @@ class CreationPublishService {
       throw const CreationPublishException('Could not calculate a valid media hash. Please try again.');
     }
     final editGraph = await _prepareEditGraph(project);
+    final metadata = CreationMetadataPipelineService.build(project);
     await _saveState(project.projectId, CreationPublishStage.publishing, requestId: publishRequestId);
 
     final reuseSourcePostId = publishState['reuseSourcePostId'] as String?;
@@ -200,6 +202,13 @@ class CreationPublishService {
         reusePolicy: reusePolicy,
         aiGeneratedDisclosure: project.rights['aiGeneratedDisclosure'] == true,
         copyrightConfirmed: project.rights['copyrightConfirmed'] == true,
+        hashtags: metadata.hashtags,
+        mentions: metadata.mentions,
+        shopItemIds: metadata.shopItemIds,
+        searchTokens: metadata.searchTokens,
+        audioTrackId: metadata.audioTrackId,
+        audioMetadata: metadata.audioMetadata,
+        location: metadata.location,
       );
     } else {
       final payload = <String, dynamic>{
@@ -245,9 +254,14 @@ class CreationPublishService {
         'views': 0,
         'watchTimeMs': 0,
         'completions': 0,
-        'shopItemIds': const <String>[],
+        'shopItemIds': metadata.shopItemIds,
         'algorithmScore': 0.0,
-        'audioTrackId': '',
+        'audioTrackId': metadata.audioTrackId,
+        'hashtags': metadata.hashtags,
+        'mentions': metadata.mentions,
+        'audioMetadata': metadata.audioMetadata,
+        'location': metadata.location,
+        'searchTokens': metadata.searchTokens,
         if (reuseRequestId != null && reuseRequestId.trim().isNotEmpty) 'reuseRequestId': reuseRequestId.trim(),
         if (reuseSourcePostId != null && reuseSourcePostId.trim().isNotEmpty) 'reusedFromPostId': reuseSourcePostId.trim(),
         if (reuseSourceCreatorId != null && reuseSourceCreatorId.trim().isNotEmpty) 'reusedFromCreatorId': reuseSourceCreatorId.trim(),
@@ -281,6 +295,7 @@ class CreationPublishService {
         'recommend': recommendationEligible,
         'reusePolicy': reusePolicy,
         'processingStatus': processing ? 'queued' : 'uploaded',
+        'pipelineMetadata': metadata.toMap(),
         'mediaHash': mediaHash,
         'editGraphVersion': 2,
         'mediaAssetId': asset.assetId,
