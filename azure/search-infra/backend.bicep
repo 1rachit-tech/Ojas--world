@@ -150,7 +150,7 @@ resource serviceBus 'Microsoft.ServiceBus/namespaces@2023-01-01-preview' = if (d
     tier: 'Standard'
   }
   properties: {
-    disableLocalAuth: false
+    disableLocalAuth: true
     publicNetworkAccess: 'Enabled'
     zoneRedundant: false
   }
