@@ -40,8 +40,6 @@ void main() {
     expect(project.mediaAssets.single.localUri, path);
     expect(File(path).path, path);
   });
-}
-
 
   test('CreationMediaAsset can point to a normalized export without replacing source', () {
     final project = CreationProject.createForAsset(
@@ -82,3 +80,4 @@ void main() {
     expect(trimmed.trimInMs, 2500);
     expect(trimmed.trimOutMs, 9000);
   });
+}
