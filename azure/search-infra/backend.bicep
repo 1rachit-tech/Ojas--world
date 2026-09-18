@@ -219,3 +219,17 @@ output functionHostName string = deployBackend
 output serviceBusFqdn string = deployBackend
   ? '${serviceBusNamespaceName}.servicebus.windows.net'
   : ''
+
+
+resource functionServiceBusReceiverRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployBackend) {
+  name: guid(serviceBus.id, functionApp.identity.principalId, 'ojas-function-servicebus-receiver')
+  scope: serviceBus
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4f6d3b9b-027b-4f4c-9142-0e5a2a2247e0'
+    )
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
