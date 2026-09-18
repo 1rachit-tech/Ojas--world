@@ -140,9 +140,12 @@ class VideoExportService {
 
       final result = await completer.future.timeout(
         const Duration(hours: 2),
-        onTimeout: () => throw const VideoExportException(
-          'Video export timed out. Your draft is still safe locally.',
-        ),
+        onTimeout: () async {
+          await cancelActiveExport();
+          throw const VideoExportException(
+            'Video export timed out. Your draft is still safe locally.',
+          );
+        },
       );
 
       final output = File(result.outputPath);
