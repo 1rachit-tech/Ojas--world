@@ -14,6 +14,7 @@
     "AZURE_SEARCH_SEMANTIC_CONFIGURATION": "ojas-semantic",
     "SEARCH_SERVICE_BUS_CONNECTION": "",
     "SEARCH_SERVICE_BUS_QUEUE": "ojas-search-index-events",
+    "SEARCH_ANALYTICS_QUEUE": "ojas-search-events",
     "AZURE_SEARCH_EVENT_MODE": "servicebus",
     "AZURE_SEARCH_INGEST_SECRET": "replace-with-long-random-secret",
     "FIREBASE_SERVICE_ACCOUNT_JSON": "",
