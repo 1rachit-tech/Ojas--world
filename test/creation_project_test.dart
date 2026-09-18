@@ -41,3 +41,44 @@ void main() {
     expect(File(path).path, path);
   });
 }
+
+
+  test('CreationMediaAsset can point to a normalized export without replacing source', () {
+    final project = CreationProject.createForAsset(
+      ownerId: 'user-1',
+      localUri: '/tmp/source.mp4',
+      isVideo: true,
+      sizeBytes: 2048,
+      durationMs: 12000,
+    );
+
+    final asset = project.mediaAssets.single.copyWith(
+      normalizedUri: '/tmp/normalized.mp4',
+      sizeBytes: 1024,
+      durationMs: 7000,
+    );
+
+    expect(asset.localUri, '/tmp/source.mp4');
+    expect(asset.normalizedUri, '/tmp/normalized.mp4');
+    expect(asset.sizeBytes, 1024);
+    expect(asset.durationMs, 7000);
+  });
+
+  test('CreationTimelineClip keeps trim boundaries independently from timeline bounds', () {
+    const clip = CreationTimelineClip(
+      clipId: 'clip',
+      sourceId: 'asset',
+      startMs: 0,
+      endMs: 12000,
+    );
+
+    final trimmed = clip.copyWith(
+      trimInMs: 2500,
+      trimOutMs: 9000,
+    );
+
+    expect(trimmed.startMs, 0);
+    expect(trimmed.endMs, 12000);
+    expect(trimmed.trimInMs, 2500);
+    expect(trimmed.trimOutMs, 9000);
+  });
