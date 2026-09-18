@@ -42,7 +42,7 @@ function boundedPageSize(value: unknown): number {
   return Math.min(Math.max(Math.floor(value), 1), 50);
 }
 
-function validTab(value: unknown): SearchRequest["tab"] {
+function validTab(value: unknown): NonNullable<SearchRequest["tab"]> {
   const allowed = new Set([
     "all",
     "top",
@@ -89,7 +89,7 @@ export async function searchHttp(
 
     const body = await readJson<SearchRequest>(request);
     const query = safeQuery(body.query);
-    const tab = validTab(body.tab);
+    const tab: NonNullable<SearchRequest["tab"]> = validTab(body.tab);
 
     if (!query) {
       return json(400, { error: "query_required" });
