@@ -64,3 +64,10 @@ The architecture is intentionally switchable:
 - Application Insights for SLOs, errors and p50/p95/p99 latency.
 
 Do not enable every service at once. Add paid components only when measurements show they are needed.
+
+
+## Vector dimension warning
+
+The sample OJAS schema keeps the v2 contract at 384 dimensions, but Azure OpenAI vectorizers are model-dependent. Before enabling AZURE_SEARCH_ENABLE_VECTOR, choose and verify the embedding path, deployment ID, model, and final output dimension. If the model outputs a different dimension, create a new versioned index instead of changing the live vector field in place.
+
+The integrated vectorizer template is therefore intentionally a deployment template, not a claim that the current 384-dimensional sample is ready to enable without model validation.
