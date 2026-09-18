@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -74,17 +75,22 @@ class SearchEventQueue {
   final int maxStoredEvents;
   final bool remoteUploadEnabled;
   final List<SearchEvent> _pending = <SearchEvent>[];
+  String? _uid;
 
-  String _key(String? uid) =>
-      'ojas_search_events_v2_' + (uid == null || uid.isEmpty ? 'signed_out' : uid);
+  String _key() =>
+      'ojas_search_events_v2_' + ((_uid == null || _uid!.isEmpty) ? 'signed_out' : _uid!);
 
   Future<void> initialize({String? uid}) async {
+    _uid = uid;
     try {
       final preferences = await SharedPreferences.getInstance();
-      final raw = preferences.getString(_key(uid));
+      final raw = preferences.getString(_key());
       if (raw == null || raw.isEmpty) return;
+
       final decoded = jsonDecode(raw);
       if (decoded is! List) return;
+
+      _pending.clear();
       for (final item in decoded) {
         if (item is! Map) continue;
         final typeName = item['eventType'] as String?;
@@ -95,8 +101,10 @@ class SearchEventQueue {
             break;
           }
         }
-        final createdAt = DateTime.tryParse(item['createdAt'] as String? ?? '');
+        final createdAt =
+            DateTime.tryParse(item['createdAt'] as String? ?? '');
         if (type == null || createdAt == null) continue;
+
         _pending.add(
           SearchEvent(
             sessionId: item['sessionId'] as String? ?? '',
@@ -112,6 +120,7 @@ class SearchEventQueue {
           ),
         );
       }
+
       if (_pending.length > maxStoredEvents) {
         _pending.removeRange(0, _pending.length - maxStoredEvents);
       }
@@ -125,24 +134,25 @@ class SearchEventQueue {
     if (_pending.length > maxStoredEvents) {
       _pending.removeRange(0, _pending.length - maxStoredEvents);
     }
-    _persist();
+    unawaited(_persist());
   }
 
-  List<SearchEvent> get pendingEvents => List<SearchEvent>.unmodifiable(_pending);
+  List<SearchEvent> get pendingEvents =>
+      List<SearchEvent>.unmodifiable(_pending);
 
-  Future<void> _persist({String? uid}) async {
+  Future<void> _persist() async {
     try {
       final preferences = await SharedPreferences.getInstance();
       final payload = _pending.map((event) => event.toLocalMap()).toList();
-      await preferences.setString(_key(uid), jsonEncode(payload));
+      await preferences.setString(_key(), jsonEncode(payload));
     } catch (_) {}
   }
 
-  Future<void> clear({String? uid}) async {
+  Future<void> clear() async {
     _pending.clear();
     try {
       final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(_key(uid));
+      await preferences.remove(_key());
     } catch (_) {}
   }
 }
