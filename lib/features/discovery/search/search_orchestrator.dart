@@ -64,10 +64,12 @@ class SearchOrchestrator {
         createdAt: DateTime.now(),
       ),
     );
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<void> initialize() async {
     await _events.initialize(uid: _auth.currentUser?.uid);
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<List<SearchSuggestion>> suggestions(String rawQuery) async {
@@ -147,6 +149,7 @@ class SearchOrchestrator {
       );
     }
 
+    unawaited(_events.flushRemote(_azureSearch));
     return output.take(8).toList(growable: false);
   }
 
@@ -171,6 +174,7 @@ class SearchOrchestrator {
         uid: _auth.currentUser?.uid,
       );
     }
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<SearchPage> search(
@@ -360,6 +364,8 @@ class SearchOrchestrator {
           ? await _didYouMean(query)
           : null;
 
+      unawaited(_events.flushRemote(_azureSearch));
+
       return SearchPage(
         results: pageResults,
         query: query,
@@ -506,6 +512,7 @@ class SearchOrchestrator {
         position: position,
       ),
     );
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<void> recordPostClickSignal({
@@ -525,6 +532,7 @@ class SearchOrchestrator {
         metadata: metadata,
       ),
     );
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<void> refine(String query) async {
@@ -536,6 +544,7 @@ class SearchOrchestrator {
         query: query,
       ),
     );
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<void> cancel(String query) async {
@@ -547,6 +556,7 @@ class SearchOrchestrator {
         query: query,
       ),
     );
+    unawaited(_events.flushRemote(_azureSearch));
   }
 
   Future<void> removeHistory(String query) =>
