@@ -96,6 +96,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Cost safety gate
+        shell: bash
+        run: |
+          if [ "${{ inputs.provision_paid_resources }}" = "true" ]; then
+            test "${{ inputs.search_sku }}" = "basic"
+            echo "COST GUARD: Azure AI Search is locked to Basic for this starter deployment."
+            echo "COST GUARD: replicas=1, partitions=1, Flex max instances=2, Always Ready is not configured."
+          fi
+
       - name: Resolve deployment principal object ID
         id: deployment_identity
         shell: bash
@@ -136,7 +145,7 @@ jobs:
             location=${{ secrets.AZURE_LOCATION }}
             deploySearchService=true
             searchServiceName=${{ inputs.search_service_name }}
-            searchSku=${{ inputs.search_sku }}
+            searchSku=basic
             replicaCount=1
             partitionCount=1
             searchApiPrincipalId=${{ steps.backend.outputs.functionPrincipalId }}
@@ -161,7 +170,8 @@ jobs:
         shell: bash
         run: |
           FUNCTION_HOST="${{ inputs.function_app_name }}"
-          SEARCH_ENDPOINT="${{ steps.search.outputs.endpoint }}"
+          SEARCH_ENDPOINT="$(az search service show --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" --name "${{ inputs.search_service_name }}" --query endpoint --output tsv)"
+          test -n "$SEARCH_ENDPOINT"
           az functionapp config appsettings set \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --name "$FUNCTION_HOST" \
