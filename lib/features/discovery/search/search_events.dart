@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum SearchEventType {
@@ -70,11 +72,17 @@ class SearchEventQueue {
   SearchEventQueue({
     this.maxStoredEvents = 300,
     this.remoteUploadEnabled = false,
-  });
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance;
 
   final int maxStoredEvents;
   final bool remoteUploadEnabled;
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
   final List<SearchEvent> _pending = <SearchEvent>[];
+  String? _uid;
   String? _uid;
 
   String _key() =>
