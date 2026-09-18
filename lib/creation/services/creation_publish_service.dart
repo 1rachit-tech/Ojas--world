@@ -202,6 +202,13 @@ class CreationPublishService {
         reusePolicy: reusePolicy,
         aiGeneratedDisclosure: project.rights['aiGeneratedDisclosure'] == true,
         copyrightConfirmed: project.rights['copyrightConfirmed'] == true,
+        hashtags: metadata.hashtags,
+        mentions: metadata.mentions,
+        shopItemIds: metadata.shopItemIds,
+        searchTokens: metadata.searchTokens,
+        audioTrackId: metadata.audioTrackId,
+        audioMetadata: metadata.audioMetadata,
+        location: metadata.location,
       );
     } else {
       final payload = <String, dynamic>{
