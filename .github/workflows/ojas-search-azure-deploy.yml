@@ -157,7 +157,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           AZURE_SEARCH_INGEST_SECRET: ${{ secrets.AZURE_SEARCH_INGEST_SECRET }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_APP_CHECK_APP_ID: ${{ secrets.FIREBASE_APP_CHECK_APP_ID }}
+          FIREBASE_APP_CHECK_APP_ID: 1:1076759095973:android:6eb79eb65332688646bb4c
         shell: bash
         run: |
           FUNCTION_HOST="${{ inputs.function_app_name }}"
