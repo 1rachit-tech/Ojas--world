@@ -48,3 +48,7 @@ app.*.map.json
 azure/search-api/local.settings.json
 azure/search-infra/.env*
 !azure/search-infra/.env.production.example
+
+# Firebase production-only environment files
+functions/.env*
+!functions/.env.example
