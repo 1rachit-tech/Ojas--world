@@ -421,7 +421,9 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
         title: const Text('Edit'),
         actions: [
           TextButton(
-            onPressed: _saving ? null : () => _saveProject(showFeedback: true),
+            onPressed: _saving || _exporting
+                ? null
+                : () => _saveProject(showFeedback: true),
             child: const Text('Draft', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
         ],
@@ -433,6 +435,54 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               fit: StackFit.expand,
               children: [
                 Center(child: _buildPreview()),
+                if (_exporting)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: Colors.black87,
+                      child: Center(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 28),
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF151515),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Exporting video…',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              LinearProgressIndicator(
+                                value: _exportProgress > 0
+                                    ? _exportProgress
+                                    : null,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${(_exportProgress * 100).round()}%',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              OutlinedButton(
+                                onPressed: _cancelExport,
+                                child: const Text('Cancel'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   left: 16,
                   right: 16,
