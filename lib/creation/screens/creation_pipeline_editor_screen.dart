@@ -414,7 +414,7 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
 
   @override
   Widget build(BuildContext context) {
-    final canContinue = !_saving && _project.mediaAssets.isNotEmpty;
+    final canContinue = !_saving && !_exporting && _project.mediaAssets.isNotEmpty;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -437,6 +437,22 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
               fit: StackFit.expand,
               children: [
                 Center(child: _buildPreview()),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: Row(
+                    children: [
+                      _ToolButton(icon: Icons.text_fields_rounded, label: 'Text', onTap: () {}),
+                      const SizedBox(width: 8),
+                      _ToolButton(icon: Icons.music_note_rounded, label: 'Audio', onTap: () {}),
+                      const SizedBox(width: 8),
+                      _ToolButton(icon: Icons.auto_awesome_rounded, label: 'Effects', onTap: () {}),
+                      const SizedBox(width: 8),
+                      _ToolButton(icon: Icons.tune_rounded, label: 'Adjust', onTap: () {}),
+                    ],
+                  ),
+                ),
                 if (_exporting)
                   Positioned.fill(
                     child: ColoredBox(
@@ -484,21 +500,6 @@ class _CreationPipelineEditorScreenState extends State<CreationPipelineEditorScr
                         ),
                       ),
                     ),
-                  ),
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 16,
-                  child: Row(
-                    children: [
-                      _ToolButton(icon: Icons.text_fields_rounded, label: 'Text', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.music_note_rounded, label: 'Audio', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.auto_awesome_rounded, label: 'Effects', onTap: () {}),
-                      const SizedBox(width: 8),
-                      _ToolButton(icon: Icons.tune_rounded, label: 'Adjust', onTap: () {}),
-                    ],
                   ),
                 ),
               ],
