@@ -71,7 +71,7 @@ async function verifyAppCheckToken(
 
     if (
       config.firebaseAppCheckAppId &&
-      claims.app_id !== config.firebaseAppCheckAppId
+      claims.appId !== config.firebaseAppCheckAppId
     ) {
       return false;
     }
