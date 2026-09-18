@@ -4,7 +4,9 @@ import {onDocumentWritten} from 'firebase-functions/v2/firestore';
 
 type SearchEntity = 'person' | 'content';
 
-const db = getFirestore();
+function db() {
+  return getFirestore();
+}
 
 const synonymMap: Record<string, string[]> = {
   'गाना': ['song', 'music', 'audio'],
@@ -220,7 +222,7 @@ async function writeProfileIndex(
     searchIndexVersion: 2,
   };
 
-  await db.collection('searchIndex').doc('person_' + userId).set(payload, {
+  await db().collection('searchIndex').doc('person_' + userId).set(payload, {
     merge: true,
   });
 }
@@ -242,7 +244,7 @@ async function writeReelIndex(
     data.searchEligible !== false &&
     visibility !== 'private';
 
-  await db.collection('searchIndex').doc('content_' + reelId).set(
+  await db().collection('searchIndex').doc('content_' + reelId).set(
     {
       entityId: reelId,
       entityType: 'content' as SearchEntity,
@@ -285,7 +287,7 @@ export const syncPublicProfileSearchIndex = onDocumentWritten(
     const after = event.data?.after;
     const userId = event.params.userId;
     if (!after || !after.exists) {
-      await db.collection('searchIndex').doc('person_' + userId).delete();
+      await db().collection('searchIndex').doc('person_' + userId).delete();
       return;
     }
     await writeProfileIndex(userId, after.data() ?? {});
@@ -298,7 +300,7 @@ export const syncReelSearchIndex = onDocumentWritten(
     const after = event.data?.after;
     const reelId = event.params.reelId;
     if (!after || !after.exists) {
-      await db.collection('searchIndex').doc('content_' + reelId).delete();
+      await db().collection('searchIndex').doc('content_' + reelId).delete();
       return;
     }
     await writeReelIndex(reelId, after.data() ?? {});
