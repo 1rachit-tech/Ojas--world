@@ -28,6 +28,9 @@ param searchApiPrincipalId string = ''
 @description('Optional Microsoft Entra service principal object ID for the indexing worker. Empty means no role assignment is created.')
 param searchWorkerPrincipalId string = ''
 
+@description('Optional Microsoft Entra principal used by the deployment pipeline for Search object management.')
+param deploymentPrincipalId string = ''
+
 resource searchService 'Microsoft.Search/searchServices@2025-05-01' = if (deploySearchService) {
   name: searchServiceName
   location: location
@@ -43,7 +46,7 @@ resource searchService 'Microsoft.Search/searchServices@2025-05-01' = if (deploy
         aadAuthFailureMode: 'http403'
       }
     }
-    disableLocalAuth: false
+    disableLocalAuth: true
     hostingMode: 'default'
     networkRuleSet: {
       bypass: 'AzureServices'
@@ -76,6 +79,19 @@ resource searchApiReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01
       '1407120a-92aa-4202-b7e9-c0e197c71c8f'
     )
     principalId: searchApiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource searchDeploymentServiceContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deploySearchService && !empty(deploymentPrincipalId)) {
+  name: guid(searchService.id, deploymentPrincipalId, 'ojas-search-deployment-contributor')
+  scope: searchService
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
+    )
+    principalId: deploymentPrincipalId
     principalType: 'ServicePrincipal'
   }
 }

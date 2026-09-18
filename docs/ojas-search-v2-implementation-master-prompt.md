@@ -480,3 +480,69 @@ Done means:
 - no secrets are committed
 - existing OJAS destinations remain functional
 - all known validation failures are fixed or explicitly documented
+
+
+---
+
+## SECURITY HARDENING ADDENDUM — MANDATORY
+
+The OJAS Search implementation is not complete until the following security boundary is enforced.
+
+### Zero privileged secrets in the mobile client
+
+Flutter must contain only public configuration identifiers and the public HTTPS Search API base URL.
+
+Never ship any of the following in Flutter, Android resources, Web assets, or generated APK/AAB artifacts:
+
+- Azure AI Search admin/query keys
+- Azure Service Bus connection strings/keys
+- Firebase Admin SDK service-account JSON/private keys
+- Firebase-to-Azure ingest secret
+- Azure subscription/service-principal client secrets
+- Key Vault credentials
+
+The Azure Search service must never be called directly from the mobile client.
+
+### Mandatory request trust chain
+
+OJAS APK -> Firebase Authentication ID token + Firebase App Check token -> Azure Search API -> Azure AI Search
+
+Azure Search API must reject requests when Firebase Authentication is invalid or App Check verification fails.
+
+Android release builds use Play Integrity through Firebase App Check. Debug builds may use the App Check debug provider. The App Check token must be sent in the X-Firebase-AppCheck header and never in a URL.
+
+### Azure keyless authentication
+
+Azure AI Search must use Microsoft Entra ID/RBAC and disable local API-key authentication.
+
+Runtime permissions must follow least privilege:
+
+- query path: Search Index Data Reader
+- trusted indexing worker: Search Index Data Contributor
+- deployment identity: Search Service Contributor only for deployment-time object management
+
+### GitHub deployment identity
+
+GitHub Actions must authenticate to Azure using OIDC. Do not use a long-lived Azure client secret.
+
+### Backend secret storage
+
+Firebase service-account material and the Firebase-to-Azure ingest secret are server-side runtime configuration only. Prefer Azure Key Vault when its operational cost is justified; otherwise keep them as protected Function App environment settings and GitHub environment secrets.
+
+### Defensive validation
+
+The API must bound query length, cursor size, page size, suggestion count, event count, and per-event payload size. Search tab values must be allowlisted. Error responses must not expose internal exception text.
+
+### Production acceptance test
+
+Before enabling production Search traffic, verify:
+
+1. An unauthenticated request is rejected.
+2. A request with a valid Firebase ID token but no App Check token is rejected.
+3. A valid Firebase ID token + valid App Check token returns Search results.
+4. A stolen/invalid Azure Search API key cannot be used because local authentication is disabled.
+5. The APK contains no server-only secrets.
+6. Firebase profile/Show updates reach Azure through the trusted server-side bridge.
+7. Delete/privacy/moderation changes are reflected in Azure.
+8. Reconciliation repairs missing or stale documents.
+9. CI secret-boundary checks pass.

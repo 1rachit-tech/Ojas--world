@@ -21,6 +21,8 @@
     "AZURE_SEARCH_INGEST_SECRET": "replace-with-long-random-secret",
     "FIREBASE_SERVICE_ACCOUNT_JSON": "",
     "FIREBASE_PROJECT_ID": "",
+    "FIREBASE_APP_CHECK_APP_ID": "",
+    "REQUIRE_APP_CHECK": "true",
     "ALLOW_ANONYMOUS_DEV": "false",
     "SEARCH_RECONCILE_ENABLED": "false",
     "SEARCH_RECONCILE_CRON": "0 0 */6 * * *",

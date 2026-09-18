@@ -1,0 +1,58 @@
+name: OJAS Security Guard
+
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'ios/**'
+      - 'azure/search-api/**'
+      - 'azure/search-infra/**'
+      - 'functions/**'
+      - '.github/workflows/**'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'ios/**'
+      - 'azure/search-api/**'
+      - 'azure/search-infra/**'
+      - 'functions/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  secret-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject private keys in source
+        shell: bash
+        run: |
+          if git grep -nE -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- ':!*.md'; then
+            echo "Private key material must never be committed."
+            exit 1
+          fi
+
+      - name: Reject server-only secrets in the mobile client
+        shell: bash
+        run: |
+          if git grep -nE -- 'AZURE_SEARCH_(ADMIN|QUERY)_KEY|AZURE_SEARCH_INGEST_SECRET|FIREBASE_SERVICE_ACCOUNT_JSON' -- lib android ios; then
+            echo "Server-only credentials were found inside client source."
+            exit 1
+          fi
+
+      - name: Check Azure deployment policy
+        shell: bash
+        run: |
+          grep -q 'disableLocalAuth: true' azure/search-infra/main.bicep
+          grep -q 'disableLocalAuth: true' azure/search-infra/backend.bicep
+          grep -q 'REQUIRE_APP_CHECK=true' .github/workflows/ojas-search-azure-deploy.yml
+          grep -q 'id-token: write' .github/workflows/ojas-search-azure-deploy.yml
+          echo "Azure keyless/RBAC/App Check deployment guard is present."

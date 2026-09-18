@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
@@ -165,12 +166,28 @@ class AzureSearchClient {
       );
     }
 
+    String appCheckToken;
+    try {
+      appCheckToken = await FirebaseAppCheck.instance.getToken() ?? '';
+    } catch (error) {
+      throw AzureSearchException(
+        'App verification unavailable: $error',
+      );
+    }
+
+    if (appCheckToken.isEmpty) {
+      throw const AzureSearchException(
+        'App verification token is unavailable.',
+      );
+    }
+
     final response = await _http
         .post(
           Uri.parse(baseUrl + path),
           headers: <String, String>{
             'content-type': 'application/json',
             'authorization': 'Bearer ' + token,
+            'x-firebase-appcheck': appCheckToken,
             'x-ojas-client': 'flutter',
           },
           body: jsonEncode(body),
