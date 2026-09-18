@@ -404,7 +404,6 @@ class SearchOrchestrator {
     }
   }
 
-  Future<void> recordResultClick(
   Future<SearchPage> _searchAzure({
     required SearchQuery query,
     required SearchTab tab,
@@ -485,6 +484,7 @@ class SearchOrchestrator {
     );
   }
 
+  Future<void> recordResultClick(
     SearchResult result,
     int position,
     String query,
