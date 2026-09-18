@@ -61,3 +61,25 @@ jobs:
           node-version: '20'
       - run: npm install --no-audit --no-fund
       - run: npm run build
+
+  bicep-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep build --file azure/search-infra/main.bicep
+            az bicep build --file azure/search-infra/backend.bicep
+      - name: Validate Search index JSON
+        run: |
+          python - <<'PY'
+          import json
+          for path in [
+              "azure/search-infra/index.schema.json",
+              "azure/search-infra/index.schema.integrated-vectorizer.template.json",
+          ]:
+              with open(path, "r", encoding="utf-8") as f:
+                  json.load(f)
+              print("valid json:", path)
+          PY
