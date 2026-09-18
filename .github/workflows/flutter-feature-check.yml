@@ -49,6 +49,9 @@ jobs:
           --no-fatal-infos
           --no-fatal-warnings
           lib/screens/creator_profile_screen.dart
+          lib/screens/creator_hub_screen.dart
+          lib/screens/profile_screen.dart
+          lib/screens/main_navigation_screen.dart
           lib/services/reel_lifecycle_service.dart
           lib/models/reel_model.dart
           lib/models/ojs_video.dart
