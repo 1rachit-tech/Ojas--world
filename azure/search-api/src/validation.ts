@@ -66,9 +66,14 @@ function isSearchIndexDocument(
     isFiniteNumber(value.trendScore) &&
     isNullableString(value.createdAt) &&
     isNullableString(value.updatedAt) &&
-    typeof value.searchIndexVersion === "number" &&
-    Number.isSafeInteger(value.searchIndexVersion) &&
-    value.searchIndexVersion > 0 &&
+    (
+      value.searchIndexVersion === undefined ||
+      (
+        typeof value.searchIndexVersion === "number" &&
+        Number.isSafeInteger(value.searchIndexVersion) &&
+        value.searchIndexVersion > 0
+      )
+    ) &&
     (value.textVector === undefined ||
       (Array.isArray(value.textVector) &&
         value.textVector.every((item) => isFiniteNumber(item))))
