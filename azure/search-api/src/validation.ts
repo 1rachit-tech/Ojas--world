@@ -26,8 +26,18 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isSearchIndexDocument(
-  value: Record<string, unknown>,
-): value is SearchIndexDocument {
+  input: unknown,
+): input is SearchIndexDocument {
+  if (
+    !input ||
+    typeof input !== "object" ||
+    Array.isArray(input)
+  ) {
+    return false;
+  }
+
+  const value = input as Record<string, unknown>;
+
   return (
     typeof value.id === "string" &&
     typeof value.entityType === "string" &&
@@ -56,6 +66,7 @@ function isSearchIndexDocument(
     isFiniteNumber(value.trendScore) &&
     isNullableString(value.createdAt) &&
     isNullableString(value.updatedAt) &&
+    typeof value.searchIndexVersion === "number" &&
     Number.isSafeInteger(value.searchIndexVersion) &&
     value.searchIndexVersion > 0 &&
     (value.textVector === undefined ||
