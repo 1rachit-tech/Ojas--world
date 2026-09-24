@@ -1,4 +1,6 @@
 export type SearchEventOperation = "upsert" | "delete";
+import type { SearchIndexDocument } from "./types";
+
 export type SearchEventEntity =
   | "person"
   | "content"
@@ -8,6 +10,59 @@ export type SearchEventEntity =
   | "place"
   | "live"
   | "generic";
+
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) &&
+    value.every((item) => typeof item === "string");
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isSearchIndexDocument(
+  value: Record<string, unknown>,
+): value is SearchIndexDocument {
+  return (
+    typeof value.id === "string" &&
+    typeof value.entityType === "string" &&
+    typeof value.title === "string" &&
+    typeof value.subtitle === "string" &&
+    typeof value.text === "string" &&
+    typeof value.imageUrl === "string" &&
+    typeof value.creatorId === "string" &&
+    typeof value.contentUrl === "string" &&
+    typeof value.audioTrackId === "string" &&
+    isStringArray(value.tags) &&
+    isStringArray(value.topicIds) &&
+    typeof value.location === "string" &&
+    typeof value.language === "string" &&
+    typeof value.region === "string" &&
+    typeof value.visibility === "string" &&
+    typeof value.eligible === "boolean" &&
+    typeof value.safetyStatus === "string" &&
+    typeof value.isLive === "boolean" &&
+    isFiniteNumber(value.views) &&
+    isFiniteNumber(value.likes) &&
+    isFiniteNumber(value.saves) &&
+    isFiniteNumber(value.followers) &&
+    isFiniteNumber(value.posts) &&
+    isFiniteNumber(value.algorithmScore) &&
+    isFiniteNumber(value.trendScore) &&
+    isNullableString(value.createdAt) &&
+    isNullableString(value.updatedAt) &&
+    Number.isSafeInteger(value.searchIndexVersion) &&
+    value.searchIndexVersion > 0 &&
+    (value.textVector === undefined ||
+      (Array.isArray(value.textVector) &&
+        value.textVector.every((item) => isFiniteNumber(item))))
+  );
+}
 
 const ENTITY_TYPES = new Set<SearchEventEntity>([
   "person",
@@ -79,7 +134,7 @@ export function validateSearchIndexEvent(
   entityId: string;
   version: number;
   occurredAt: string;
-  document?: Record<string, unknown>;
+  document?: SearchIndexDocument;
 } | null {
   if (!event || typeof event !== "object" || Array.isArray(event)) {
     return null;
@@ -122,12 +177,9 @@ export function validateSearchIndexEvent(
 
     const doc = document as Record<string, unknown>;
     if (
-      typeof doc.id !== "string" ||
       doc.id !== entityType + "_" + entityId ||
       doc.entityType !== entityType ||
-      typeof doc.eligible !== "boolean" ||
-      typeof doc.visibility !== "string" ||
-      typeof doc.safetyStatus !== "string"
+      !isSearchIndexDocument(doc)
     ) {
       return null;
     }
@@ -143,7 +195,7 @@ export function validateSearchIndexEvent(
     version,
     occurredAt,
     ...(document
-      ? {document: document as Record<string, unknown>}
+      ? {document: document as SearchIndexDocument}
       : {}),
   };
 }
