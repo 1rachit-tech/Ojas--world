@@ -354,7 +354,7 @@ export async function indexWorker(
   }
 
   if (validated.operation === "upsert" && validated.document) {
-    await upsertDocuments([validated.document as SearchIndexDocument]);
+    await upsertDocuments([validated.document as unknown as SearchIndexDocument]);
     return;
   }
 
