@@ -3,11 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ojas_app/features/discovery/search/safety/search_safety_service.dart';
 
 void main() {
-  final safety = SearchSafetyService();
-
   test('allows only public eligible clean search documents', () {
     expect(
-      safety.isEligible(<String, dynamic>{
+      SearchSafetyService.isEligible(<String, dynamic>{
         'eligible': true,
         'visibility': 'public',
         'safetyStatus': 'clean',
