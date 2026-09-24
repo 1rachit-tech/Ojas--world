@@ -50,6 +50,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: npm test
 
   firebase-index-bridge:
     runs-on: ubuntu-latest
