@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/home_feed_models.dart';
 import '../models/home_feed_runtime_models.dart';
+import 'home_feed_event_queue.dart';
 
 class HomeFeedInterestService {
   HomeFeedInterestService({
