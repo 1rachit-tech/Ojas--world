@@ -1,4 +1,3 @@
-import '../../../models/home_feed_models.dart';
 import '../../../services/home_feed_interest_service.dart';
 import 'domain/search_models.dart';
 
