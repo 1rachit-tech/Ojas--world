@@ -4,10 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       provision_paid_resources:
-        description: 'Provision Azure resources (this can create charges).'
+        description: 'Provision new Azure resources (this can create charges).'
         required: true
         default: false
         type: boolean
+      use_existing_search_service:
+        description: 'Use an already-created Azure AI Search service instead of provisioning one.'
+        required: true
+        default: false
+        type: boolean
+      existing_search_resource_group:
+        description: 'Resource group containing the existing Azure AI Search service.'
+        required: true
+        default: ''
+        type: string
+      existing_search_service_name:
+        description: 'Existing Azure AI Search service name.'
+        required: true
+        default: ''
+        type: string
       deploy_function_code:
         description: 'Deploy the Azure Search Function App code.'
         required: true
@@ -83,7 +98,7 @@ jobs:
 
   deploy:
     needs: validate
-    if: ${{ inputs.provision_paid_resources || inputs.deploy_function_code }}
+    if: ${{ inputs.provision_paid_resources || inputs.deploy_function_code || inputs.use_existing_search_service }}
     runs-on: ubuntu-latest
     environment: azure-search-production
     steps:
@@ -217,6 +232,22 @@ jobs:
             -H "Authorization: Bearer ${SEARCH_TOKEN}" \
             -H "Content-Type: application/json" \
             --data-binary @azure/search-infra/index.schema.json
+
+      - name: Create or update index on existing Azure Search service
+        if: ${{ inputs.use_existing_search_service == true }}
+        shell: bash
+        run: |
+          SEARCH_ENDPOINT="$(az search service show --resource-group "${{ inputs.existing_search_resource_group }}" --name "${{ inputs.existing_search_service_name }}" --query endpoint --output tsv)"
+          test -n "$SEARCH_ENDPOINT"
+          SEARCH_TOKEN="$(az account get-access-token --resource https://search.azure.com --query accessToken --output tsv)"
+          test -n "$SEARCH_TOKEN"
+          curl -fsS -X PUT \
+            "${SEARCH_ENDPOINT}/indexes('ojas-search-v1')?api-version=2026-04-01" \
+            -H "Authorization: Bearer ${SEARCH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            --data-binary @azure/search-infra/index.schema.json
+          echo "Verified/created ojas-search-v1 on the existing Azure AI Search service."
 
       - name: Smoke-check deployed Function endpoint
         if: ${{ inputs.deploy_function_code == true }}
