@@ -25,6 +25,7 @@ export const config = {
   requireAppCheck: env("REQUIRE_APP_CHECK", "true") === "true",
   allowAnonymousDev: env("ALLOW_ANONYMOUS_DEV", "false") === "true",
   reconcileEnabled: env("SEARCH_RECONCILE_ENABLED", "false") === "true",
+  reconcilePruneStale: env("SEARCH_RECONCILE_PRUNE_STALE", "false") === "true",
   reconcileCron: env("SEARCH_RECONCILE_CRON", "0 0 */6 * * *"),
   reconcileBatchSize: Math.min(
     Math.max(Number(env("SEARCH_RECONCILE_BATCH_SIZE", "250")) || 250, 25),
