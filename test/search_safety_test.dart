@@ -16,7 +16,7 @@ void main() {
 
   test('rejects deleted, banned and private documents', () {
     expect(
-      safety.isEligible(<String, dynamic>{
+      SearchSafetyService.isEligible(<String, dynamic>{
         'eligible': true,
         'visibility': 'private',
         'safetyStatus': 'clean',
@@ -24,7 +24,7 @@ void main() {
       isFalse,
     );
     expect(
-      safety.isEligible(<String, dynamic>{
+      SearchSafetyService.isEligible(<String, dynamic>{
         'eligible': false,
         'visibility': 'public',
         'safetyStatus': 'clean',
@@ -32,7 +32,7 @@ void main() {
       isFalse,
     );
     expect(
-      safety.isEligible(<String, dynamic>{
+      SearchSafetyService.isEligible(<String, dynamic>{
         'eligible': true,
         'visibility': 'public',
         'safetyStatus': 'restricted',
@@ -40,7 +40,7 @@ void main() {
       isFalse,
     );
     expect(
-      safety.isEligible(<String, dynamic>{
+      SearchSafetyService.isEligible(<String, dynamic>{
         'eligible': true,
         'visibility': 'public',
         'safetyStatus': 'clean',
