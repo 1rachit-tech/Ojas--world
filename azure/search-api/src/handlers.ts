@@ -17,6 +17,7 @@ import {
 import { projectEntityTab } from "./entity-projection";
 import { RuleBasedSearchReranker, loadInterestContext } from "./ranker";
 import type {
+  SearchIndexDocument,
   SearchIndexEvent,
   SearchRequest,
 } from "./types";
@@ -353,7 +354,7 @@ export async function indexWorker(
   }
 
   if (validated.operation === "upsert" && validated.document) {
-    await upsertDocuments([validated.document as SearchIndexEvent["document"]]);
+    await upsertDocuments([validated.document as SearchIndexDocument]);
     return;
   }
 
