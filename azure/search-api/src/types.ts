@@ -62,7 +62,7 @@ export interface SearchIndexDocument {
   trendScore: number;
   createdAt: string | null;
   updatedAt: string | null;
-  searchIndexVersion: number;
+  searchIndexVersion?: number;
   textVector?: number[];
 }
 
