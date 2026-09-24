@@ -54,7 +54,7 @@ class SearchSafetyService {
     }
   }
 
-  bool isEligible(Map<String, dynamic> data) {
+  static bool isEligible(Map<String, dynamic> data) {
     if (data['eligible'] == false) return false;
     if (data['isDeleted'] == true) return false;
     if (data['isBanned'] == true) return false;
