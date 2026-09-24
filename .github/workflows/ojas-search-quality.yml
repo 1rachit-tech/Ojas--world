@@ -35,7 +35,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze lib/features/discovery/search test/search_query_processor_test.dart test/search_ranker_test.dart
-      - run: flutter test test/search_query_processor_test.dart test/search_ranker_test.dart
+      - run: flutter test test/search_query_processor_test.dart test/search_ranker_test.dart test/search_cache_test.dart test/search_safety_test.dart test/search_pagination_test.dart
 
   azure-search-api:
     runs-on: ubuntu-latest
