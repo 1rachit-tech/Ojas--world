@@ -1,6 +1,11 @@
 import { DefaultAzureCredential } from "@azure/identity";
 import { config } from "./config";
 import type { SearchIndexDocument, SearchResult } from "./types";
+import {
+  decodeSearchCursor,
+  encodeSearchCursor,
+  InvalidSearchCursorError,
+} from "./validation";
 
 let credential: DefaultAzureCredential | null = null;
 
@@ -132,26 +137,6 @@ function resultFromDocument(
   };
 }
 
-function decodeCursor(cursor: string | null | undefined): number {
-  if (!cursor) return 0;
-
-  try {
-    const json = Buffer.from(cursor, "base64url").toString("utf8");
-    const value = JSON.parse(json) as { offset?: unknown };
-    return typeof value.offset === "number" && value.offset >= 0
-      ? Math.floor(value.offset)
-      : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function encodeCursor(offset: number): string {
-  return Buffer.from(
-    JSON.stringify({ version: 1, offset }),
-    "utf8",
-  ).toString("base64url");
-}
 
 function buildBody(args: {
   query: string;
@@ -212,7 +197,13 @@ export async function searchAzureIndex(args: {
   nextCursor: string | null;
   hasMore: boolean;
 }> {
-  const skip = decodeCursor(args.cursor);
+  let skip: number;
+  try {
+    skip = decodeSearchCursor(args.cursor);
+  } catch (error) {
+    if (error instanceof InvalidSearchCursorError) throw error;
+    throw new InvalidSearchCursorError();
+  }
 
   const modes = [
     { vector: config.enableVector, semantic: config.enableSemantic },
@@ -262,7 +253,7 @@ export async function searchAzureIndex(args: {
       return {
         results: page,
         nextCursor: hasMore
-          ? encodeCursor(skip + page.length)
+          ? encodeSearchCursor(skip + page.length)
           : null,
         hasMore,
       };
@@ -372,6 +363,47 @@ async function sendIndexBatch(
       "Azure AI Search rejected one or more indexing actions.",
     );
   }
+}
+
+export async function listIndexedDocumentIds(
+  maxDocuments: number,
+): Promise<Set<string>> {
+  const limit = Math.min(
+    Math.max(Math.floor(maxDocuments), 1),
+    100000,
+  );
+  const ids = new Set<string>();
+  const pageSize = 1000;
+  let skip = 0;
+
+  while (ids.size < limit) {
+    const payload = await requestSearch({
+      search: "*",
+      top: Math.min(pageSize, limit - ids.size),
+      skip,
+      select: "id",
+      queryType: "simple",
+    });
+
+    const values = Array.isArray(payload.value)
+      ? payload.value
+      : [];
+
+    if (values.length === 0) break;
+
+    for (const item of values) {
+      if (!item || typeof item !== "object") continue;
+      const id = (item as Record<string, unknown>).id;
+      if (typeof id === "string" && id.length > 0) {
+        ids.add(id);
+      }
+    }
+
+    skip += values.length;
+    if (values.length < pageSize) break;
+  }
+
+  return ids;
 }
 
 export async function upsertDocuments(

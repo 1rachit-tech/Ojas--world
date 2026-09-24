@@ -25,7 +25,12 @@ class SearchResultCache {
     try {
       final preferences = await SharedPreferences.getInstance();
       final current = await _readRaw(preferences, uid);
-      current.remove(queryKey);
+      final existingIndex = current.indexWhere(
+        (entry) => entry['queryKey'] == queryKey,
+      );
+      if (existingIndex >= 0) {
+        current.removeAt(existingIndex);
+      }
       current.insert(0, <String, dynamic>{
         'queryKey': queryKey,
         'savedAt': DateTime.now().toIso8601String(),

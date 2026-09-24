@@ -4,13 +4,15 @@
   "private": true,
   "description": "OJAS Search API and Azure index worker",
   "main": "dist/src/index.js",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",
     "check": "tsc --noEmit -p tsconfig.json",
     "start": "func start",
-    "test": "node --test"
+    "test": "npm run build && node --test test/*.test.cjs"
   },
   "dependencies": {
     "@azure/functions": "^4.7.0",

@@ -17,9 +17,14 @@ import {
 import { projectEntityTab } from "./entity-projection";
 import { RuleBasedSearchReranker, loadInterestContext } from "./ranker";
 import type {
+  SearchIndexDocument,
   SearchIndexEvent,
   SearchRequest,
 } from "./types";
+import {
+  InvalidSearchCursorError,
+  validateSearchIndexEvent,
+} from "./validation";
 
 function json(status: number, body: unknown): HttpResponseInit {
   return {
@@ -101,6 +106,10 @@ export async function searchHttp(
       tab,
     );
 
+    if (body.cursor && body.cursor.length > 512) {
+      return json(400, { error: "invalid_cursor" });
+    }
+
     const result = await searchAzureIndex({
       query,
       tab,
@@ -133,6 +142,9 @@ export async function searchHttp(
       didYouMean: null,
     });
   } catch (error) {
+    if (error instanceof InvalidSearchCursorError) {
+      return json(400, { error: "invalid_cursor" });
+    }
     context.error("OJAS Search request failed.", error);
     return json(503, { error: "search_unavailable" });
   }
@@ -307,17 +319,17 @@ export async function ingestHttp(
   }
 
   try {
-    const event = await readJson<SearchIndexEvent>(request);
+    const rawEvent = await readJson<unknown>(request);
+    if (JSON.stringify(rawEvent).length > 1_048_576) {
+      return json(413, { error: "event_too_large" });
+    }
 
-    if (
-      !event.eventId ||
-      !event.entityId ||
-      !event.entityType ||
-      !event.operation
-    ) {
+    const validated = validateSearchIndexEvent(rawEvent);
+    if (!validated) {
       return json(400, { error: "invalid_event" });
     }
 
+    const event = validated as SearchIndexEvent;
     await publishIndexEvent(event);
 
     return json(202, {
@@ -336,18 +348,19 @@ export async function indexWorker(
 ): Promise<void> {
   const event = message as SearchIndexEvent;
 
-  if (!event?.eventId || !event?.entityId) {
+  const validated = validateSearchIndexEvent(event);
+  if (!validated) {
     throw new Error("Invalid search index event.");
   }
 
-  if (event.operation === "upsert" && event.document) {
-    await upsertDocuments([event.document]);
+  if (validated.operation === "upsert" && validated.document) {
+    await upsertDocuments([validated.document]);
     return;
   }
 
-  if (event.operation === "delete") {
+  if (validated.operation === "delete") {
     await deleteDocuments([
-      event.entityType + "_" + event.entityId,
+      validated.entityType + "_" + validated.entityId,
     ]);
     return;
   }
