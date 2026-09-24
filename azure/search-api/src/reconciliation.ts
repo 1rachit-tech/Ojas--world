@@ -2,7 +2,11 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { app, type InvocationContext } from "@azure/functions";
 import { config } from "./config";
-import { deleteDocuments, upsertDocuments } from "./search-client";
+import {
+  deleteDocuments,
+  listIndexedDocumentIds,
+  upsertDocuments,
+} from "./search-client";
 import type { SearchIndexDocument } from "./types";
 
 function ensureFirebaseAdmin() {
@@ -159,7 +163,7 @@ async function scanCollection(
   build: (id: string, data: Record<string, unknown>) => SearchIndexDocument,
   activeIds: Set<string>,
   context: InvocationContext,
-): Promise<number> {
+): Promise<{ count: number; complete: boolean }> {
   ensureFirebaseAdmin();
 
   let lastId = "";
@@ -176,7 +180,9 @@ async function scanCollection(
     }
 
     const snapshot = await query.get();
-    if (snapshot.empty) break;
+    if (snapshot.empty) {
+      return {count, complete: true};
+    }
 
     const batch: SearchIndexDocument[] = [];
 
@@ -206,10 +212,12 @@ async function scanCollection(
         " docs",
     );
 
-    if (snapshot.docs.length < config.reconcileBatchSize) break;
+    if (snapshot.docs.length < config.reconcileBatchSize) {
+      return {count, complete: true};
+    }
   }
 
-  return count;
+  return {count, complete: false};
 }
 
 export async function runSearchReconciliation(
@@ -239,14 +247,34 @@ export async function runSearchReconciliation(
 
   context.info(
     "OJAS Search reconciliation indexed " +
-      profiles +
+      profiles.count +
       " profiles and " +
-      reels +
+      reels.count +
       " Shows.",
   );
 
-  // Deletions are primarily handled by the event path. A future full
-  // stale-document sweep can be enabled once corpus size requires it.
+  if (config.reconcilePruneStale && profiles.complete && reels.complete) {
+    const indexedIds = await listIndexedDocumentIds(
+      config.reconcileMaxIndexDocs,
+    );
+    const staleIds = Array.from(indexedIds).filter(
+      (id) => !activeIds.has(id),
+    );
+
+    for (let start = 0; start < staleIds.length; start += 500) {
+      await deleteDocuments(staleIds.slice(start, start + 500));
+    }
+
+    context.info(
+      "OJAS Search reconciliation pruned " +
+        staleIds.length +
+        " stale documents.",
+    );
+  } else if (config.reconcilePruneStale) {
+    context.warn(
+      "OJAS Search stale pruning skipped because reconciliation did not scan the complete configured corpus.",
+    );
+  }
 }
 
 app.timer("searchReconciliation", {
