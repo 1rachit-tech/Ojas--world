@@ -96,7 +96,10 @@ class SearchOrchestrator {
 
     var repositorySuggestions = const <SearchSuggestion>[];
 
-    if (_azureSearch.isConfigured) {
+    final isLocalContinuation =
+        cursor != null && cursor.isNotEmpty && SearchCursorCodec.isLocal(cursor);
+
+    if (_azureSearch.isConfigured && !isLocalContinuation) {
       try {
         repositorySuggestions = await _azureSearch.suggestions(
           query,
