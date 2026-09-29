@@ -13,6 +13,7 @@ import 'retrieval/search_repository.dart';
 import 'retrieval/semantic_retrieval.dart';
 import 'safety/search_safety_service.dart';
 import 'search_cache.dart';
+import 'search_cursor.dart';
 import 'search_events.dart';
 import 'search_history.dart';
 
@@ -184,6 +185,9 @@ class SearchOrchestrator {
     String? cursor,
   }) async {
     final query = _processor.process(rawQuery);
+    final safePageSize = pageSize.clamp(1, 50).toInt();
+    final isLocalContinuation =
+        cursor != null && cursor.isNotEmpty && SearchCursorCodec.isLocal(cursor);
     if (query.normalized.isEmpty) {
       return SearchPage(
         results: const <SearchResult>[],
@@ -209,12 +213,12 @@ class SearchOrchestrator {
     final uid = _auth.currentUser?.uid;
     final queryKey = _queryKey(query, tab);
 
-    if (_azureSearch.isConfigured) {
+    if (_azureSearch.isConfigured && !isLocalContinuation) {
       try {
         return await _searchAzure(
           query: query,
           tab: tab,
-          pageSize: pageSize,
+          pageSize: safePageSize,
           cursor: cursor,
           uid: uid,
           queryKey: queryKey,
@@ -229,8 +233,13 @@ class SearchOrchestrator {
         }
         rethrow;
       } catch (_) {
-        // Azure is the production path, but the legacy path remains a
-        // controlled migration fallback until Azure is fully configured.
+        // An Azure cursor is an opaque server-side pagination token. It is
+        // not compatible with the local Firestore cursor format, so never
+        // restart page 2+ from the beginning after a transient Azure error.
+        if (cursor != null && cursor.isNotEmpty) rethrow;
+
+        // The first page can safely fall back to the local retrieval path
+        // while Azure is unavailable during rollout or on weak networks.
       }
     }
 
@@ -319,7 +328,7 @@ class SearchOrchestrator {
 
       final pageResults = ranked
           .skip(startIndex)
-          .take(pageSize)
+          .take(safePageSize)
           .toList(growable: false);
 
       for (var index = 0; index < pageResults.length; index++) {
@@ -336,9 +345,10 @@ class SearchOrchestrator {
         );
       }
 
-      final hasMore = startIndex + pageResults.length < ranked.length;
+      final hasMore =
+          startIndex + pageResults.length < ranked.length;
       final nextCursor = hasMore && pageResults.isNotEmpty
-          ? _encodeCursor(pageResults.last.stableId)
+          ? SearchCursorCodec.encode(pageResults.last.stableId)
           : null;
 
       if (pageResults.isNotEmpty) {
@@ -576,15 +586,6 @@ class SearchOrchestrator {
   String _queryKey(SearchQuery query, SearchTab tab) =>
       jsonEncode(<String>[query.normalized, query.language, tab.name]);
 
-  String _encodeCursor(String value) => base64Url.encode(
-    utf8.encode(value),
-  );
-
-  String _decodeCursor(String cursor) {
-    try {
-      return utf8.decode(base64Url.decode(cursor));
-    } catch (_) {
-      return cursor;
-    }
-  }
+  String _decodeCursor(String cursor) =>
+      SearchCursorCodec.decode(cursor) ?? '';
 }
