@@ -13,6 +13,7 @@ import 'retrieval/search_repository.dart';
 import 'retrieval/semantic_retrieval.dart';
 import 'safety/search_safety_service.dart';
 import 'search_cache.dart';
+import 'search_cursor.dart';
 import 'search_events.dart';
 import 'search_history.dart';
 
@@ -345,7 +346,7 @@ class SearchOrchestrator {
       final hasMore =
           startIndex + pageResults.length < ranked.length;
       final nextCursor = hasMore && pageResults.isNotEmpty
-          ? _encodeCursor(pageResults.last.stableId)
+          ? SearchCursorCodec.encode(pageResults.last.stableId)
           : null;
 
       if (pageResults.isNotEmpty) {
