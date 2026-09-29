@@ -88,7 +88,7 @@ class AzureSearchClient {
       query: _queryFromJson(payload['query'], query),
       sessionId: _string(payload['sessionId']),
       cursor: _nullableString(payload['cursor']),
-      hasMore: payload['hasMore'] == true && results.length == safePageSize,
+      hasMore: payload['hasMore'] == true,
       fromCache: payload['fromCache'] == true,
       offline: payload['offline'] == true,
       didYouMean: _nullableString(payload['didYouMean']),
