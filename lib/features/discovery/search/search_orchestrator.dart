@@ -584,22 +584,6 @@ class SearchOrchestrator {
   String _queryKey(SearchQuery query, SearchTab tab) =>
       jsonEncode(<String>[query.normalized, query.language, tab.name]);
 
-  String _encodeCursor(String value) => base64Url.encode(
-    utf8.encode('local:v1:' + value),
-  );
-
-  String _decodeCursor(String cursor) {
-    if (cursor.length > 512) return cursor;
-
-    try {
-      final decoded = utf8.decode(base64Url.decode(cursor));
-      if (decoded.startsWith('local:v1:')) {
-        return decoded.substring('local:v1:'.length);
-      }
-      // Preserve compatibility with previously-issued local cursors.
-      return decoded;
-    } catch (_) {
-      return cursor;
-    }
-  }
+  String _decodeCursor(String cursor) =>
+      SearchCursorCodec.decode(cursor) ?? '';
 }
