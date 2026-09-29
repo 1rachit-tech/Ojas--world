@@ -122,6 +122,7 @@ jobs:
 
       - name: Resolve deployment principal object ID
         id: deployment_identity
+        if: ${{ inputs.provision_paid_resources == true || inputs.deploy_function_code == true }}
         shell: bash
         run: |
           PRINCIPAL_ID="$(az ad sp show --id "${{ secrets.AZURE_CLIENT_ID }}" --query id --output tsv)"
