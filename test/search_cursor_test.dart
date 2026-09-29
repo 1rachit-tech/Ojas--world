@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ojas_app/features/discovery/search/search_cursor.dart';
@@ -20,9 +22,10 @@ void main() {
   });
 
   test('legacy local cursor remains readable', () {
-    final legacy = Uri.encodeComponent('content:legacy');
-    // A valid legacy cursor is base64url, not URI encoding.
-    final cursor = Uri.parse('data:text/plain;base64,$legacy');
-    expect(cursor.scheme, 'data'); // Keep this test deterministic without IO.
+    final cursor = base64Url.encode(
+      utf8.encode('content:legacy'),
+    );
+
+    expect(SearchCursorCodec.decode(cursor), 'content:legacy');
   });
 }
