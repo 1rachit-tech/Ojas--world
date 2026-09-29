@@ -8,6 +8,7 @@ export const config = {
   searchApiVersion: env("AZURE_SEARCH_API_VERSION", "2026-04-01"),
   searchAuthMode: env("AZURE_SEARCH_AUTH_MODE", "managed_identity"),
   searchQueryKey: env("AZURE_SEARCH_QUERY_KEY"),
+  searchAdminKey: env("AZURE_SEARCH_ADMIN_KEY"),
   enableVector: env("AZURE_SEARCH_ENABLE_VECTOR", "false") === "true",
   enableSemantic: env("AZURE_SEARCH_ENABLE_SEMANTIC", "false") === "true",
   vectorField: env("AZURE_SEARCH_VECTOR_FIELD", "textVector"),

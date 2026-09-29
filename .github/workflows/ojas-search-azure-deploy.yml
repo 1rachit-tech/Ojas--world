@@ -23,6 +23,14 @@ on:
         required: true
         default: ''
         type: string
+      existing_search_auth_mode:
+        description: 'Authentication for the existing Search service data plane.'
+        required: true
+        default: api_key
+        type: choice
+        options:
+          - api_key
+          - managed_identity
       deploy_function_code:
         description: 'Deploy the Azure Search Function App code.'
         required: true
@@ -181,13 +189,37 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           AZURE_SEARCH_INGEST_SECRET: ${{ secrets.AZURE_SEARCH_INGEST_SECRET }}
+          AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+          AZURE_SEARCH_QUERY_KEY: ${{ secrets.AZURE_SEARCH_QUERY_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_APP_CHECK_APP_ID: 1:1076759095973:android:6eb79eb65332688646bb4c
         shell: bash
         run: |
+          set -euo pipefail
+
+          SEARCH_RESOURCE_GROUP="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          SEARCH_SERVICE_NAME="${{ inputs.search_service_name }}"
+          SEARCH_AUTH_MODE="managed_identity"
+
+          if [ "${{ inputs.use_existing_search_service }}" = "true" ]; then
+            SEARCH_RESOURCE_GROUP="${{ inputs.existing_search_resource_group }}"
+            SEARCH_SERVICE_NAME="${{ inputs.existing_search_service_name }}"
+            SEARCH_AUTH_MODE="${{ inputs.existing_search_auth_mode }}"
+          fi
+
           FUNCTION_HOST="${{ inputs.function_app_name }}"
-          SEARCH_ENDPOINT="$(az search service show --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" --name "${{ inputs.search_service_name }}" --query endpoint --output tsv)"
+          test -n "$FUNCTION_HOST"
+          test -n "$SEARCH_RESOURCE_GROUP"
+          test -n "$SEARCH_SERVICE_NAME"
+
+          SEARCH_ENDPOINT="$(az search service show --resource-group "$SEARCH_RESOURCE_GROUP" --name "$SEARCH_SERVICE_NAME" --query endpoint --output tsv)"
           test -n "$SEARCH_ENDPOINT"
+
+          if [ "$SEARCH_AUTH_MODE" = "api_key" ]; then
+            test -n "$AZURE_SEARCH_ADMIN_KEY"
+            test -n "$AZURE_SEARCH_QUERY_KEY"
+          fi
+
           az functionapp config appsettings set \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --name "$FUNCTION_HOST" \
@@ -195,7 +227,7 @@ jobs:
               AZURE_SEARCH_ENDPOINT="$SEARCH_ENDPOINT" \
               AZURE_SEARCH_INDEX_NAME=ojas-search-v1 \
               AZURE_SEARCH_API_VERSION=2026-04-01 \
-              AZURE_SEARCH_AUTH_MODE=managed_identity \
+              AZURE_SEARCH_AUTH_MODE="$SEARCH_AUTH_MODE" \
               AZURE_SEARCH_ENABLE_VECTOR=false \
               AZURE_SEARCH_ENABLE_SEMANTIC=false \
               AZURE_SEARCH_EVENT_MODE=servicebus \
@@ -212,8 +244,9 @@ jobs:
               FIREBASE_APP_CHECK_APP_ID="$FIREBASE_APP_CHECK_APP_ID" \
               REQUIRE_APP_CHECK=true \
               FIREBASE_SERVICE_ACCOUNT_JSON="$FIREBASE_SERVICE_ACCOUNT_JSON" \
-              AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET"
-
+              AZURE_SEARCH_INGEST_SECRET="$AZURE_SEARCH_INGEST_SECRET" \
+              AZURE_SEARCH_QUERY_KEY="$AZURE_SEARCH_QUERY_KEY" \
+              AZURE_SEARCH_ADMIN_KEY="$AZURE_SEARCH_ADMIN_KEY"
       - name: Deploy Function package
         if: ${{ inputs.deploy_function_code == true }}
         run: |
@@ -236,10 +269,11 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary @azure/search-infra/index.schema.json
 
-      - name: Create or update index on existing Azure Search service
-        if: ${{ inputs.use_existing_search_service == true }}
+      - name: Create or update existing Search index with Entra ID
+        if: ${{ inputs.use_existing_search_service == true && inputs.existing_search_auth_mode == 'managed_identity' }}
         shell: bash
         run: |
+          set -euo pipefail
           SEARCH_ENDPOINT="$(az search service show --resource-group "${{ inputs.existing_search_resource_group }}" --name "${{ inputs.existing_search_service_name }}" --query endpoint --output tsv)"
           test -n "$SEARCH_ENDPOINT"
           SEARCH_TOKEN="$(az account get-access-token --resource https://search.azure.com --query accessToken --output tsv)"
@@ -250,7 +284,25 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Prefer: return=representation" \
             --data-binary @azure/search-infra/index.schema.json
-          echo "Verified/created ojas-search-v1 on the existing Azure AI Search service."
+          echo "Verified/created ojas-search-v1 on the existing Azure AI Search service using Entra ID."
+
+      - name: Create or update existing Search index with admin key
+        if: ${{ inputs.use_existing_search_service == true && inputs.existing_search_auth_mode == 'api_key' }}
+        env:
+          SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SEARCH_ENDPOINT="$(az search service show --resource-group "${{ inputs.existing_search_resource_group }}" --name "${{ inputs.existing_search_service_name }}" --query endpoint --output tsv)"
+          test -n "$SEARCH_ENDPOINT"
+          test -n "$SEARCH_ADMIN_KEY"
+          curl -fsS -X PUT \
+            "${SEARCH_ENDPOINT}/indexes('ojas-search-v1')?api-version=2026-04-01" \
+            -H "api-key: ${SEARCH_ADMIN_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            --data-binary @azure/search-infra/index.schema.json
+          echo "Verified/created ojas-search-v1 on the existing Azure AI Search service using admin key."
 
       - name: Smoke-check deployed Function endpoint
         if: ${{ inputs.deploy_function_code == true }}

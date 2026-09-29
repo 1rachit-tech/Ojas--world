@@ -308,12 +308,12 @@ export async function suggestAzureIndex(
 
 function dataPlaneHeaders(): Promise<Record<string, string>> {
   if (config.searchAuthMode === "api_key") {
-    if (!config.searchQueryKey) {
-      throw new Error("AZURE_SEARCH_QUERY_KEY is missing.");
+    if (!config.searchAdminKey) {
+      throw new Error("AZURE_SEARCH_ADMIN_KEY is missing for index writes.");
     }
     return Promise.resolve({
       "content-type": "application/json",
-      "api-key": config.searchQueryKey,
+      "api-key": config.searchAdminKey,
     });
   }
 
