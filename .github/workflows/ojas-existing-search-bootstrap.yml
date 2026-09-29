@@ -3,7 +3,7 @@ name: OJAS Existing Azure Search Bootstrap
 on:
   push:
     branches:
-      - ops/azure-existing-search-bootstrap
+      - main
 
 permissions:
   contents: read
@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   bootstrap:
+    if: ${{ contains(github.event.head_commit.message, '[bootstrap-existing-search]') }}
     runs-on: ubuntu-latest
     environment: azure-search-production
     steps:
