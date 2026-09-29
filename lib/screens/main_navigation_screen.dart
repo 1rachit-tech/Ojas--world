@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'discover_screen.dart';
+import '../creation/screens/creation_hub_screen.dart';
 import 'ojs_feed_screen.dart';
 import 'profile_screen.dart';
 
@@ -26,13 +27,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     setState(() => _currentIndex = index);
   }
 
-  void _openStudioPicker() {
+  Future<void> _openStudioPicker() async {
     HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('OJAS Studio: Select video from device 🎬'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 1),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const CreationHubScreen(),
       ),
     );
   }

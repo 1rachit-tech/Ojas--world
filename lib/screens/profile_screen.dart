@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/ojs_video.dart';
+import 'creator_hub_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -141,6 +142,25 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                   ),
                   const SizedBox(height: 12),
+                  SizedBox(
+                    width: 190,
+                    height: 38,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const CreatorHubScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.insights_rounded, size: 17),
+                      label: const Text(
+                        'Creator Studio',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
