@@ -96,10 +96,7 @@ class SearchOrchestrator {
 
     var repositorySuggestions = const <SearchSuggestion>[];
 
-    final isLocalContinuation =
-        cursor != null && cursor.isNotEmpty && SearchCursorCodec.isLocal(cursor);
-
-    if (_azureSearch.isConfigured && !isLocalContinuation) {
+    if (_azureSearch.isConfigured) {
       try {
         repositorySuggestions = await _azureSearch.suggestions(
           query,
@@ -189,6 +186,8 @@ class SearchOrchestrator {
   }) async {
     final query = _processor.process(rawQuery);
     final safePageSize = pageSize.clamp(1, 50).toInt();
+    final isLocalContinuation =
+        cursor != null && cursor.isNotEmpty && SearchCursorCodec.isLocal(cursor);
     if (query.normalized.isEmpty) {
       return SearchPage(
         results: const <SearchResult>[],
@@ -214,7 +213,7 @@ class SearchOrchestrator {
     final uid = _auth.currentUser?.uid;
     final queryKey = _queryKey(query, tab);
 
-    if (_azureSearch.isConfigured) {
+    if (_azureSearch.isConfigured && !isLocalContinuation) {
       try {
         return await _searchAzure(
           query: query,
