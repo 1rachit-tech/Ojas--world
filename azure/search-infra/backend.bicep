@@ -133,6 +133,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployBackend) {
           name: 'SEARCH_SERVICE_BUS_CONNECTION__fullyQualifiedNamespace'
           value: '${serviceBusNamespaceName}.servicebus.windows.net'
         }
+        {
+          name: 'SEARCH_SERVICE_BUS_CONNECTION__credential'
+          value: 'managedidentity'
+        }
       ]
     }
   }
