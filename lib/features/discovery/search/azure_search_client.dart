@@ -57,12 +57,13 @@ class AzureSearchClient {
     int pageSize = 20,
     String? cursor,
   }) async {
+    final safePageSize = _pageSize(pageSize);
     final payload = await _postJson(
       '/v1/search',
       <String, dynamic>{
         'query': query,
         'tab': tab.name,
-        'pageSize': pageSize,
+        'pageSize': safePageSize,
         'cursor': cursor,
       },
       timeout: const Duration(milliseconds: 800),
@@ -77,18 +78,20 @@ class AzureSearchClient {
                 Map<String, dynamic>.from(item),
               ),
             )
+            .where(_isUsableResult)
+            .take(safePageSize)
             .toList(growable: false)
         : const <SearchResult>[];
 
     return SearchPage(
       results: results,
       query: _queryFromJson(payload['query'], query),
-      sessionId: payload['sessionId'] as String? ?? '',
-      cursor: payload['cursor'] as String?,
-      hasMore: payload['hasMore'] == true,
+      sessionId: _string(payload['sessionId']),
+      cursor: _nullableString(payload['cursor']),
+      hasMore: payload['hasMore'] == true && results.length == safePageSize,
       fromCache: payload['fromCache'] == true,
       offline: payload['offline'] == true,
-      didYouMean: payload['didYouMean'] as String?,
+      didYouMean: _nullableString(payload['didYouMean']),
     );
   }
 
@@ -96,11 +99,12 @@ class AzureSearchClient {
     String query, {
     int limit = 8,
   }) async {
+    final safeLimit = _pageSize(limit).clamp(1, 20);
     final payload = await _postJson(
       '/v1/search/suggestions',
       <String, dynamic>{
         'query': query,
-        'limit': limit,
+        'limit': safeLimit,
       },
       timeout: const Duration(milliseconds: 400),
     );
@@ -113,15 +117,15 @@ class AzureSearchClient {
         .map((item) {
           final map = Map<String, dynamic>.from(item);
           return SearchSuggestion(
-            text: map['text'] as String? ?? '',
-            subtitle: map['subtitle'] as String? ?? '',
+            text: _string(map['text']),
+            subtitle: _string(map['subtitle']),
             entityType: _entityType(map['entityType']),
-            id: map['id'] as String? ?? '',
-            imageUrl: map['imageUrl'] as String? ?? '',
+            id: _string(map['id']),
+            imageUrl: _string(map['imageUrl']),
           );
         })
         .where((item) => item.text.trim().isNotEmpty)
-        .take(limit)
+        .take(safeLimit)
         .toList(growable: false);
   }
 
@@ -215,10 +219,10 @@ class AzureSearchClient {
 
   SearchResult _resultFromJson(Map<String, dynamic> map) {
     return SearchResult(
-      id: map['id'] as String? ?? '',
+      id: _string(map['id']),
       entityType: _entityType(map['entityType']),
-      title: map['title'] as String? ?? '',
-      subtitle: map['subtitle'] as String? ?? '',
+      title: _string(map['title']),
+      subtitle: _string(map['subtitle']),
       score: _number(map['score']),
       queryScore: _number(map['queryScore']),
       personalScore: _number(map['personalScore']),
@@ -226,23 +230,24 @@ class AzureSearchClient {
       popularityScore: _number(map['popularityScore']),
       freshnessScore: _number(map['freshnessScore']),
       trendScore: _number(map['trendScore']),
-      imageUrl: map['imageUrl'] as String? ?? '',
-      creatorId: map['creatorId'] as String? ?? '',
-      contentUrl: map['contentUrl'] as String? ?? '',
-      audioTrackId: map['audioTrackId'] as String? ?? '',
-      createdAt: DateTime.tryParse(
-        map['createdAt'] as String? ?? '',
-      ),
+      imageUrl: _string(map['imageUrl']),
+      creatorId: _string(map['creatorId']),
+      contentUrl: _string(map['contentUrl']),
+      audioTrackId: _string(map['audioTrackId']),
+      createdAt: DateTime.tryParse(_string(map['createdAt'])),
       tags: map['tags'] is List
-          ? List<String>.from(
-              (map['tags'] as List).whereType<String>(),
-            )
+          ? (map['tags'] as List)
+              .whereType<String>()
+              .toList(growable: false)
           : const <String>[],
       extra: map['extra'] is Map
           ? Map<String, dynamic>.from(map['extra'] as Map)
           : const <String, dynamic>{},
     );
   }
+
+  bool _isUsableResult(SearchResult result) =>
+      result.id.trim().isNotEmpty && result.title.trim().isNotEmpty;
 
   SearchQuery _queryFromJson(
     Object? value,
@@ -267,15 +272,22 @@ class AzureSearchClient {
   }
 
   SearchEntityType _entityType(Object? value) {
-    final name = value as String?;
+    if (value is! String) return SearchEntityType.generic;
     return SearchEntityType.values.firstWhere(
-      (type) => type.name == name,
+      (type) => type.name == value,
       orElse: () => SearchEntityType.generic,
     );
   }
 
+  String _string(Object? value) => value is String ? value : '';
+
+  String? _nullableString(Object? value) =>
+      value is String && value.isNotEmpty ? value : null;
+
+  int _pageSize(int value) => value.clamp(1, 50);
+
   double _number(Object? value) {
-    if (value is num) return value.toDouble();
+    if (value is num && value.isFinite) return value.toDouble();
     return 0;
   }
 }
