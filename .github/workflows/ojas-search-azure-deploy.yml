@@ -200,6 +200,8 @@ jobs:
               AZURE_SEARCH_ENABLE_SEMANTIC=false \
               AZURE_SEARCH_EVENT_MODE=servicebus \
               SEARCH_SERVICE_BUS_FQDN="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net" \
+              SEARCH_SERVICE_BUS_CONNECTION__fullyQualifiedNamespace="${{ inputs.service_bus_namespace_name }}.servicebus.windows.net" \
+              SEARCH_SERVICE_BUS_CONNECTION__credential=managedidentity \
               SEARCH_SERVICE_BUS_QUEUE=ojas-search-index-events \
               SEARCH_ANALYTICS_QUEUE=ojas-search-events \
               SEARCH_RECONCILE_ENABLED=${{ inputs.reconcile }} \

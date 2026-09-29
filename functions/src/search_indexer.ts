@@ -450,7 +450,11 @@ async function writeReelIndex(
 }
 
 export const syncPublicProfileSearchIndex = onDocumentWritten(
-  'publicProfiles/{userId}',
+  {
+    document: 'publicProfiles/{userId}',
+    retry: true,
+    maxInstances: 2,
+  },
   async (event) => {
     const after = event.data?.after;
     const userId = event.params.userId;
@@ -463,7 +467,11 @@ export const syncPublicProfileSearchIndex = onDocumentWritten(
 );
 
 export const syncReelSearchIndex = onDocumentWritten(
-  'reels/{reelId}',
+  {
+    document: 'reels/{reelId}',
+    retry: true,
+    maxInstances: 2,
+  },
   async (event) => {
     const after = event.data?.after;
     const reelId = event.params.reelId;
