@@ -57,7 +57,7 @@ class AzureSearchClient {
     int pageSize = 20,
     String? cursor,
   }) async {
-    final safePageSize = _pageSize(pageSize);
+    final safePageSize = _boundedPageSize(pageSize);
     final payload = await _postJson(
       '/v1/search',
       <String, dynamic>{
@@ -99,7 +99,7 @@ class AzureSearchClient {
     String query, {
     int limit = 8,
   }) async {
-    final safeLimit = _pageSize(limit).clamp(1, 20);
+    final safeLimit = _boundedPageSize(limit, max: 20);
     final payload = await _postJson(
       '/v1/search/suggestions',
       <String, dynamic>{
@@ -284,7 +284,7 @@ class AzureSearchClient {
   String? _nullableString(Object? value) =>
       value is String && value.isNotEmpty ? value : null;
 
-  int _pageSize(int value) => value.clamp(1, 50);
+  int _boundedPageSize(int value, {int max = 50}) => value.clamp(1, max).toInt();
 
   double _number(Object? value) {
     if (value is num && value.isFinite) return value.toDouble();
