@@ -184,6 +184,7 @@ class SearchOrchestrator {
     String? cursor,
   }) async {
     final query = _processor.process(rawQuery);
+    final safePageSize = pageSize.clamp(1, 50).toInt();
     if (query.normalized.isEmpty) {
       return SearchPage(
         results: const <SearchResult>[],
@@ -214,7 +215,7 @@ class SearchOrchestrator {
         return await _searchAzure(
           query: query,
           tab: tab,
-          pageSize: pageSize,
+          pageSize: safePageSize,
           cursor: cursor,
           uid: uid,
           queryKey: queryKey,
@@ -229,8 +230,13 @@ class SearchOrchestrator {
         }
         rethrow;
       } catch (_) {
-        // Azure is the production path, but the legacy path remains a
-        // controlled migration fallback until Azure is fully configured.
+        // An Azure cursor is an opaque server-side pagination token. It is
+        // not compatible with the local Firestore cursor format, so never
+        // restart page 2+ from the beginning after a transient Azure error.
+        if (cursor != null && cursor.isNotEmpty) rethrow;
+
+        // The first page can safely fall back to the local retrieval path
+        // while Azure is unavailable during rollout or on weak networks.
       }
     }
 
@@ -319,7 +325,7 @@ class SearchOrchestrator {
 
       final pageResults = ranked
           .skip(startIndex)
-          .take(pageSize)
+          .take(safePageSize)
           .toList(growable: false);
 
       for (var index = 0; index < pageResults.length; index++) {
@@ -336,7 +342,8 @@ class SearchOrchestrator {
         );
       }
 
-      final hasMore = startIndex + pageResults.length < ranked.length;
+      final hasMore =
+          startIndex + pageResults.length < ranked.length;
       final nextCursor = hasMore && pageResults.isNotEmpty
           ? _encodeCursor(pageResults.last.stableId)
           : null;
@@ -577,12 +584,19 @@ class SearchOrchestrator {
       jsonEncode(<String>[query.normalized, query.language, tab.name]);
 
   String _encodeCursor(String value) => base64Url.encode(
-    utf8.encode(value),
+    utf8.encode('local:v1:' + value),
   );
 
   String _decodeCursor(String cursor) {
+    if (cursor.length > 512) return cursor;
+
     try {
-      return utf8.decode(base64Url.decode(cursor));
+      final decoded = utf8.decode(base64Url.decode(cursor));
+      if (decoded.startsWith('local:v1:')) {
+        return decoded.substring('local:v1:'.length);
+      }
+      // Preserve compatibility with previously-issued local cursors.
+      return decoded;
     } catch (_) {
       return cursor;
     }
