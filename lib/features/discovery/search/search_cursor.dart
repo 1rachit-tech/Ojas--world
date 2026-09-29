@@ -4,7 +4,7 @@ class SearchCursorCodec {
   SearchCursorCodec._();
 
   static const String _prefix = 'local:v1:';
-  static const int _maxStableIdUtf8Bytes = 768;
+  static const int _maxPayloadBytes = 768;
   static const int _maxEncodedBytes = 1024;
 
   static String encode(String stableId) {
@@ -14,7 +14,7 @@ class SearchCursorCodec {
     }
 
     final payload = utf8.encode(_prefix + value);
-    if (payload.length > _maxStableIdUtf8Bytes) {
+    if (payload.length > _maxPayloadBytes) {
       throw ArgumentError('Local search cursor value is too large.');
     }
 
@@ -32,7 +32,39 @@ class SearchCursorCodec {
 
     try {
       final decoded = utf8.decode(base64Url.decode(value));
-      return decoded.startsWith(_prefix);
+      if (decoded.startsWith(_prefix)) return true;
+
+      // Legacy local cursors contained the result stable id directly.
+      return RegExp(r'^(?:person|content|hashtag|sound|topic|place|live|generic):[^:]+
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? decode(String cursor) {
+    final value = cursor.trim();
+    if (value.isEmpty || value.length > _maxEncodedBytes) return null;
+
+    try {
+      final decoded = utf8.decode(base64Url.decode(value));
+      if (decoded.startsWith(_prefix)) {
+        final stableId = decoded.substring(_prefix.length);
+        return stableId.isEmpty ? null : stableId;
+      }
+
+      // Backward compatibility with local cursors issued before v1 prefixing.
+      if (!decoded.contains('{') && decoded.length <= 512) {
+        return decoded;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+}
+)
+          .hasMatch(decoded);
     } catch (_) {
       return false;
     }
