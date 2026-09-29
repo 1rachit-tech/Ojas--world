@@ -126,6 +126,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = if (deployBackend) {
           value: storage.name
         }
         {
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
+        }
+        {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsights.properties.ConnectionString
         }
