@@ -16,6 +16,7 @@ import {
 } from "./search-client";
 import { projectEntityTab } from "./entity-projection";
 import { RuleBasedSearchReranker, loadInterestContext } from "./ranker";
+import { refreshCurrentSourceDocument } from "./index-source";
 import type {
   SearchIndexDocument,
   SearchIndexEvent,
@@ -353,6 +354,25 @@ export async function indexWorker(
     throw new Error("Invalid search index event.");
   }
 
+  const currentSource = await refreshCurrentSourceDocument(
+    validated.entityType,
+    validated.entityId,
+  );
+
+  if (currentSource) {
+    await upsertDocuments([currentSource]);
+    return;
+  }
+
+  if (currentSource === null) {
+    await deleteDocuments([
+      validated.entityType + "_" + validated.entityId,
+    ]);
+    return;
+  }
+
+  // Entity types that are not backed by a Firestore source collection yet
+  // continue to use the validated event payload directly.
   if (validated.operation === "upsert" && validated.document) {
     await upsertDocuments([validated.document]);
     return;
