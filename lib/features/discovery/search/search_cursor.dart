@@ -35,36 +35,9 @@ class SearchCursorCodec {
       if (decoded.startsWith(_prefix)) return true;
 
       // Legacy local cursors contained the result stable id directly.
-      return RegExp(r'^(?:person|content|hashtag|sound|topic|place|live|generic):[^:]+
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static String? decode(String cursor) {
-    final value = cursor.trim();
-    if (value.isEmpty || value.length > _maxEncodedBytes) return null;
-
-    try {
-      final decoded = utf8.decode(base64Url.decode(value));
-      if (decoded.startsWith(_prefix)) {
-        final stableId = decoded.substring(_prefix.length);
-        return stableId.isEmpty ? null : stableId;
-      }
-
-      // Backward compatibility with local cursors issued before v1 prefixing.
-      if (!decoded.contains('{') && decoded.length <= 512) {
-        return decoded;
-      }
-    } catch (_) {
-      return null;
-    }
-
-    return null;
-  }
-}
-)
-          .hasMatch(decoded);
+      return RegExp(
+        r'^(?:person|content|hashtag|sound|topic|place|live|generic):.+$',
+      ).hasMatch(decoded);
     } catch (_) {
       return false;
     }
