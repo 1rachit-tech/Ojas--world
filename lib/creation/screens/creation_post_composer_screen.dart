@@ -154,7 +154,10 @@ class _CreationPostComposerScreenState extends State<CreationPostComposerScreen>
   Widget build(BuildContext context) {
     final mediaCount = _project.mediaAssets.length;
     final singleVideo = mediaCount == 1 && _project.mediaAssets.first.type == 'video';
-    final canPublish = !_publishing && !_saving && singleVideo;
+    final finalCompositionReady = _project.renderedUri != null &&
+        _project.renderedUri!.isNotEmpty;
+    final canPublish =
+        !_publishing && !_saving && (singleVideo || finalCompositionReady);
     final captionReady = _captionController.text.trim().isNotEmpty;
 
     return Scaffold(
@@ -246,7 +249,10 @@ class _CreationPostComposerScreenState extends State<CreationPostComposerScreen>
             child: Column(
               children: [
                 _CheckRow(label: 'Media selected', value: mediaCount > 0),
-                _CheckRow(label: 'Single video publish path', value: singleVideo),
+                _CheckRow(
+                  label: 'Final media output ready',
+                  value: singleVideo || finalCompositionReady,
+                ),
                 _CheckRow(label: 'Caption ready', value: captionReady),
                 _CheckRow(label: 'Audience selected', value: _project.privacy.isNotEmpty),
               ],
@@ -268,7 +274,7 @@ class _CreationPostComposerScreenState extends State<CreationPostComposerScreen>
             const Padding(
               padding: EdgeInsets.only(top: 10),
               child: Text(
-                'The verified production publishing path currently accepts one video. Images and multi-media projects remain safely saved as drafts.',
+                'The final rendered composition is published as one MP4. Source clips remain in the local project for recovery and further editing.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Color(0xFF6B7280), fontSize: 12, height: 1.35),
               ),

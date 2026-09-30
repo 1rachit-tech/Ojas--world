@@ -43,6 +43,32 @@ class CreationMediaAsset {
   final int orientation;
   final String? normalizedUri;
 
+  CreationMediaAsset copyWith({
+    String? localUri,
+    String? mimeType,
+    int? sizeBytes,
+    int? width,
+    int? height,
+    int? durationMs,
+    DateTime? creationTime,
+    int? orientation,
+    String? normalizedUri,
+  }) {
+    return CreationMediaAsset(
+      assetId: assetId,
+      localUri: localUri ?? this.localUri,
+      type: type,
+      mimeType: mimeType ?? this.mimeType,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      durationMs: durationMs ?? this.durationMs,
+      creationTime: creationTime ?? this.creationTime,
+      orientation: orientation ?? this.orientation,
+      normalizedUri: normalizedUri ?? this.normalizedUri,
+    );
+  }
+
   Map<String, dynamic> toMap() => <String, dynamic>{
         'assetId': assetId,
         'localUri': localUri,
@@ -88,6 +114,7 @@ class CreationTimelineClip {
     this.scale = 1.0,
     this.x = 0.0,
     this.y = 0.0,
+    this.originalVolume = 1.0,
   });
 
   final String clipId;
@@ -102,6 +129,39 @@ class CreationTimelineClip {
   final double scale;
   final double x;
   final double y;
+  final double originalVolume;
+
+  CreationTimelineClip copyWith({
+    String? clipId,
+    String? sourceId,
+    int? startMs,
+    int? endMs,
+    int? trimInMs,
+    int? trimOutMs,
+    double? speed,
+    double? opacity,
+    double? rotation,
+    double? scale,
+    double? x,
+    double? y,
+    double? originalVolume,
+  }) {
+    return CreationTimelineClip(
+      clipId: clipId ?? this.clipId,
+      sourceId: sourceId ?? this.sourceId,
+      startMs: startMs ?? this.startMs,
+      endMs: endMs ?? this.endMs,
+      trimInMs: trimInMs ?? this.trimInMs,
+      trimOutMs: trimOutMs ?? this.trimOutMs,
+      speed: speed ?? this.speed,
+      opacity: opacity ?? this.opacity,
+      rotation: rotation ?? this.rotation,
+      scale: scale ?? this.scale,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      originalVolume: originalVolume ?? this.originalVolume,
+    );
+  }
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'clipId': clipId,
@@ -116,6 +176,7 @@ class CreationTimelineClip {
         'scale': scale,
         'x': x,
         'y': y,
+        'originalVolume': originalVolume,
       };
 
   factory CreationTimelineClip.fromMap(Map<String, dynamic> map) {
@@ -132,11 +193,14 @@ class CreationTimelineClip {
       scale: (map['scale'] as num?)?.toDouble() ?? 1.0,
       x: (map['x'] as num?)?.toDouble() ?? 0.0,
       y: (map['y'] as num?)?.toDouble() ?? 0.0,
+      originalVolume: (map['originalVolume'] as num?)?.toDouble() ?? 1.0,
     );
   }
 }
 
 class CreationProject {
+  static const Object _keepRenderedUri = Object();
+
   CreationProject({
     required this.projectId,
     required this.ownerId,
@@ -158,6 +222,7 @@ class CreationProject {
     this.accessibility = const <String, dynamic>{},
     this.rights = const <String, dynamic>{},
     this.publishState = const <String, dynamic>{},
+    this.renderedUri,
   });
 
   final String projectId;
@@ -180,6 +245,7 @@ class CreationProject {
   final Map<String, dynamic> accessibility;
   final Map<String, dynamic> rights;
   final Map<String, dynamic> publishState;
+  final String? renderedUri;
 
   CreationProject copyWith({
     DateTime? updatedAt,
@@ -198,6 +264,7 @@ class CreationProject {
     Map<String, dynamic>? accessibility,
     Map<String, dynamic>? rights,
     Map<String, dynamic>? publishState,
+    Object? renderedUri = _keepRenderedUri,
   }) {
     return CreationProject(
       projectId: projectId,
@@ -220,6 +287,9 @@ class CreationProject {
       accessibility: accessibility ?? this.accessibility,
       rights: rights ?? this.rights,
       publishState: publishState ?? this.publishState,
+      renderedUri: identical(renderedUri, _keepRenderedUri)
+          ? this.renderedUri
+          : renderedUri as String?,
     );
   }
 
@@ -244,6 +314,7 @@ class CreationProject {
         'accessibility': accessibility,
         'rights': rights,
         'publishState': publishState,
+        'renderedUri': renderedUri,
       };
 
   String encode() => jsonEncode(toMap());
@@ -295,6 +366,7 @@ class CreationProject {
       accessibility: _map(map['accessibility']),
       rights: _map(map['rights']),
       publishState: _map(map['publishState']),
+      renderedUri: map['renderedUri'] as String?,
     );
   }
 
