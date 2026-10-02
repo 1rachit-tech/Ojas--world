@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/chat_theme.dart';
 import '../models/ojas_message.dart';
 import 'ojas_smart_video_player.dart';
 
-/// Minimal, modern chat bubble — Instagram / TikTok DM style.
+/// Minimal modern chat bubble — theme-aware (Mitra / Family / Partner…).
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMine,
+    this.theme = ChatTheme.classic,
     this.onReply,
     this.onLongPress,
     this.imageBuilder,
@@ -19,21 +21,17 @@ class MessageBubble extends StatelessWidget {
 
   final OjasMessage message;
   final bool isMine;
+  final ChatTheme theme;
   final VoidCallback? onReply;
   final VoidCallback? onLongPress;
   final Widget Function()? imageBuilder;
   final Widget Function()? videoBuilder;
   final Widget? child;
 
-  static const Color _mineColor = Color(0xFF111827);
-  static const Color _theirsColor = Color(0xFFF0F2F5);
-  static const Color _mineFg = Colors.white;
-  static const Color _theirsFg = Color(0xFF111827);
-
   @override
   Widget build(BuildContext context) {
-    final surface = isMine ? _mineColor : _theirsColor;
-    final foreground = isMine ? _mineFg : _theirsFg;
+    final surface = isMine ? theme.mineBubble : theme.theirsBubble;
+    final foreground = isMine ? theme.mineText : theme.theirsText;
 
     final displayText = message.isDeleted
         ? 'This message was deleted'
@@ -84,6 +82,13 @@ class MessageBubble extends StatelessWidget {
               bottomLeft: Radius.circular(isMine ? 18 : 4),
               bottomRight: Radius.circular(isMine ? 4 : 18),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: surface.withValues(alpha: 0.18),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment:
@@ -113,7 +118,7 @@ class MessageBubble extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: foreground.withValues(alpha: 0.8),
+                      color: foreground.withValues(alpha: 0.85),
                       fontSize: 12.5,
                       height: 1.3,
                       fontWeight: FontWeight.w500,
@@ -148,19 +153,14 @@ class MessageBubble extends StatelessWidget {
               if (isMine && !message.isDeleted)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        message.status == 'seen'
-                            ? Icons.done_all_rounded
-                            : Icons.done_rounded,
-                        size: 14,
-                        color: message.status == 'seen'
-                            ? const Color(0xFF60A5FA)
-                            : foreground.withValues(alpha: 0.55),
-                      ),
-                    ],
+                  child: Icon(
+                    message.status == 'seen'
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
+                    size: 14,
+                    color: message.status == 'seen'
+                        ? const Color(0xFF93C5FD)
+                        : foreground.withValues(alpha: 0.55),
                   ),
                 ),
             ],
