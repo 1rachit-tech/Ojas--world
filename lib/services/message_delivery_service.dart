@@ -39,11 +39,17 @@ class MessageDeliveryService {
       return;
     }
 
-    await _conversation(conversationId).set(
-      {
-        'deliveredAtBy.$uid': messageCreatedAt,
-      },
-      SetOptions(merge: true),
-    );
+    try {
+      await _conversation(conversationId).set(
+        {
+          'deliveredAtBy.$uid': messageCreatedAt,
+        },
+        SetOptions(merge: true),
+      );
+    } on FirebaseException {
+      // Delivery watermark is non-critical; never interrupt the chat UI.
+    } catch (_) {
+      // Keep delivery best-effort during transient failures.
+    }
   }
 }
