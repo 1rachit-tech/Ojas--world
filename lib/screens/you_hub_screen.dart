@@ -49,6 +49,9 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   final _accountStore = _LocalAccountStore();
   late final PageController _pageController;
+  late final Stream<User?> _authStateStream;
+  Stream<OjasProfile?>? _profileStream;
+  String? _profileStreamUid;
 
   int _selectedTab = 0;
 
@@ -60,7 +63,17 @@ class _YouHubScreenState extends State<YouHubScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 0);
+    _authStateStream = FirebaseAuth.instance.authStateChanges();
     _loadAccounts();
+  }
+
+  Stream<OjasProfile?> _profileStreamFor(User user) {
+    if (_profileStream == null || _profileStreamUid != user.uid) {
+      _profileStreamUid = user.uid;
+      _profileStream = ProfileService.instance.watchCurrentProfile();
+    }
+
+    return _profileStream!;
   }
 
   Future<void> _loadAccounts() async {
@@ -450,7 +463,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: _authStateStream,
       builder: (context, authSnapshot) {
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -466,7 +479,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
         }
 
         return StreamBuilder<OjasProfile?>(
-          stream: ProfileService.instance.watchCurrentProfile(),
+          stream: _profileStreamFor(user),
           builder: (context, profileSnapshot) {
             if (profileSnapshot.hasError) {
               return Scaffold(
@@ -525,8 +538,14 @@ class _YouHubScreenState extends State<YouHubScreen> {
                         onPageChanged: _onPageChanged,
                         physics: const _YouHubSwipePhysics(),
                         children: [
-                          const MessagesScreen(showAppBar: false),
-                          _ProfilePage(
+                          const RepaintBoundary(
+                            child: MessagesScreen(
+                              key: ValueKey<String>('you-hub-messages'),
+                              showAppBar: false,
+                            ),
+                          ),
+                          RepaintBoundary(
+                            child: _ProfilePage(
                             profile: profile,
                             firebaseUser: user,
                             onEdit: profile == null
@@ -546,6 +565,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
                                   },
                             onCompleteProfile: _openProfileSetup,
                           ),
+                        ), 
                         ],
                       ),
                     ),
