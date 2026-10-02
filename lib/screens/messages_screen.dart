@@ -35,20 +35,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
   String _searchError = '';
 
   bool _isOpeningConversation = false;
-  late final Stream<List<OjasConversation>> _conversationsStream;
-  int _searchRequestId = 0;
+
+  /// 0 = all, 1 = unread
+  int _inboxFilter = 0;
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _conversationsStream = _messagingService.watchConversations();
   }
 
   void _startNewMessage() {
@@ -61,8 +56,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
   }
 
   void _closeSearch() {
-    _searchDebounce?.cancel();
-    _searchRequestId++;
     _searchController.clear();
 
     setState(() {
@@ -77,7 +70,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
     _searchDebounce?.cancel();
 
     final query = value.trim();
-    final requestId = ++_searchRequestId;
 
     if (query.isEmpty) {
       setState(() {
@@ -90,12 +82,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }
 
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      _searchUsers(query, requestId);
+      _searchUsers(query);
     });
   }
 
-  Future<void> _searchUsers(String query, int requestId) async {
-    if (!mounted || requestId != _searchRequestId) {
+  Future<void> _searchUsers(String query) async {
+    if (!mounted) {
       return;
     }
 
@@ -107,7 +99,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     try {
       final results = await _messagingService.searchUsers(query);
 
-      if (!mounted || requestId != _searchRequestId) {
+      if (!mounted) {
         return;
       }
 
@@ -115,7 +107,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _searchResults = results;
       });
     } catch (_) {
-      if (!mounted || requestId != _searchRequestId) {
+      if (!mounted) {
         return;
       }
 
@@ -123,7 +115,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _searchError = 'Unable to search users right now.';
       });
     } finally {
-      if (mounted && requestId == _searchRequestId) {
+      if (mounted) {
         setState(() {
           _isLoadingSearch = false;
         });
@@ -293,9 +285,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
       body: Column(
         children: [
           if (!widget.showAppBar) _buildEmbeddedHeader(),
+          _buildInboxFilters(),
           Expanded(
             child: StreamBuilder<List<OjasConversation>>(
-              stream: _conversationsStream,
+              stream: _messagingService.watchConversations(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
@@ -306,20 +299,33 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   return _buildErrorState();
                 }
 
-                final conversations = snapshot.data ?? [];
+                final all = snapshot.data ?? [];
+                final uid = _messagingService.currentUid ?? '';
+                final conversations = _inboxFilter == 1
+                    ? all.where((c) => c.unreadCountFor(uid) > 0).toList()
+                    : all;
 
-                if (conversations.isEmpty) {
+                if (all.isEmpty) {
                   return _buildEmptyState();
                 }
 
+                if (conversations.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No unread messages',
+                      style: TextStyle(color: Color(0xFF9CA3AF)),
+                    ),
+                  );
+                }
+
                 return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                   itemCount: conversations.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 4),
                   itemBuilder: (context, index) {
                     return _ConversationTile(
                       conversation: conversations[index],
-                      currentUid: _messagingService.currentUid ?? '',
+                      currentUid: uid,
                       onTap: () {
                         _openConversation(conversations[index]);
                       },
@@ -355,6 +361,42 @@ class _MessagesScreenState extends State<MessagesScreen> {
             onPressed: _startNewMessage,
             icon: const Icon(Icons.edit_outlined, color: Color(0xFF111827)),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInboxFilters() {
+    Widget chip(String label, int value) {
+      final selected = _inboxFilter == value;
+      return GestureDetector(
+        onTap: () => setState(() => _inboxFilter = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF111827) : const Color(0xFFF4F5F7),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : const Color(0xFF374151),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          chip('All', 0),
+          const SizedBox(width: 8),
+          chip('Unread', 1),
         ],
       ),
     );
@@ -490,14 +532,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     : IconButton(
                         tooltip: 'Clear',
                         onPressed: () {
-                          _searchDebounce?.cancel();
-                          _searchRequestId++;
                           _searchController.clear();
 
                           setState(() {
                             _searchResults = [];
-                            _isLoadingSearch = false;
-                            _searchError = '';
                           });
                         },
                         icon: const Icon(Icons.close_rounded),
@@ -769,9 +807,8 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = profile.displayName.trim().isEmpty
-        ? 'O'
-        : profile.displayName.trim();
+    final name =
+        profile.displayName.trim().isEmpty ? 'O' : profile.displayName.trim();
     final initial = name[0].toUpperCase();
     final imageUrl = profile.photoUrl.trim();
 
@@ -813,9 +850,8 @@ class _ConversationAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: 27,
       backgroundColor: const Color(0xFFF1F3F5),
-      backgroundImage: imageUrl.startsWith('http')
-          ? NetworkImage(imageUrl)
-          : null,
+      backgroundImage:
+          imageUrl.startsWith('http') ? NetworkImage(imageUrl) : null,
       child: imageUrl.startsWith('http')
           ? null
           : Text(
