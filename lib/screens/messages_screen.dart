@@ -35,12 +35,20 @@ class _MessagesScreenState extends State<MessagesScreen> {
   String _searchError = '';
 
   bool _isOpeningConversation = false;
+  late final Stream<List<OjasConversation>> _conversationsStream;
+  int _searchRequestId = 0;
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _conversationsStream = _messagingService.watchConversations();
   }
 
   void _startNewMessage() {
@@ -53,6 +61,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
   }
 
   void _closeSearch() {
+    _searchDebounce?.cancel();
+    _searchRequestId++;
     _searchController.clear();
 
     setState(() {
@@ -67,6 +77,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     _searchDebounce?.cancel();
 
     final query = value.trim();
+    final requestId = ++_searchRequestId;
 
     if (query.isEmpty) {
       setState(() {
@@ -79,12 +90,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }
 
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      _searchUsers(query);
+      _searchUsers(query, requestId);
     });
   }
 
-  Future<void> _searchUsers(String query) async {
-    if (!mounted) {
+  Future<void> _searchUsers(String query, int requestId) async {
+    if (!mounted || requestId != _searchRequestId) {
       return;
     }
 
@@ -96,7 +107,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
     try {
       final results = await _messagingService.searchUsers(query);
 
-      if (!mounted) {
+      if (!mounted || requestId != _searchRequestId) {
         return;
       }
 
@@ -104,7 +115,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _searchResults = results;
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || requestId != _searchRequestId) {
         return;
       }
 
@@ -112,7 +123,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _searchError = 'Unable to search users right now.';
       });
     } finally {
-      if (mounted) {
+      if (mounted && requestId == _searchRequestId) {
         setState(() {
           _isLoadingSearch = false;
         });
@@ -284,7 +295,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           if (!widget.showAppBar) _buildEmbeddedHeader(),
           Expanded(
             child: StreamBuilder<List<OjasConversation>>(
-              stream: _messagingService.watchConversations(),
+              stream: _conversationsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
