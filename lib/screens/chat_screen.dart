@@ -38,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _replyId;
   String? _replyText;
   String? _replySender;
+  String? _replySenderId;
 
   DocumentReference<Map<String, dynamic>> get _conversationRef => _firestore.collection('conversations').doc(widget.conversationId);
   CollectionReference<Map<String, dynamic>> get _messagesRef => _conversationRef.collection('messages');
@@ -52,13 +53,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Map<String, dynamic> _replyFields() {
-    if (_replyId == null || _replyText == null || _replySender == null) return {};
-    return {'replyToMessageId': _replyId, 'replyToText': _replyText, 'replyToSenderId': _replySender, 'replyToType': 'text'};
+    if (_replyId == null || _replyText == null || _replySenderId == null) return {};
+    return {
+      'replyToMessageId': _replyId,
+      'replyToText': _replyText!.length <= 200 ? _replyText! : _replyText!.substring(0, 200),
+      'replyToSenderId': _replySenderId,
+      'replyToType': 'text',
+    };
   }
 
   void _clearReply() {
     if (!mounted) return;
-    setState(() { _replyId = null; _replyText = null; _replySender = null; });
+    setState(() { _replyId = null; _replyText = null; _replySender = null; _replySenderId = null; });
   }
 
   String _replyPreviewText(Map<String, dynamic> data) {
@@ -83,6 +89,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _replyId = doc.id;
       _replyText = text;
       _replySender = sender.trim().isEmpty ? 'OJAS user' : sender.trim();
+      _replySenderId = senderId is String && senderId.isNotEmpty ? senderId : null;
     });
     _messageFocusNode.requestFocus();
   }
