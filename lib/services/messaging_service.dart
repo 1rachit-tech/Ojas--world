@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
+import 'safety_service.dart';
 
 class MessagingService extends WidgetsBindingObserver {
   MessagingService._() {
@@ -49,9 +50,15 @@ class MessagingService extends WidgetsBindingObserver {
         .where('participants', arrayContains: uid)
         .limit(50)
         .snapshots()
-        .map((snapshot) {
+        .asyncMap((snapshot) async {
+          // Security: never show chats with blocked peers in the inbox.
+          final blocked = await SafetyService.instance.loadBlockedIds();
           final conversations = snapshot.docs
               .map(OjasConversation.fromFirestore)
+              .where((c) {
+                final other = c.otherUserId(uid);
+                return other.isNotEmpty && !blocked.contains(other);
+              })
               .toList();
           conversations.sort((a, b) {
             final aTime = a.lastMessageAt;
@@ -130,6 +137,9 @@ class MessagingService extends WidgetsBindingObserver {
     }
     if (otherUser.uid.isEmpty || otherUser.uid == uid) {
       throw const MessagingException('Invalid OJAS user.');
+    }
+    if (await SafetyService.instance.isBlocked(otherUser.uid)) {
+      throw const MessagingException('Cannot message a blocked user.');
     }
     final currentProfile = await _getCurrentProfile(uid);
     final conversationId = conversationIdFor(uid, otherUser.uid);
