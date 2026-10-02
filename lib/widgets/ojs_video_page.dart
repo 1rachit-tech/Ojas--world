@@ -263,9 +263,6 @@ class _OjsVideoPageState extends State<OjsVideoPage>
 
   @override
   Widget build(BuildContext context) {
-    final bool isLandscape =
-        _isInit && _controller != null && _controller!.value.aspectRatio > 1.2;
-
     return Container(
       color: Colors.black,
       child: GestureDetector(
@@ -284,13 +281,14 @@ class _OjsVideoPageState extends State<OjsVideoPage>
             if (_isInit && _controller != null)
               Center(
                 child: AspectRatio(
-                  aspectRatio: isLandscape
-                      ? _controller!.value.aspectRatio
-                      : 9 / 16,
+                  // OJAS Show/For You is a portrait-first 9:16 feed.
+                  // Crop landscape sources into the portrait viewport instead
+                  // of letterboxing them with large black bars.
+                  aspectRatio: 9 / 16,
                   child: ColorFiltered(
                     colorFilter: VideoEngineService.superResolutionEnhancer,
                     child: FittedBox(
-                      fit: isLandscape ? BoxFit.contain : BoxFit.cover,
+                      fit: BoxFit.cover,
                       child: SizedBox(
                         width: _controller!.value.size.width,
                         height: _controller!.value.size.height,
@@ -381,73 +379,6 @@ class _OjsVideoPageState extends State<OjsVideoPage>
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ),
-                ),
-
-            // 5. TikTok 16:9 Landscape Fullscreen Button
-            if (!_clearDisplay)
-              if (isLandscape)
-                Positioned(
-                  bottom: 180,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: () async {
-                        await FullscreenLandscapePlayer.open(
-                          context,
-                          videoUrl: widget.video.videoUrl,
-                          title: widget.video.caption,
-                          creator: widget.video.creator,
-                        );
-                        if (!mounted) return;
-                        await SystemChrome.setPreferredOrientations([
-                          DeviceOrientation.portraitUp,
-                        ]);
-                        await SystemChrome.setEnabledSystemUIMode(
-                          SystemUiMode.edgeToEdge,
-                        );
-                        SystemChrome.setSystemUIOverlayStyle(
-                          const SystemUiOverlayStyle(
-                            statusBarColor: Colors.transparent,
-                            statusBarIconBrightness: Brightness.light,
-                            systemNavigationBarColor: Colors.black,
-                            systemNavigationBarIconBrightness: Brightness.light,
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24, width: 0.8),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.screen_rotation_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'Full screen (Rotate)',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),
