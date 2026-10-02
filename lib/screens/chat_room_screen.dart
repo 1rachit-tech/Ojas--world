@@ -26,7 +26,7 @@ import '../services/messaging_service.dart';
 import '../services/realtime_presence_service.dart';
 import '../services/safety_service.dart';
 import '../widgets/message_bubble.dart';
-import 'encrypted_call_screen.dart';
+import 'livekit_call_screen.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -562,20 +562,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
-  void _startCall({required bool isVideo}) {
+  Future<void> _startCall({required bool isVideo}) async {
     HapticFeedback.mediumImpact();
-    final key =
-        '${widget.conversationId}_${DateTime.now().millisecondsSinceEpoch}';
-    EncryptedCallScreen.startCall(
-      context,
-      peerName: widget.otherUser.displayName.isEmpty
-          ? 'OJAS User'
-          : widget.otherUser.displayName,
-      peerHandle:
-          widget.otherUser.ojasId.isEmpty ? 'ojas' : widget.otherUser.ojasId,
-      isVideoCall: isVideo,
-      sessionKey: key,
-    );
+    try {
+      await LiveKitCallScreen.startCall(
+        context,
+        conversationId: widget.conversationId,
+        peerName: widget.otherUser.displayName.isEmpty
+            ? 'OJAS User'
+            : widget.otherUser.displayName,
+        peerHandle:
+            widget.otherUser.ojasId.isEmpty ? 'ojas' : widget.otherUser.ojasId,
+        isVideoCall: isVideo,
+      );
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    }
   }
 
   Future<void> _reactToMessage(OjasMessage message, String emoji) async {
@@ -792,12 +794,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
             IconButton(
               tooltip: 'Audio call',
-              onPressed: () => _startCall(isVideo: false),
+              onPressed: () => unawaited(_startCall(isVideo: false)),
               icon: Icon(Icons.call_outlined, color: fg, size: 22),
             ),
             IconButton(
               tooltip: 'Video call',
-              onPressed: () => _startCall(isVideo: true),
+              onPressed: () => unawaited(_startCall(isVideo: true)),
               icon: Icon(Icons.videocam_outlined, color: fg, size: 24),
             ),
             IconButton(
