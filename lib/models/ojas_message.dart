@@ -53,6 +53,8 @@ class OjasMessage {
 
   bool get isVideo => type == 'video';
 
+  bool get isAudio => type == 'audio';
+
   bool get hasMedia =>
       mediaUrl != null && mediaUrl!.trim().isNotEmpty;
 
