@@ -5,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/chat_theme.dart';
 import '../models/ojas_conversation.dart';
 import '../models/ojas_message.dart';
 import '../models/ojas_profile.dart';
@@ -66,6 +68,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _otherUserTyping = false;
   bool _otherUserOnline = false;
   bool _didInitialLoad = false;
+  ChatTheme _chatTheme = ChatTheme.classic;
 
   OjasMessage? _replyingTo;
   DocumentSnapshot<Map<String, dynamic>>? _paginationCursor;
@@ -111,8 +114,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       onError: (_) {},
     );
 
+    unawaited(_loadChatTheme());
     unawaited(_loadInitialMessages());
     _markRead();
+  }
+
+  Future<void> _loadChatTheme() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final id = prefs.getString('chat_theme_${widget.conversationId}');
+      if (!mounted) return;
+      setState(() => _chatTheme = ChatTheme.byId(id));
+    } catch (_) {}
+  }
+
+  Future<void> _saveChatTheme(ChatTheme theme) async {
+    setState(() => _chatTheme = theme);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('chat_theme_${widget.conversationId}', theme.id);
+    } catch (_) {}
   }
 
   @override
@@ -502,14 +523,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = _chatTheme;
+    final fg = theme.isDark ? const Color(0xFFE5E7EB) : const Color(0xFF111827);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.appBarTint,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 0,
-        leading: const BackButton(color: Color(0xFF111827)),
+        leading: BackButton(color: fg),
         title: Row(
           children: [
             CircleAvatar(
@@ -537,8 +561,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         : widget.otherUser.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF111827),
+                    style: TextStyle(
+                      color: fg,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
                     ),
@@ -562,6 +586,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ],
               ),
             ),
+            IconButton(
+              tooltip: 'Chat theme',
+              onPressed: _showThemePicker,
+              icon: Icon(Icons.palette_outlined, color: fg),
+            ),
           ],
         ),
       ),
@@ -579,13 +608,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0F2F5),
+                      color: theme.theirsBubble,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Text(
+                    child: Text(
                       'typing…',
                       style: TextStyle(
-                        color: Color(0xFF6B7280),
+                        color: theme.theirsText.withValues(alpha: 0.7),
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                         fontStyle: FontStyle.italic,
@@ -625,8 +654,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     return Center(
                       child: Text(
                         'Say hi to ${widget.otherUser.displayName.isEmpty ? 'them' : widget.otherUser.displayName}',
-                        style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
+                        style: TextStyle(
+                          color: theme.isDark
+                              ? const Color(0xFF9CA3AF)
+                              : const Color(0xFF9CA3AF),
                           fontSize: 15,
                         ),
                       ),
@@ -657,6 +688,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       return MessageBubble(
                         message: message,
                         isMine: isMine,
+                        theme: _chatTheme,
                         onReply: () {
                           setState(() => _replyingTo = message);
                         },
@@ -685,9 +717,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF4F5F7),
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      decoration: BoxDecoration(
+        color: _chatTheme.composerFill,
+        border: Border(
+          top: BorderSide(
+            color: _chatTheme.isDark
+                ? const Color(0xFF374151)
+                : const Color(0xFFE5E7EB),
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -695,12 +733,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             width: 3,
             height: 28,
             decoration: BoxDecoration(
-              color: const Color(0xFF111827),
+              color: _chatTheme.accent,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(width: 10),
-          const Icon(Icons.reply_rounded, size: 16, color: Color(0xFF6B7280)),
+          Icon(Icons.reply_rounded, size: 16, color: _chatTheme.accent),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -713,8 +751,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   : reply.text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF374151),
+              style: TextStyle(
+                color: _chatTheme.isDark
+                    ? const Color(0xFFE5E7EB)
+                    : const Color(0xFF374151),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -737,10 +777,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: _chatTheme.appBarTint,
           border: Border(
-            top: BorderSide(color: Color(0xFFEEEEEE), width: 0.6),
+            top: BorderSide(
+              color: _chatTheme.isDark
+                  ? const Color(0xFF374151)
+                  : const Color(0xFFEEEEEE),
+              width: 0.6,
+            ),
           ),
         ),
         child: Row(
@@ -750,9 +795,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               tooltip: 'Attach',
               onPressed:
                   _isUploadingMedia || _isSending ? null : _showAttachSheet,
-              icon: const Icon(
+              icon: Icon(
                 Icons.add_circle_outline_rounded,
-                color: Color(0xFF111827),
+                color: _chatTheme.accent,
                 size: 28,
               ),
             ),
@@ -765,9 +810,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 onSubmitted: (_) {
                   if (canSend) _sendMessage();
                 },
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15.5,
-                  color: Color(0xFF111827),
+                  color: _chatTheme.isDark
+                      ? const Color(0xFFE5E7EB)
+                      : const Color(0xFF111827),
                   height: 1.35,
                 ),
                 decoration: InputDecoration(
@@ -777,7 +824,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     fontSize: 15.5,
                   ),
                   filled: true,
-                  fillColor: const Color(0xFFF4F5F7),
+                  fillColor: _chatTheme.composerFill,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 11,
@@ -792,8 +839,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFD1D5DB),
+                    borderSide: BorderSide(
+                      color: _chatTheme.accent.withValues(alpha: 0.4),
                       width: 1,
                     ),
                   ),
@@ -805,8 +852,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               padding: const EdgeInsets.only(bottom: 2),
               child: Material(
                 color: canSend
-                    ? const Color(0xFF111827)
-                    : const Color(0xFFE5E7EB),
+                    ? _chatTheme.accent
+                    : (_chatTheme.isDark
+                        ? const Color(0xFF374151)
+                        : const Color(0xFFE5E7EB)),
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
@@ -888,6 +937,133 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     Navigator.pop(context);
                     _pickAndSendVideo();
                   },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showThemePicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor:
+          _chatTheme.isDark ? const Color(0xFF111827) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD1D5DB),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                Text(
+                  'Chat theme',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _chatTheme.isDark
+                        ? Colors.white
+                        : const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Mitra, family, partner — set the vibe for this chat',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _chatTheme.isDark
+                        ? const Color(0xFF9CA3AF)
+                        : const Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final item in ChatTheme.all)
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context);
+                          HapticFeedback.selectionClick();
+                          unawaited(_saveChatTheme(item));
+                        },
+                        child: Container(
+                          width: 96,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: item.theirsBubble,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _chatTheme.id == item.id
+                                  ? item.accent
+                                  : item.accent.withValues(alpha: 0.25),
+                              width: _chatTheme.id == item.id ? 2.5 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                item.emoji,
+                                style: const TextStyle(fontSize: 22),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                item.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: item.theirsText,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 14,
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: item.mineBubble,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    width: 14,
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: item.accent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
