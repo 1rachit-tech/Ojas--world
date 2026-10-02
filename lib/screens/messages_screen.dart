@@ -490,10 +490,14 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     : IconButton(
                         tooltip: 'Clear',
                         onPressed: () {
+                          _searchDebounce?.cancel();
+                          _searchRequestId++;
                           _searchController.clear();
 
                           setState(() {
                             _searchResults = [];
+                            _isLoadingSearch = false;
+                            _searchError = '';
                           });
                         },
                         icon: const Icon(Icons.close_rounded),
