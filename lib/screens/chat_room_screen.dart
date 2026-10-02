@@ -20,6 +20,7 @@ import '../services/message_pagination_service.dart';
 import '../services/messaging_service.dart';
 import '../services/realtime_presence_service.dart';
 import '../widgets/message_bubble.dart';
+import 'encrypted_call_screen.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -359,6 +360,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
+  void _startCall({required bool isVideo}) {
+    HapticFeedback.mediumImpact();
+    final key =
+        '${widget.conversationId}_${DateTime.now().millisecondsSinceEpoch}';
+    EncryptedCallScreen.startCall(
+      context,
+      peerName: widget.otherUser.displayName.isEmpty
+          ? 'OJAS User'
+          : widget.otherUser.displayName,
+      peerHandle:
+          widget.otherUser.ojasId.isEmpty ? 'ojas' : widget.otherUser.ojasId,
+      isVideoCall: isVideo,
+      sessionKey: key,
+    );
+  }
+
   Future<void> _reactToMessage(OjasMessage message, String emoji) async {
     try {
       await _messagingService.toggleReaction(
@@ -399,17 +416,13 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     for (final emoji in MessageBubble.quickReactions)
-                      InkWell(
-                        borderRadius: BorderRadius.circular(24),
+                      _ReactionEmojiButton(
+                        emoji: emoji,
                         onTap: () {
                           Navigator.pop(context);
                           HapticFeedback.selectionClick();
                           unawaited(_reactToMessage(message, emoji));
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: Text(emoji, style: const TextStyle(fontSize: 28)),
-                        ),
                       ),
                   ],
                 ),
@@ -483,12 +496,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 58),
+            const Icon(Icons.play_circle_fill_rounded,
+                color: Colors.white, size: 58),
             Positioned(
               left: 12,
               bottom: 10,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(8),
@@ -573,9 +588,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               ),
             ),
             IconButton(
+              tooltip: 'Audio call',
+              onPressed: () => _startCall(isVideo: false),
+              icon: Icon(Icons.call_outlined, color: fg, size: 22),
+            ),
+            IconButton(
+              tooltip: 'Video call',
+              onPressed: () => _startCall(isVideo: true),
+              icon: Icon(Icons.videocam_outlined, color: fg, size: 24),
+            ),
+            IconButton(
               tooltip: 'Chat theme',
               onPressed: _showThemePicker,
-              icon: Icon(Icons.palette_outlined, color: fg),
+              icon: Icon(Icons.palette_outlined, color: fg, size: 22),
             ),
           ],
         ),
@@ -589,7 +614,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: theme.theirsBubble,
                       borderRadius: BorderRadius.circular(16),
@@ -675,7 +701,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             : () => _showReactionSheet(message),
                         onReact: message.isDeleted
                             ? null
-                            : (emoji) => unawaited(_reactToMessage(message, emoji)),
+                            : (emoji) =>
+                                unawaited(_reactToMessage(message, emoji)),
                         imageBuilder: message.isImage
                             ? () => _buildImageBubble(message)
                             : null,
@@ -777,7 +804,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           children: [
             IconButton(
               tooltip: 'Attach',
-              onPressed: _isUploadingMedia || _isSending ? null : _showAttachSheet,
+              onPressed:
+                  _isUploadingMedia || _isSending ? null : _showAttachSheet,
               icon: Icon(
                 Icons.add_circle_outline_rounded,
                 color: _chatTheme.accent,
@@ -1006,7 +1034,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           ),
                           child: Column(
                             children: [
-                              Text(item.emoji, style: const TextStyle(fontSize: 22)),
+                              Text(item.emoji,
+                                  style: const TextStyle(fontSize: 22)),
                               const SizedBox(height: 6),
                               Text(
                                 item.label,
@@ -1056,5 +1085,52 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _usableImage(String value) {
     return value.trim().isNotEmpty &&
         (value.startsWith('http://') || value.startsWith('https://'));
+  }
+}
+
+/// Scale-bounce emoji for reaction sheet — pure Flutter, zero cost.
+class _ReactionEmojiButton extends StatefulWidget {
+  const _ReactionEmojiButton({required this.emoji, required this.onTap});
+
+  final String emoji;
+  final VoidCallback onTap;
+
+  @override
+  State<_ReactionEmojiButton> createState() => _ReactionEmojiButtonState();
+}
+
+class _ReactionEmojiButtonState extends State<_ReactionEmojiButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 120),
+    lowerBound: 0.85,
+    upperBound: 1.0,
+    value: 1.0,
+  );
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _c.reverse(),
+      onTapUp: (_) {
+        _c.forward();
+        widget.onTap();
+      },
+      onTapCancel: () => _c.forward(),
+      child: ScaleTransition(
+        scale: _c,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(widget.emoji, style: const TextStyle(fontSize: 30)),
+        ),
+      ),
+    );
   }
 }
