@@ -45,10 +45,6 @@ class MessagingService extends WidgetsBindingObserver {
     final uid = currentUid;
     if (uid == null) return Stream.value(const <OjasConversation>[]);
 
-    // Keep the listener to a single-field index.  The previous
-    // arrayContains + orderBy query requires a composite Firestore index;
-    // sorting locally avoids making Messages depend on a separately
-    // deployed index configuration.
     return _conversations
         .where('participants', arrayContains: uid)
         .limit(50)
@@ -277,6 +273,47 @@ class MessagingService extends WidgetsBindingObserver {
       SetOptions(merge: true),
     );
     await batch.commit();
+  }
+
+  /// Instagram-style reaction: one emoji per user per message.
+  /// Tap same emoji again to remove.
+  Future<void> toggleReaction({
+    required String conversationId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final uid = currentUid;
+    if (uid == null) {
+      throw const MessagingException('Please sign in again.');
+    }
+    if (conversationId.isEmpty || messageId.isEmpty || emoji.trim().isEmpty) {
+      return;
+    }
+
+    final ref = messageCollection(conversationId).doc(messageId);
+    await _firestore.runTransaction((transaction) async {
+      final snap = await transaction.get(ref);
+      if (!snap.exists) return;
+
+      final data = snap.data() ?? <String, dynamic>{};
+      final raw = data['reactions'];
+      final reactions = <String, String>{};
+      if (raw is Map) {
+        raw.forEach((key, value) {
+          if (key is String && value is String && key.isNotEmpty) {
+            reactions[key] = value;
+          }
+        });
+      }
+
+      if (reactions[uid] == emoji) {
+        reactions.remove(uid);
+      } else {
+        reactions[uid] = emoji;
+      }
+
+      transaction.update(ref, {'reactions': reactions});
+    });
   }
 
   Future<void> setTyping({
