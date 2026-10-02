@@ -1,1 +1,904 @@
-PLACEHOLDER
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../models/ojas_conversation.dart';
+import '../models/ojas_message.dart';
+import '../models/ojas_profile.dart';
+import '../services/chat_video_media_service.dart';
+import '../services/chat_video_message_service.dart';
+import '../services/media_message_service.dart';
+import '../services/message_delivery_service.dart';
+import '../services/message_memory_window.dart';
+import '../services/message_pagination_service.dart';
+import '../services/messaging_service.dart';
+import '../services/realtime_presence_service.dart';
+import '../widgets/message_bubble.dart';
+
+class ChatRoomScreen extends StatefulWidget {
+  const ChatRoomScreen({
+    super.key,
+    required this.conversationId,
+    required this.otherUser,
+  });
+
+  final String conversationId;
+  final OjasProfile otherUser;
+
+  @override
+  State<ChatRoomScreen> createState() => _ChatRoomScreenState();
+}
+
+class _ChatRoomScreenState extends State<ChatRoomScreen> {
+  static const int _maxInMemoryMessages = 400;
+  static const int _initialPageSize = 20;
+
+  final MessagingService _messagingService = MessagingService.instance;
+  final MediaMessageService _mediaMessageService = MediaMessageService.instance;
+  final ChatVideoMediaService _chatVideoMediaService =
+      ChatVideoMediaService.instance;
+  final ChatVideoMessageService _chatVideoMessageService =
+      ChatVideoMessageService.instance;
+  final MessageDeliveryService _deliveryService = MessageDeliveryService.instance;
+  final MessagePaginationService _paginationService =
+      MessagePaginationService.instance;
+  final RealtimePresenceService _presenceService =
+      RealtimePresenceService.instance;
+
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<OjasMessage> _loadedMessages = <OjasMessage>[];
+
+  StreamSubscription<RealtimePresenceState>? _presenceSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _conversationSubscription;
+  Timer? _typingTimer;
+
+  bool _isSending = false;
+  bool _isUploadingMedia = false;
+  bool _isLoadingOlder = false;
+  bool _hasMoreOlder = true;
+  bool _isTyping = false;
+  bool _otherUserTyping = false;
+  bool _otherUserOnline = false;
+  bool _didInitialLoad = false;
+
+  OjasMessage? _replyingTo;
+  DocumentSnapshot<Map<String, dynamic>>? _paginationCursor;
+  Timestamp? _lastDeliveredAt;
+  String? _lastError;
+
+  bool get _hasText => _messageController.text.trim().isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageController.addListener(_onTextChanged);
+    _scrollController.addListener(_onScroll);
+
+    _presenceSubscription = _presenceService.watch(widget.otherUser.uid).listen(
+      (state) {
+        if (mounted) {
+          setState(() => _otherUserOnline = state.online);
+        }
+      },
+      onError: (_) {},
+    );
+
+    _conversationSubscription = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted || !snapshot.exists) return;
+        final data = snapshot.data();
+        if (data == null) return;
+        final typingBy = data['typingBy'];
+        final otherUid = widget.otherUser.uid;
+        var isTyping = false;
+        if (typingBy is Map && otherUid.isNotEmpty) {
+          isTyping = typingBy[otherUid] == true;
+        }
+        if (_otherUserTyping != isTyping) {
+          setState(() => _otherUserTyping = isTyping);
+        }
+      },
+      onError: (_) {},
+    );
+
+    unawaited(_loadInitialMessages());
+    _markRead();
+  }
+
+  @override
+  void dispose() {
+    _typingTimer?.cancel();
+    _presenceSubscription?.cancel();
+    _conversationSubscription?.cancel();
+    _messageController
+      ..removeListener(_onTextChanged)
+      ..dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    _setTyping(false);
+    super.dispose();
+  }
+
+  Future<void> _loadInitialMessages() async {
+    if (_didInitialLoad) return;
+
+    try {
+      final page = await _paginationService.loadPage(
+        conversationId: widget.conversationId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loadedMessages
+          ..clear()
+          ..addAll(
+            MessageMemoryWindow.takeNewest(
+              page.messages,
+              _initialPageSize,
+            ),
+          );
+        _paginationCursor = page.cursor;
+        _hasMoreOlder = page.hasMore;
+        _didInitialLoad = true;
+      });
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _isLoadingOlder || !_hasMoreOlder) {
+      return;
+    }
+
+    if (_scrollController.position.extentBefore <= 220) {
+      unawaited(_loadOlderMessages());
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingOlder || !_hasMoreOlder) return;
+
+    setState(() => _isLoadingOlder = true);
+
+    try {
+      final page = await _paginationService.loadPage(
+        conversationId: widget.conversationId,
+        cursor: _paginationCursor,
+      );
+
+      final existingIds = _loadedMessages.map((m) => m.id).toSet();
+      final additions =
+          page.messages.where((m) => !existingIds.contains(m.id));
+      final combined = <OjasMessage>[..._loadedMessages, ...additions];
+
+      if (!mounted) return;
+
+      setState(() {
+        _loadedMessages
+          ..clear()
+          ..addAll(
+            MessageMemoryWindow.takeNewest(
+              combined,
+              _maxInMemoryMessages,
+            ),
+          );
+        _paginationCursor = page.cursor;
+        _hasMoreOlder = page.hasMore;
+      });
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isLoadingOlder = false);
+    }
+  }
+
+  List<OjasMessage> _mergeMessages(List<OjasMessage> liveMessages) {
+    final byId = <String, OjasMessage>{};
+
+    for (final message in _loadedMessages) {
+      byId[message.id] = message;
+    }
+
+    for (final message in liveMessages.take(_initialPageSize)) {
+      byId[message.id] = message;
+    }
+
+    final messages = byId.values.toList();
+    messages.sort((a, b) {
+      final aTime = a.createdAt;
+      final bTime = b.createdAt;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return -1;
+      if (bTime == null) return 1;
+      return bTime.compareTo(aTime);
+    });
+
+    return MessageMemoryWindow.takeNewest(messages, _maxInMemoryMessages);
+  }
+
+  void _onTextChanged() {
+    if (mounted) setState(() {});
+
+    if (!_hasText) {
+      _setTyping(false);
+      return;
+    }
+
+    _setTyping(true);
+    _typingTimer?.cancel();
+    _typingTimer = Timer(
+      const Duration(milliseconds: 1800),
+      () => _setTyping(false),
+    );
+  }
+
+  void _setTyping(bool value) {
+    if (_isTyping == value) return;
+    _isTyping = value;
+
+    unawaited(
+      _messagingService.setTyping(
+        conversationId: widget.conversationId,
+        isTyping: value,
+      ),
+    );
+  }
+
+  void _markRead() {
+    unawaited(
+      _messagingService.markConversationRead(widget.conversationId),
+    );
+  }
+
+  void _markDelivered(List<OjasMessage> messages, String? currentUid) {
+    if (currentUid == null) return;
+
+    Timestamp? newestIncoming;
+
+    for (final message in messages) {
+      if (message.senderId == currentUid || message.createdAt == null) {
+        continue;
+      }
+      final createdAt = message.createdAt!;
+      if (newestIncoming == null || createdAt.compareTo(newestIncoming) > 0) {
+        newestIncoming = createdAt;
+      }
+    }
+
+    if (newestIncoming == null) return;
+
+    if (_lastDeliveredAt != null &&
+        newestIncoming.compareTo(_lastDeliveredAt!) <= 0) {
+      return;
+    }
+
+    _lastDeliveredAt = newestIncoming;
+
+    unawaited(
+      _deliveryService.markDeliveredUntil(
+        conversationId: widget.conversationId,
+        messageCreatedAt: newestIncoming,
+      ),
+    );
+  }
+
+  Future<void> _sendMessage() async {
+    if (_isSending || _isUploadingMedia || !_hasText) return;
+
+    final text = _messageController.text.trim();
+    _typingTimer?.cancel();
+    _setTyping(false);
+
+    setState(() => _isSending = true);
+
+    try {
+      await _messagingService.sendTextMessage(
+        conversationId: widget.conversationId,
+        receiverId: widget.otherUser.uid,
+        text: text,
+        replyTo: _replyingTo,
+      );
+
+      _messageController.clear();
+
+      if (mounted) setState(() => _replyingTo = null);
+      HapticFeedback.lightImpact();
+      _markRead();
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    if (_isUploadingMedia || _isSending) return;
+
+    _typingTimer?.cancel();
+    _setTyping(false);
+
+    try {
+      final picked = await ImagePicker().pickImage(source: source);
+      if (picked == null) return;
+
+      if (mounted) setState(() => _isUploadingMedia = true);
+
+      final uploaded = await _mediaMessageService.uploadChatImage(
+        sourceFile: picked,
+        conversationId: widget.conversationId,
+      );
+
+      await _messagingService.sendImageMessage(
+        conversationId: widget.conversationId,
+        receiverId: widget.otherUser.uid,
+        mediaUrl: uploaded.downloadUrl,
+        storagePath: uploaded.storagePath,
+        width: uploaded.width,
+        height: uploaded.height,
+        mediaBytes: uploaded.compressedBytes,
+        caption: '',
+        replyTo: _replyingTo,
+      );
+
+      if (mounted) setState(() => _replyingTo = null);
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isUploadingMedia = false);
+    }
+  }
+
+  Future<void> _pickAndSendVideo() async {
+    if (_isUploadingMedia || _isSending) return;
+
+    _typingTimer?.cancel();
+    _setTyping(false);
+
+    try {
+      final picked = await ImagePicker().pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+      if (picked == null) return;
+
+      if (mounted) setState(() => _isUploadingMedia = true);
+
+      final uploaded = await _chatVideoMediaService.prepareAndUpload(
+        sourceFile: picked,
+        conversationId: widget.conversationId,
+      );
+
+      await _chatVideoMessageService.sendVideoMessage(
+        conversationId: widget.conversationId,
+        receiverId: widget.otherUser.uid,
+        mediaUrl: uploaded.mediaUrl,
+        mediaHash: uploaded.mediaHash,
+        mediaStoragePath: uploaded.storagePath,
+        mediaBytes: uploaded.mediaBytes,
+        width: uploaded.width,
+        height: uploaded.height,
+        durationMs: uploaded.durationMs,
+        replyTo: _replyingTo,
+      );
+
+      if (mounted) setState(() => _replyingTo = null);
+      HapticFeedback.lightImpact();
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isUploadingMedia = false);
+    }
+  }
+
+  String _errorMessage(Object error) {
+    if (error is MessagingException) return error.message;
+    if (error is ChatVideoMediaException) return error.message;
+    if (error is FirebaseException) {
+      return error.message ?? 'Message action failed.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
+  void _showError(String message) {
+    _lastError = message;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildImageBubble(OjasMessage message) {
+    final url = message.mediaUrl;
+
+    if (url == null || url.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: 250,
+      height: 250,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        memCacheWidth: 900,
+        maxWidthDiskCache: 1200,
+        placeholder: (_, __) => const Center(
+          child: SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+        errorWidget: (_, __, ___) => const Center(
+          child: Icon(Icons.broken_image_outlined),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoBubble(OjasMessage message) {
+    final url = message.mediaUrl;
+
+    if (url == null || url.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: 260,
+      height: 170,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            const Icon(
+              Icons.play_circle_fill_rounded,
+              color: Colors.white,
+              size: 58,
+            ),
+            Positioned(
+              left: 12,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'VIDEO',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        leading: const BackButton(color: Color(0xFF111827)),
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 17,
+              backgroundColor: const Color(0xFFF0F2F5),
+              backgroundImage: _usableImage(widget.otherUser.photoUrl)
+                  ? NetworkImage(widget.otherUser.photoUrl)
+                  : null,
+              child: _usableImage(widget.otherUser.photoUrl)
+                  ? null
+                  : const Icon(
+                      Icons.person_outline_rounded,
+                      color: Color(0xFF6B7280),
+                      size: 19,
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.otherUser.displayName.isEmpty
+                        ? 'OJAS User'
+                        : widget.otherUser.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    _otherUserOnline
+                        ? 'Online'
+                        : (widget.otherUser.ojasId.isEmpty
+                            ? 'OJAS'
+                            : '@${widget.otherUser.ojasId}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _otherUserOnline
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFF6B7280),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (_otherUserTyping)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F2F5),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Text(
+                      'typing…',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: StreamBuilder<List<OjasMessage>>(
+                stream: _messagingService.watchMessages(widget.conversationId),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(_errorMessage(snapshot.error!)),
+                    );
+                  }
+
+                  final messages = _mergeMessages(
+                    snapshot.data ?? const <OjasMessage>[],
+                  );
+                  final currentUid = _messagingService.currentUid;
+
+                  _markDelivered(messages, currentUid);
+
+                  if (messages.any((m) => m.senderId != currentUid)) {
+                    _markRead();
+                  }
+
+                  if (!_didInitialLoad &&
+                      snapshot.connectionState == ConnectionState.waiting &&
+                      messages.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (messages.isEmpty) {
+                    return Center(
+                      child: Text(
+                        'Say hi to ${widget.otherUser.displayName.isEmpty ? 'them' : widget.otherUser.displayName}',
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 15,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
+                    itemCount: messages.length + (_isLoadingOlder ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoadingOlder && index == messages.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Center(
+                            child: SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final message = messages[index];
+                      final isMine = message.senderId == currentUid;
+
+                      return MessageBubble(
+                        message: message,
+                        isMine: isMine,
+                        onReply: () {
+                          setState(() => _replyingTo = message);
+                        },
+                        imageBuilder: message.isImage
+                            ? () => _buildImageBubble(message)
+                            : null,
+                        videoBuilder: message.isVideo
+                            ? () => _buildVideoBubble(message)
+                            : null,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            if (_replyingTo != null) _buildReplyBar(),
+            _buildComposer(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplyBar() {
+    final reply = _replyingTo!;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF4F5F7),
+        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Icon(Icons.reply_rounded, size: 16, color: Color(0xFF6B7280)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              reply.text.isEmpty
+                  ? (reply.isImage
+                      ? 'Photo'
+                      : reply.isVideo
+                          ? 'Video'
+                          : 'Message')
+                  : reply.text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cancel reply',
+            onPressed: () => setState(() => _replyingTo = null),
+            icon: const Icon(Icons.close_rounded, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComposer() {
+    final canSend = _hasText && !_isSending && !_isUploadingMedia;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: Color(0xFFEEEEEE), width: 0.6),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              tooltip: 'Attach',
+              onPressed:
+                  _isUploadingMedia || _isSending ? null : _showAttachSheet,
+              icon: const Icon(
+                Icons.add_circle_outline_rounded,
+                color: Color(0xFF111827),
+                size: 28,
+              ),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) {
+                  if (canSend) _sendMessage();
+                },
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  color: Color(0xFF111827),
+                  height: 1.35,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Message…',
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF9CA3AF),
+                    fontSize: 15.5,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF4F5F7),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 11,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFD1D5DB),
+                      width: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Material(
+                color: canSend
+                    ? const Color(0xFF111827)
+                    : const Color(0xFFE5E7EB),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: canSend ? _sendMessage : null,
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: _isSending || _isUploadingMedia
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(
+                              Icons.send_rounded,
+                              size: 18,
+                              color: canSend
+                                  ? Colors.white
+                                  : const Color(0xFF9CA3AF),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAttachSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1D5DB),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Photo library'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendImage(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Camera'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendImage(ImageSource.camera);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.videocam_outlined),
+                  title: const Text('Video'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendVideo();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  bool _usableImage(String value) {
+    return value.trim().isNotEmpty &&
+        (value.startsWith('http://') || value.startsWith('https://'));
+  }
+}
