@@ -71,10 +71,3 @@ class PushNotificationService {
   }
 }
 
-/// Background isolate handler — register in main() before runApp:
-/// FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Keep minimal — no heavy work in background isolate.
-  debugPrint('FCM background: ${message.messageId}');
-}
