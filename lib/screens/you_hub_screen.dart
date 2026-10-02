@@ -53,7 +53,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
   Stream<OjasProfile?>? _profileStream;
   String? _profileStreamUid;
 
-  int _selectedTab = 0;
+  final ValueNotifier<int> _selectedTab = ValueNotifier<int>(0);
 
   List<_SavedAccount> _accounts = [];
 
@@ -134,9 +134,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
     }
 
     HapticFeedback.selectionClick();
-    setState(() {
-      _selectedTab = index;
-    });
+    _selectedTab.value = index;
 
     if (_pageController.hasClients) {
       _pageController.animateToPage(
@@ -148,14 +146,12 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   void _onPageChanged(int index) {
-    if (_selectedTab == index) {
+    if (_selectedTab.value == index) {
       return;
     }
 
     HapticFeedback.selectionClick();
-    setState(() {
-      _selectedTab = index;
-    });
+    _selectedTab.value = index;
   }
 
   Future<void> _openAccountSwitcher(User user, OjasProfile? profile) async {
@@ -456,6 +452,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
 
   @override
   void dispose() {
+    _selectedTab.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -537,6 +534,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
                         controller: _pageController,
                         onPageChanged: _onPageChanged,
                         physics: const _YouHubSwipePhysics(),
+                        allowImplicitScrolling: true,
                         children: [
                           const RepaintBoundary(
                             child: MessagesScreen(
@@ -625,31 +623,36 @@ class _YouHubScreenState extends State<YouHubScreen> {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: _soft,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              padding: const EdgeInsets.all(4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _TopTab(
-                      title: 'Messages',
-                      selected: _selectedTab == 0,
-                      onTap: () => _changeTab(0),
-                    ),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _selectedTab,
+              builder: (context, selectedTab, _) {
+                return Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: _soft,
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  Expanded(
-                    child: _TopTab(
-                      title: 'Profile',
-                      selected: _selectedTab == 1,
-                      onTap: () => _changeTab(1),
-                    ),
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _TopTab(
+                          title: 'Messages',
+                          selected: selectedTab == 0,
+                          onTap: () => _changeTab(0),
+                        ),
+                      ),
+                      Expanded(
+                        child: _TopTab(
+                          title: 'Profile',
+                          selected: selectedTab == 1,
+                          onTap: () => _changeTab(1),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
           const SizedBox(width: 8),
