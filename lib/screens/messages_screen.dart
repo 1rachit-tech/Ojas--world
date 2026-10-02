@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/ojas_conversation.dart';
 import '../models/ojas_profile.dart';
@@ -35,6 +34,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   String _searchError = '';
 
+  bool _isOpeningConversation = false;
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -43,6 +44,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   }
 
   void _startNewMessage() {
+    if (_isOpeningConversation) return;
     setState(() {
       _isSearching = true;
       _searchResults = [];
@@ -119,16 +121,28 @@ class _MessagesScreenState extends State<MessagesScreen> {
   }
 
   Future<void> _openNewConversation(OjasProfile profile) async {
+    if (_isOpeningConversation) return;
+    if (profile.uid.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid user. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isOpeningConversation = true);
+
     try {
       HapticFeedback.selectionClick();
 
       final conversationId = await _messagingService.openConversation(profile);
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ChatRoomScreen(
             conversationId: conversationId,
@@ -137,9 +151,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ),
       );
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -147,50 +159,89 @@ class _MessagesScreenState extends State<MessagesScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isOpeningConversation = false);
+      }
     }
   }
 
   Future<void> _openConversation(OjasConversation conversation) async {
+    if (_isOpeningConversation) return;
+
     final uid = _messagingService.currentUid;
 
-    if (uid == null) {
+    if (uid == null || uid.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in again to open messages.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
     final otherUid = conversation.otherUserId(uid);
 
     if (otherUid.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open this conversation.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
-    final profileData = conversation.profileFor(otherUid);
+    setState(() => _isOpeningConversation = true);
 
-    OjasProfile profile;
-    if (profileData.isEmpty) {
-      final fetched = await ProfileService.instance.getProfile(otherUid);
-      profile =
-          fetched ??
-          OjasProfile.empty(
-            uid: otherUid,
-            displayName: 'OJAS User',
-            photoUrl: 'avatar_1',
-          );
-    } else {
-      profile = OjasProfile.fromMap(profileData, uid: otherUid);
-      if (profile.ojasId.isEmpty) {
+    try {
+      final profileData = conversation.profileFor(otherUid);
+
+      OjasProfile profile;
+      if (profileData.isEmpty) {
         final fetched = await ProfileService.instance.getProfile(otherUid);
-        if (fetched != null) {
-          profile = fetched;
+        profile = fetched ??
+            OjasProfile.empty(
+              uid: otherUid,
+              displayName: 'OJAS User',
+              photoUrl: '',
+            );
+      } else {
+        profile = OjasProfile.fromMap(profileData, uid: otherUid);
+        if (profile.ojasId.isEmpty || profile.displayName.isEmpty) {
+          final fetched = await ProfileService.instance.getProfile(otherUid);
+          if (fetched != null) {
+            profile = fetched;
+          }
         }
       }
-    }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            ChatRoomScreen(conversationId: conversation.id, otherUser: profile),
-      ),
-    );
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatRoomScreen(
+            conversationId: conversation.id,
+            otherUser: profile,
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorMessage(error)),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isOpeningConversation = false);
+      }
+    }
   }
 
   @override
@@ -678,17 +729,10 @@ class _ConversationTile extends StatelessWidget {
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      final hour = date.hour > 12
-          ? date.hour - 12
-          : date.hour == 0
-          ? 12
-          : date.hour;
-
-      final minute = date.minute.toString().padLeft(2, '0');
-
-      final period = date.hour >= 12 ? 'PM' : 'AM';
-
-      return '$hour:$minute $period';
+      final minutes = difference.inMinutes;
+      if (minutes < 1) return 'now';
+      if (minutes < 60) return '${minutes}m';
+      return '${difference.inHours}h';
     }
 
     if (difference.inDays == 1) {
@@ -696,9 +740,7 @@ class _ConversationTile extends StatelessWidget {
     }
 
     if (difference.inDays < 7) {
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-      return days[date.weekday - 1];
+      return '${difference.inDays}d';
     }
 
     return '${date.day}/${date.month}/${date.year}';
@@ -712,15 +754,36 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _ConversationAvatar(
-      name: profile.displayName,
-      photoUrl: profile.photoUrl,
+    final name = profile.displayName.trim().isEmpty
+        ? 'O'
+        : profile.displayName.trim();
+    final initial = name[0].toUpperCase();
+    final imageUrl = profile.photoUrl.trim();
+
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: const Color(0xFFF1F3F5),
+      backgroundImage:
+          imageUrl.startsWith('http') ? NetworkImage(imageUrl) : null,
+      child: imageUrl.startsWith('http')
+          ? null
+          : Text(
+              initial,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 17,
+                color: Color(0xFF111827),
+              ),
+            ),
     );
   }
 }
 
 class _ConversationAvatar extends StatelessWidget {
-  const _ConversationAvatar({required this.name, required this.photoUrl});
+  const _ConversationAvatar({
+    required this.name,
+    required this.photoUrl,
+  });
 
   final String name;
 
