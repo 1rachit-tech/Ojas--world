@@ -129,7 +129,7 @@ class _YouHubScreenState extends State<YouHubScreen> {
   }
 
   void _changeTab(int index) {
-    if (_selectedTab == index) {
+    if (_selectedTab.value == index) {
       return;
     }
 
