@@ -422,11 +422,9 @@ class _ConversationShareSheet extends StatelessWidget {
       });
 
       await conversationRef.update({
-        'lastMessageText': message,
-        'lastMessage': message,
+                'lastMessage': message,
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastMessageSenderId': user.uid,
-        'lastSenderId': user.uid,
         'unreadCounts.$recipientId': FieldValue.increment(1),
       });
 
