@@ -124,38 +124,10 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> with WidgetsBindi
     final items = _controller.items;
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0.5,
-        leading: IconButton(
-          tooltip: 'Search World',
-          icon: const Icon(Icons.search_rounded, color: Color(0xFF111827)),
-          onPressed: () => WorldSearchSheet.show(context),
-        ),
-        title: const Text(
-          'OJAS',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 2.5,
-            color: Color(0xFF111827),
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF111827)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              );
-            },
-          ),
-        ],
-      ),
+      // The global OJAS Home AppBar is owned by OjasHomePage in main.dart.
+      // Do not render a second AppBar here: it duplicates search/brand/notification
+      // controls and pushes the feed downward on Home.
+),
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>([_controller.refresh(), _loadStories()]);
