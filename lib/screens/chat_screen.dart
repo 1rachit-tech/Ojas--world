@@ -126,7 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'text', 'text': text,
         'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields(),
       });
-      await _conversationRef.update({'lastMessage': text, 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': text, 'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (!mounted) return; _restoreDraft(text);
@@ -165,7 +165,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ref.putData(compressed, SettableMetadata(contentType: 'image/jpeg'));
       final url = await ref.getDownloadURL();
       await _messagesRef.add({'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'image', 'mediaUrl': url, 'mediaStoragePath': path, 'mediaBytes': compressed.lengthInBytes, 'text': '', 'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields()});
-      await _conversationRef.update({'lastMessage': '📷 Photo', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': '📷 Photo', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Unable to upload photo.')));
@@ -216,7 +216,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ref.putFile(file, SettableMetadata(contentType: 'audio/mp4'));
       final url = await ref.getDownloadURL();
       await _messagesRef.add({'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'audio', 'mediaUrl': url, 'mediaStoragePath': storagePath, 'text': '', 'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields()});
-      await _conversationRef.update({'lastMessage': '🎤 Voice note', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': '🎤 Voice note', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastMessageSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Unable to upload voice note.')));
@@ -245,9 +245,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _replyQuote(Map<String, dynamic> data, bool mine) {
-    final id = data['replyingToMessageId'];
-    final text = data['replyingToText'];
-    final sender = data['replyingToSenderName'];
+    final id = data['replyToMessageId'];
+    final text = data['replyToText'];
+    final sender = data['replyToSenderId'];
     if (id is! String || id.isEmpty || text is! String || text.trim().isEmpty || sender is! String || sender.trim().isEmpty) return const SizedBox.shrink();
     final color = mine ? Colors.white54 : const Color(0xFF6B7280);
     return Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 7), padding: const EdgeInsets.fromLTRB(9, 6, 9, 6), decoration: BoxDecoration(color: mine ? Colors.white10 : Colors.black.withValues(alpha: .04), borderRadius: BorderRadius.circular(10), border: Border(left: BorderSide(color: mine ? Colors.white38 : const Color(0xFF9CA3AF), width: 3))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sender.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(text.trim(), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 11))]));
