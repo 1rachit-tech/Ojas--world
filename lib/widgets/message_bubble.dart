@@ -5,7 +5,7 @@ import '../models/chat_theme.dart';
 import '../models/ojas_message.dart';
 import 'ojas_smart_video_player.dart';
 
-/// Instagram DM style bubble with reactions.
+/// Instagram DM style bubble with animated reactions.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -74,9 +74,6 @@ class MessageBubble extends StatelessWidget {
           HapticFeedback.mediumImpact();
           if (onLongPress != null) {
             onLongPress!();
-          } else if (onReact != null && !message.isDeleted) {
-            // Parent should show reaction sheet; fallback reply.
-            onLongPress?.call();
           } else if (onReply != null && !message.isDeleted) {
             onReply!();
           }
@@ -216,34 +213,43 @@ class MessageBubble extends StatelessWidget {
                               HapticFeedback.selectionClick();
                               onReact!(entry.key);
                             },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.6, end: 1.0),
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutBack,
+                        builder: (context, scale, child) => Transform.scale(
+                          scale: scale,
+                          child: child,
                         ),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? theme.accent.withValues(alpha: 0.15)
-                              : (theme.isDark
-                                  ? const Color(0xFF1F2937)
-                                  : Colors.white),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selected
-                                ? theme.accent
-                                : const Color(0xFFE5E7EB),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? theme.accent.withValues(alpha: 0.15)
+                                : (theme.isDark
+                                    ? const Color(0xFF1F2937)
+                                    : Colors.white),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected
+                                  ? theme.accent
+                                  : const Color(0xFFE5E7EB),
                             ),
-                          ],
-                        ),
-                        child: Text(
-                          '${entry.key} ${entry.value}',
-                          style: const TextStyle(fontSize: 12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '${entry.key} ${entry.value}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ),
                       ),
                     );
