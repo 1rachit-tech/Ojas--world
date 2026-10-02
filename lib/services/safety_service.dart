@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Block / report helpers — minimal writes, cost-safe.
+/// Block / report — uses firestore.rules paths:
+/// - userBlocks/{uid}/blocked/{targetUid}
+/// - reports/{reportId}
 class SafetyService {
   SafetyService._();
   static final SafetyService instance = SafetyService._();
@@ -12,7 +14,7 @@ class SafetyService {
   String? get _uid => _auth.currentUser?.uid;
 
   CollectionReference<Map<String, dynamic>> _blockedCol(String uid) =>
-      _db.collection('users').doc(uid).collection('blocked');
+      _db.collection('userBlocks').doc(uid).collection('blocked');
 
   CollectionReference<Map<String, dynamic>> get _reports =>
       _db.collection('reports');
@@ -25,10 +27,14 @@ class SafetyService {
     if (uid == null || targetUid.isEmpty || targetUid == uid) {
       throw const SafetyException('Cannot block this user.');
     }
+    // Must match rules: blockedUserId == doc id
     await _blockedCol(uid).doc(targetUid).set({
-      'uid': targetUid,
-      if (displayName != null && displayName.isNotEmpty)
-        'displayName': displayName,
+      'blockedUserId': targetUid,
+      if (displayName != null && displayName.trim().isNotEmpty)
+        'displayName': displayName.trim().substring(
+          0,
+          displayName.trim().length > 80 ? 80 : displayName.trim().length,
+        ),
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -46,10 +52,18 @@ class SafetyService {
     return snap.exists;
   }
 
+  /// One-shot load for inbox filter (max 200 blocks).
+  Future<Set<String>> loadBlockedIds() async {
+    final uid = _uid;
+    if (uid == null) return const <String>{};
+    final snap = await _blockedCol(uid).limit(200).get();
+    return snap.docs.map((d) => d.id).toSet();
+  }
+
   Stream<Set<String>> watchBlockedIds() {
     final uid = _uid;
     if (uid == null) return Stream.value(const <String>{});
-    return _blockedCol(uid).snapshots().map((snap) {
+    return _blockedCol(uid).limit(200).snapshots().map((snap) {
       return snap.docs.map((d) => d.id).toSet();
     });
   }
@@ -66,17 +80,24 @@ class SafetyService {
       throw const SafetyException('Please sign in to report.');
     }
     final clean = reason.trim();
-    if (clean.isEmpty) {
-      throw const SafetyException('Please choose a reason.');
+    if (clean.isEmpty || clean.length > 500) {
+      throw const SafetyException('Please choose a valid reason.');
+    }
+    if (targetUid == uid) {
+      throw const SafetyException('Cannot report yourself.');
     }
     await _reports.add({
       'reporterId': uid,
       'targetUid': targetUid,
       'reason': clean,
       if (details != null && details.trim().isNotEmpty)
-        'details': details.trim(),
-      if (conversationId != null) 'conversationId': conversationId,
-      if (messageId != null) 'messageId': messageId,
+        'details': details.trim().substring(
+          0,
+          details.trim().length > 1000 ? 1000 : details.trim().length,
+        ),
+      if (conversationId != null && conversationId.isNotEmpty)
+        'conversationId': conversationId,
+      if (messageId != null && messageId.isNotEmpty) 'messageId': messageId,
       'status': 'open',
       'createdAt': FieldValue.serverTimestamp(),
     });
