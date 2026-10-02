@@ -6,7 +6,7 @@ class HomeFeedNavigationService {
 
   HomeFeedNavigationContext contextFor({
     required HomeFeedItem item,
-    required HomeFeedSessionState session,
+    required HomeSessionState session,
     required int position,
     required HomeFeedNavigationTarget target,
   }) {
