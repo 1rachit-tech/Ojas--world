@@ -198,7 +198,9 @@ class MessagingService extends WidgetsBindingObserver {
                 ? 'Photo'
                 : replyTo.type == 'video'
                     ? 'Video'
-                    : _safeReplyPreview(replyTo.text),
+                    : replyTo.isAudio
+                        ? 'Voice note'
+                        : _safeReplyPreview(replyTo.text),
         'replyToType': replyTo.type,
       });
     }
@@ -275,8 +277,75 @@ class MessagingService extends WidgetsBindingObserver {
     await batch.commit();
   }
 
-  /// Instagram-style reaction: one emoji per user per message.
-  /// Tap same emoji again to remove.
+  Future<void> sendAudioMessage({
+    required String conversationId,
+    required String receiverId,
+    required String mediaUrl,
+    required String storagePath,
+    required int mediaBytes,
+    int? durationMs,
+    OjasMessage? replyTo,
+  }) async {
+    final uid = currentUid;
+    if (uid == null) {
+      throw const MessagingException('Please sign in again.');
+    }
+    if (receiverId.isEmpty || mediaUrl.trim().isEmpty) {
+      throw const MessagingException('Invalid conversation.');
+    }
+    if (mediaBytes <= 0 || mediaBytes > 3 * 1024 * 1024) {
+      throw const MessagingException('Voice note is too large.');
+    }
+    final conversation = conversationReference(conversationId);
+    final message = messageCollection(conversationId).doc();
+    final batch = _firestore.batch();
+    final data = <String, dynamic>{
+      'conversationId': conversationId,
+      'senderId': uid,
+      'text': '',
+      'type': 'audio',
+      'mediaUrl': mediaUrl,
+      'mediaStoragePath': storagePath,
+      'mediaBytes': mediaBytes,
+      if (durationMs != null) 'mediaDurationMs': durationMs,
+      'status': 'sent',
+      'isDeleted': false,
+      'reactions': <String, String>{},
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+    if (replyTo != null) {
+      data.addAll({
+        'replyToMessageId': replyTo.id,
+        'replyToSenderId': replyTo.senderId,
+        'replyToText': replyTo.isDeleted
+            ? 'This message was deleted.'
+            : replyTo.isAudio
+                ? 'Voice note'
+                : replyTo.isImage
+                    ? 'Photo'
+                    : replyTo.isVideo
+                        ? 'Video'
+                        : _safeReplyPreview(replyTo.text),
+        'replyToType': replyTo.type,
+      });
+    }
+    batch.set(message, data);
+    batch.set(
+      conversation,
+      {
+        'lastMessage': '🎤 Voice note',
+        'lastMessageSenderId': uid,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'unreadCounts.$uid': 0,
+        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
+        'typingBy.$uid': false,
+        'unreadCounts.$receiverId': FieldValue.increment(1),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+  }
+
   Future<void> toggleReaction({
     required String conversationId,
     required String messageId,
