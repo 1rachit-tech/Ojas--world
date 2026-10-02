@@ -53,7 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Map<String, dynamic> _replyFields() {
     if (_replyId == null || _replyText == null || _replySender == null) return {};
-    return {'replyingToMessageId': _replyId, 'replyingToText': _replyText, 'replyingToSenderName': _replySender};
+    return {'replyToMessageId': _replyId, 'replyToText': _replyText, 'replyToSenderId': _replySender, 'replyToType': 'text'};
   }
 
   void _clearReply() {
@@ -119,7 +119,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'text', 'text': text,
         'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields(),
       });
-      await _conversationRef.update({'lastMessageText': text, 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': text, 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (!mounted) return; _restoreDraft(text);
@@ -158,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ref.putData(compressed, SettableMetadata(contentType: 'image/jpeg'));
       final url = await ref.getDownloadURL();
       await _messagesRef.add({'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'image', 'mediaUrl': url, 'mediaStoragePath': path, 'mediaBytes': compressed.lengthInBytes, 'text': '', 'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields()});
-      await _conversationRef.update({'lastMessageText': '📷 Photo', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': '📷 Photo', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Unable to upload photo.')));
@@ -209,7 +209,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ref.putFile(file, SettableMetadata(contentType: 'audio/mp4'));
       final url = await ref.getDownloadURL();
       await _messagesRef.add({'conversationId': widget.conversationId, 'senderId': user.uid, 'type': 'audio', 'mediaUrl': url, 'mediaStoragePath': storagePath, 'text': '', 'isDeleted': false, 'status': 'sent', 'reactions': <String, dynamic>{}, 'createdAt': FieldValue.serverTimestamp(), ..._replyFields()});
-      await _conversationRef.update({'lastMessageText': '🎤 Voice note', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
+      await _conversationRef.update({'lastMessage': '🎤 Voice note', 'lastMessageAt': FieldValue.serverTimestamp(), 'lastSenderId': user.uid, 'unreadCounts.${widget.recipientId}': FieldValue.increment(1)});
       _clearReply();
     } on FirebaseException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Unable to upload voice note.')));
