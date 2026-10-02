@@ -26,6 +26,7 @@ import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
 import 'screens/notification_chat_router.dart';
+import 'screens/camera_screen.dart';
 
 final GlobalKey<NavigatorState> ojasNavigatorKey = GlobalKey<NavigatorState>();
 String? _lastOpenedMessageId;
@@ -316,9 +317,12 @@ class _OjasHomePageState extends State<OjasHomePage> {
     requireAuth(
       context,
       () {
-        if (mounted) {
-          setState(() => _selectedTab = 2);
-        }
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const CameraScreen(audioId: ''),
+          ),
+        );
       },
       onLoadingChanged: (loading) {
         if (mounted) {
