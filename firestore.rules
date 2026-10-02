@@ -47,7 +47,7 @@ service cloud.firestore {
     }
 
     function validMessageType(type) {
-      return type == 'text' || type == 'image' || type == 'video';
+      return type == 'text' || type == 'image' || type == 'video' || type == 'audio';
     }
 
     function validReactionMap(reactions) {
@@ -103,6 +103,22 @@ service cloud.firestore {
             && data.mediaBytes is int
             && data.mediaBytes > 0
             && data.mediaBytes <= 52428800
+            && data.text == ''
+          );
+    }
+
+    function validAudioMessage(data) {
+      return data.type != 'audio'
+          || (
+            data.mediaUrl is string
+            && data.mediaUrl.size() > 0
+            && data.mediaUrl.size() <= 2048
+            && data.mediaStoragePath is string
+            && data.mediaStoragePath.size() > 0
+            && data.mediaStoragePath.size() <= 512
+            && data.mediaBytes is int
+            && data.mediaBytes > 0
+            && data.mediaBytes <= 3145728
             && data.text == ''
           );
     }
@@ -374,6 +390,7 @@ service cloud.firestore {
             && request.resource.data.createdAt == request.time
             && validImageMessage(request.resource.data)
             && validVideoMessage(request.resource.data)
+            && validAudioMessage(request.resource.data)
             && validReplyFields(request.resource.data);
 
         allow update: if signedIn()
