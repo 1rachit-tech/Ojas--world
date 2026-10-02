@@ -1,126 +1,166 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/ojas_message.dart';
 import 'ojas_smart_video_player.dart';
 
+/// Minimal, modern chat bubble — Instagram / TikTok DM style.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
     required this.isMine,
+    this.onReply,
     this.onLongPress,
+    this.imageBuilder,
+    this.videoBuilder,
     this.child,
   });
 
   final OjasMessage message;
   final bool isMine;
+  final VoidCallback? onReply;
   final VoidCallback? onLongPress;
+  final Widget Function()? imageBuilder;
+  final Widget Function()? videoBuilder;
   final Widget? child;
+
+  static const Color _mineColor = Color(0xFF111827);
+  static const Color _theirsColor = Color(0xFFF0F2F5);
+  static const Color _mineFg = Colors.white;
+  static const Color _theirsFg = Color(0xFF111827);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final surface = isMine
-        ? theme.colorScheme.primary
-        : theme.colorScheme.surfaceContainerHighest;
-    final foreground = isMine
-        ? theme.colorScheme.onPrimary
-        : theme.colorScheme.onSurface;
+    final surface = isMine ? _mineColor : _theirsColor;
+    final foreground = isMine ? _mineFg : _theirsFg;
 
     final displayText = message.isDeleted
-        ? 'This message was deleted.'
+        ? 'This message was deleted'
         : message.text;
 
-    final bubbleChild = message.isVideo && message.hasMedia
-        ? OjasSmartVideoPlayer(
+    Widget? mediaChild;
+    if (child != null) {
+      mediaChild = child;
+    } else if (message.isVideo && message.hasMedia) {
+      mediaChild = videoBuilder?.call() ??
+          OjasSmartVideoPlayer(
             videoUrl: message.mediaUrl!,
             aspectRatio: message.mediaAspectRatio,
-          )
-        : child;
+          );
+    } else if (message.isImage && message.hasMedia) {
+      mediaChild = imageBuilder?.call();
+    }
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: onLongPress,
+        onLongPress: () {
+          HapticFeedback.mediumImpact();
+          if (onLongPress != null) {
+            onLongPress!();
+          } else if (onReply != null && !message.isDeleted) {
+            onReply!();
+          }
+        },
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 330),
-          margin: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 3,
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.78,
           ),
-          padding: const EdgeInsets.fromLTRB(5, 5, 8, 5),
+          margin: EdgeInsets.only(
+            left: isMine ? 48 : 12,
+            right: isMine ? 12 : 48,
+            top: 2,
+            bottom: 2,
+          ),
+          padding: mediaChild != null && displayText.trim().isEmpty
+              ? const EdgeInsets.all(3)
+              : const EdgeInsets.fromLTRB(12, 8, 12, 6),
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(18),
               topRight: const Radius.circular(18),
-              bottomLeft: Radius.circular(isMine ? 18 : 5),
-              bottomRight: Radius.circular(isMine ? 5 : 18),
+              bottomLeft: Radius.circular(isMine ? 18 : 4),
+              bottomRight: Radius.circular(isMine ? 4 : 18),
             ),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment:
+                isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (message.replyToText != null &&
-                  message.replyToText!.trim().isNotEmpty)
+              if (message.hasReply &&
+                  (message.replyToText?.trim().isNotEmpty ?? false))
                 Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 4),
+                  margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 7,
                   ),
                   decoration: BoxDecoration(
-                    color: foreground.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(12),
+                    color: foreground.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border(
+                      left: BorderSide(
+                        color: foreground.withValues(alpha: 0.45),
+                        width: 2.5,
+                      ),
+                    ),
                   ),
                   child: Text(
                     message.replyToText!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: foreground.withValues(alpha: 0.78),
-                      fontSize: 12,
+                      color: foreground.withValues(alpha: 0.8),
+                      fontSize: 12.5,
                       height: 1.3,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
-              if (bubbleChild != null)
+              if (mediaChild != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: bubbleChild,
+                  child: mediaChild,
                 ),
               if (displayText.trim().isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 4,
-                  ),
+                  padding: mediaChild != null
+                      ? const EdgeInsets.fromLTRB(4, 6, 4, 2)
+                      : EdgeInsets.zero,
                   child: Text(
                     displayText,
                     style: TextStyle(
-                      color: foreground,
+                      color: foreground.withValues(
+                        alpha: message.isDeleted ? 0.65 : 1,
+                      ),
                       fontSize: 15.5,
-                      height: 1.32,
+                      height: 1.35,
+                      fontWeight: FontWeight.w400,
                       fontStyle: message.isDeleted
                           ? FontStyle.italic
                           : FontStyle.normal,
                     ),
                   ),
                 ),
-              if (isMine)
+              if (isMine && !message.isDeleted)
                 Padding(
-                  padding: const EdgeInsets.only(
-                    right: 5,
-                    bottom: 2,
-                  ),
-                  child: Text(
-                    _statusLabel(message.status),
-                    style: TextStyle(
-                      color: foreground.withValues(alpha: 0.72),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        message.status == 'seen'
+                            ? Icons.done_all_rounded
+                            : Icons.done_rounded,
+                        size: 14,
+                        color: message.status == 'seen'
+                            ? const Color(0xFF60A5FA)
+                            : foreground.withValues(alpha: 0.55),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -128,16 +168,5 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'seen':
-        return 'Seen';
-      case 'delivered':
-        return 'Delivered';
-      default:
-        return 'Sent';
-    }
   }
 }
