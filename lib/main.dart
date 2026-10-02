@@ -23,7 +23,6 @@ import 'widgets/super_thanks_modal.dart';
 import 'widgets/ojas_smart_video_player.dart';
 import 'widgets/ojas_brand_logo.dart';
 import 'services/video_engine_service.dart';
-import 'services/push_notification_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
 import 'screens/notification_chat_router.dart';
@@ -382,7 +381,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
   }
 
   Widget _buildOjsTab() {
-    return const OjsFeedScreen();
+    return OjsFeedScreen(isActive: _selectedTab == 1);
   }
 
   Widget _buildMinimalBottomBar({required bool isDark}) {
