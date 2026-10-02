@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_theme.dart';
@@ -19,6 +24,7 @@ import '../services/message_memory_window.dart';
 import '../services/message_pagination_service.dart';
 import '../services/messaging_service.dart';
 import '../services/realtime_presence_service.dart';
+import '../services/safety_service.dart';
 import '../widgets/message_bubble.dart';
 import 'encrypted_call_screen.dart';
 
@@ -55,6 +61,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<OjasMessage> _loadedMessages = <OjasMessage>[];
+  final AudioRecorder _recorder = AudioRecorder();
 
   StreamSubscription<RealtimePresenceState>? _presenceSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
@@ -69,6 +76,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _otherUserTyping = false;
   bool _otherUserOnline = false;
   bool _didInitialLoad = false;
+  bool _recording = false;
+  bool _uploadingAudio = false;
   ChatTheme _chatTheme = ChatTheme.classic;
 
   OjasMessage? _replyingTo;
@@ -147,6 +156,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ..removeListener(_onScroll)
       ..dispose();
     _setTyping(false);
+    if (_recording) unawaited(_recorder.stop());
+    unawaited(_recorder.dispose());
     super.dispose();
   }
 
@@ -360,6 +371,197 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
+  Future<void> _startRecording() async {
+    if (_isSending || _isUploadingMedia || _uploadingAudio || _recording) return;
+    try {
+      final permission = await Permission.microphone.request();
+      if (!permission.isGranted || !await _recorder.hasPermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Microphone permission required for voice notes.'),
+            ),
+          );
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/ojas_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 32000,
+          sampleRate: 22050,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      if (!mounted) {
+        unawaited(_recorder.stop());
+        return;
+      }
+      HapticFeedback.mediumImpact();
+      setState(() => _recording = true);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to start voice recording.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecording({required bool send}) async {
+    if (!_recording) return;
+    setState(() => _recording = false);
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {
+      return;
+    }
+    if (!send || path == null || path.isEmpty) return;
+    await _uploadVoice(path);
+  }
+
+  Future<void> _uploadVoice(String localPath) async {
+    final file = File(localPath);
+    if (!await file.exists() || _uploadingAudio) return;
+    setState(() => _uploadingAudio = true);
+    try {
+      final bytes = await file.length();
+      final storagePath =
+          'chat_media/audio/${widget.conversationId}/${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final ref = FirebaseStorage.instance.ref().child(storagePath);
+      await ref.putFile(file, SettableMetadata(contentType: 'audio/mp4'));
+      final url = await ref.getDownloadURL();
+      await _messagingService.sendAudioMessage(
+        conversationId: widget.conversationId,
+        receiverId: widget.otherUser.uid,
+        mediaUrl: url,
+        storagePath: storagePath,
+        mediaBytes: bytes,
+        replyTo: _replyingTo,
+      );
+      if (mounted) setState(() => _replyingTo = null);
+      HapticFeedback.lightImpact();
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    } finally {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+      if (mounted) setState(() => _uploadingAudio = false);
+    }
+  }
+
+  void _showSafetyMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading:
+                    const Icon(Icons.block_rounded, color: Color(0xFFDC2626)),
+                title: const Text('Block user'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  try {
+                    await SafetyService.instance.blockUser(
+                      targetUid: widget.otherUser.uid,
+                      displayName: widget.otherUser.displayName,
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('User blocked')),
+                      );
+                      Navigator.of(context).maybePop();
+                    }
+                  } catch (e) {
+                    if (mounted) _showError(_errorMessage(e));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text('Report user'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showReportSheet();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showReportSheet() {
+    const reasons = [
+      'Spam',
+      'Harassment',
+      'Inappropriate content',
+      'Scam or fraud',
+      'Other',
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  'Report reason',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ),
+              for (final reason in reasons)
+                ListTile(
+                  title: Text(reason),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    try {
+                      await SafetyService.instance.reportUser(
+                        targetUid: widget.otherUser.uid,
+                        reason: reason,
+                        conversationId: widget.conversationId,
+                      );
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Report submitted. Thank you.'),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) _showError(_errorMessage(e));
+                    }
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _startCall({required bool isVideo}) {
     HapticFeedback.mediumImpact();
     final key =
@@ -445,6 +647,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   String _errorMessage(Object error) {
     if (error is MessagingException) return error.message;
+    if (error is SafetyException) return error.message;
     if (error is ChatVideoMediaException) return error.message;
     if (error is FirebaseException) {
       return error.message ?? 'Message action failed.';
@@ -602,6 +805,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               onPressed: _showThemePicker,
               icon: Icon(Icons.palette_outlined, color: fg, size: 22),
             ),
+            IconButton(
+              tooltip: 'More',
+              onPressed: _showSafetyMenu,
+              icon: Icon(Icons.more_vert_rounded, color: fg, size: 22),
+            ),
           ],
         ),
       ),
@@ -716,6 +924,34 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               ),
             ),
             if (_replyingTo != null) _buildReplyBar(),
+            if (_recording)
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFEF2F2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.mic_rounded,
+                        color: Color(0xFFDC2626), size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Recording… release to send',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF991B1B),
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => unawaited(_stopRecording(send: false)),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
+                ),
+              ),
+            if (_uploadingAudio) const LinearProgressIndicator(minHeight: 2),
             _buildComposer(),
           ],
         ),
@@ -758,7 +994,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       ? 'Photo'
                       : reply.isVideo
                           ? 'Video'
-                          : 'Message')
+                          : reply.isAudio
+                              ? 'Voice note'
+                              : 'Message')
                   : reply.text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -829,7 +1067,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   height: 1.35,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Message…',
+                  hintText: _recording ? 'Recording…' : 'Message…',
                   hintStyle: const TextStyle(
                     color: Color(0xFF9CA3AF),
                     fontSize: 15.5,
@@ -861,40 +1099,67 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             const SizedBox(width: 6),
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
-              child: Material(
-                color: canSend
-                    ? _chatTheme.accent
-                    : (_chatTheme.isDark
-                        ? const Color(0xFF374151)
-                        : const Color(0xFFE5E7EB)),
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: canSend ? _sendMessage : null,
-                  child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Center(
-                      child: _isSending || _isUploadingMedia
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Icon(
-                              Icons.send_rounded,
-                              size: 18,
-                              color: canSend
-                                  ? Colors.white
-                                  : const Color(0xFF9CA3AF),
-                            ),
+              child: canSend
+                  ? Material(
+                      color: _chatTheme.accent,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _sendMessage,
+                        child: SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Center(
+                            child: _isSending ||
+                                    _isUploadingMedia ||
+                                    _uploadingAudio
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.send_rounded,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : GestureDetector(
+                      onLongPressStart: (_) => unawaited(_startRecording()),
+                      onLongPressEnd: (_) =>
+                          unawaited(_stopRecording(send: true)),
+                      onLongPressCancel: () =>
+                          unawaited(_stopRecording(send: false)),
+                      child: Material(
+                        color: _recording
+                            ? const Color(0xFFDC2626)
+                            : (_chatTheme.isDark
+                                ? const Color(0xFF374151)
+                                : const Color(0xFFE5E7EB)),
+                        shape: const CircleBorder(),
+                        child: SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            _recording
+                                ? Icons.mic_rounded
+                                : Icons.mic_none_rounded,
+                            size: 20,
+                            color: _recording
+                                ? Colors.white
+                                : (_chatTheme.isDark
+                                    ? const Color(0xFFE5E7EB)
+                                    : const Color(0xFF6B7280)),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
             ),
           ],
         ),
@@ -1045,29 +1310,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                   color: item.theirsText,
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: item.mineBubble,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: item.accent,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ],
                           ),
                         ),
@@ -1088,7 +1330,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 }
 
-/// Scale-bounce emoji for reaction sheet — pure Flutter, zero cost.
 class _ReactionEmojiButton extends StatefulWidget {
   const _ReactionEmojiButton({required this.emoji, required this.onTap});
 
