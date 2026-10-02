@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/chat_theme.dart';
 import '../models/ojas_message.dart';
 import 'ojas_smart_video_player.dart';
+import 'voice_note_bubble.dart';
 
 /// Instagram DM style bubble with animated reactions.
 class MessageBubble extends StatelessWidget {
@@ -61,6 +62,12 @@ class MessageBubble extends StatelessWidget {
           );
     } else if (message.isImage && message.hasMedia) {
       mediaChild = imageBuilder?.call();
+    } else if (message.isAudio && message.hasMedia) {
+      mediaChild = VoiceNoteBubble(
+        url: message.mediaUrl!,
+        isMine: isMine,
+        accent: theme.accent,
+      );
     }
 
     final summary = message.reactionSummary;
