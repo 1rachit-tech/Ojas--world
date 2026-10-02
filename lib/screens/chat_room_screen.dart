@@ -85,9 +85,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     _presenceSubscription = _presenceService.watch(widget.otherUser.uid).listen(
       (state) {
-        if (mounted) {
-          setState(() => _otherUserOnline = state.online);
-        }
+        if (mounted) setState(() => _otherUserOnline = state.online);
       },
       onError: (_) {},
     );
@@ -153,23 +151,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _loadInitialMessages() async {
     if (_didInitialLoad) return;
-
     try {
       final page = await _paginationService.loadPage(
         conversationId: widget.conversationId,
       );
-
       if (!mounted) return;
-
       setState(() {
         _loadedMessages
           ..clear()
-          ..addAll(
-            MessageMemoryWindow.takeNewest(
-              page.messages,
-              _initialPageSize,
-            ),
-          );
+          ..addAll(MessageMemoryWindow.takeNewest(page.messages, _initialPageSize));
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
         _didInitialLoad = true;
@@ -180,10 +170,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients || _isLoadingOlder || !_hasMoreOlder) {
-      return;
-    }
-
+    if (!_scrollController.hasClients || _isLoadingOlder || !_hasMoreOlder) return;
     if (_scrollController.position.extentBefore <= 220) {
       unawaited(_loadOlderMessages());
     }
@@ -191,31 +178,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _loadOlderMessages() async {
     if (_isLoadingOlder || !_hasMoreOlder) return;
-
     setState(() => _isLoadingOlder = true);
-
     try {
       final page = await _paginationService.loadPage(
         conversationId: widget.conversationId,
         cursor: _paginationCursor,
       );
-
       final existingIds = _loadedMessages.map((m) => m.id).toSet();
-      final additions =
-          page.messages.where((m) => !existingIds.contains(m.id));
+      final additions = page.messages.where((m) => !existingIds.contains(m.id));
       final combined = <OjasMessage>[..._loadedMessages, ...additions];
-
       if (!mounted) return;
-
       setState(() {
         _loadedMessages
           ..clear()
-          ..addAll(
-            MessageMemoryWindow.takeNewest(
-              combined,
-              _maxInMemoryMessages,
-            ),
-          );
+          ..addAll(MessageMemoryWindow.takeNewest(combined, _maxInMemoryMessages));
         _paginationCursor = page.cursor;
         _hasMoreOlder = page.hasMore;
       });
@@ -228,15 +204,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   List<OjasMessage> _mergeMessages(List<OjasMessage> liveMessages) {
     final byId = <String, OjasMessage>{};
-
     for (final message in _loadedMessages) {
       byId[message.id] = message;
     }
-
     for (final message in liveMessages.take(_initialPageSize)) {
       byId[message.id] = message;
     }
-
     final messages = byId.values.toList();
     messages.sort((a, b) {
       final aTime = a.createdAt;
@@ -246,85 +219,61 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       if (bTime == null) return 1;
       return bTime.compareTo(aTime);
     });
-
     return MessageMemoryWindow.takeNewest(messages, _maxInMemoryMessages);
   }
 
   void _onTextChanged() {
     if (mounted) setState(() {});
-
     if (!_hasText) {
       _setTyping(false);
       return;
     }
-
     _setTyping(true);
     _typingTimer?.cancel();
-    _typingTimer = Timer(
-      const Duration(milliseconds: 1800),
-      () => _setTyping(false),
-    );
+    _typingTimer = Timer(const Duration(milliseconds: 1800), () => _setTyping(false));
   }
 
   void _setTyping(bool value) {
     if (_isTyping == value) return;
     _isTyping = value;
-
-    unawaited(
-      _messagingService.setTyping(
-        conversationId: widget.conversationId,
-        isTyping: value,
-      ),
-    );
+    unawaited(_messagingService.setTyping(
+      conversationId: widget.conversationId,
+      isTyping: value,
+    ));
   }
 
   void _markRead() {
-    unawaited(
-      _messagingService.markConversationRead(widget.conversationId),
-    );
+    unawaited(_messagingService.markConversationRead(widget.conversationId));
   }
 
   void _markDelivered(List<OjasMessage> messages, String? currentUid) {
     if (currentUid == null) return;
-
     Timestamp? newestIncoming;
-
     for (final message in messages) {
-      if (message.senderId == currentUid || message.createdAt == null) {
-        continue;
-      }
+      if (message.senderId == currentUid || message.createdAt == null) continue;
       final createdAt = message.createdAt!;
       if (newestIncoming == null || createdAt.compareTo(newestIncoming) > 0) {
         newestIncoming = createdAt;
       }
     }
-
     if (newestIncoming == null) return;
-
     if (_lastDeliveredAt != null &&
         newestIncoming.compareTo(_lastDeliveredAt!) <= 0) {
       return;
     }
-
     _lastDeliveredAt = newestIncoming;
-
-    unawaited(
-      _deliveryService.markDeliveredUntil(
-        conversationId: widget.conversationId,
-        messageCreatedAt: newestIncoming,
-      ),
-    );
+    unawaited(_deliveryService.markDeliveredUntil(
+      conversationId: widget.conversationId,
+      messageCreatedAt: newestIncoming,
+    ));
   }
 
   Future<void> _sendMessage() async {
     if (_isSending || _isUploadingMedia || !_hasText) return;
-
     final text = _messageController.text.trim();
     _typingTimer?.cancel();
     _setTyping(false);
-
     setState(() => _isSending = true);
-
     try {
       await _messagingService.sendTextMessage(
         conversationId: widget.conversationId,
@@ -332,9 +281,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         text: text,
         replyTo: _replyingTo,
       );
-
       _messageController.clear();
-
       if (mounted) setState(() => _replyingTo = null);
       HapticFeedback.lightImpact();
       _markRead();
@@ -347,21 +294,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _pickAndSendImage(ImageSource source) async {
     if (_isUploadingMedia || _isSending) return;
-
     _typingTimer?.cancel();
     _setTyping(false);
-
     try {
       final picked = await ImagePicker().pickImage(source: source);
       if (picked == null) return;
-
       if (mounted) setState(() => _isUploadingMedia = true);
-
       final uploaded = await _mediaMessageService.uploadChatImage(
         sourceFile: picked,
         conversationId: widget.conversationId,
       );
-
       await _messagingService.sendImageMessage(
         conversationId: widget.conversationId,
         receiverId: widget.otherUser.uid,
@@ -373,7 +315,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         caption: '',
         replyTo: _replyingTo,
       );
-
       if (mounted) setState(() => _replyingTo = null);
     } catch (error) {
       if (mounted) _showError(_errorMessage(error));
@@ -384,24 +325,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   Future<void> _pickAndSendVideo() async {
     if (_isUploadingMedia || _isSending) return;
-
     _typingTimer?.cancel();
     _setTyping(false);
-
     try {
       final picked = await ImagePicker().pickVideo(
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
       if (picked == null) return;
-
       if (mounted) setState(() => _isUploadingMedia = true);
-
       final uploaded = await _chatVideoMediaService.prepareAndUpload(
         sourceFile: picked,
         conversationId: widget.conversationId,
       );
-
       await _chatVideoMessageService.sendVideoMessage(
         conversationId: widget.conversationId,
         receiverId: widget.otherUser.uid,
@@ -414,7 +350,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         durationMs: uploaded.durationMs,
         replyTo: _replyingTo,
       );
-
       if (mounted) setState(() => _replyingTo = null);
       HapticFeedback.lightImpact();
     } catch (error) {
@@ -422,6 +357,77 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     } finally {
       if (mounted) setState(() => _isUploadingMedia = false);
     }
+  }
+
+  Future<void> _reactToMessage(OjasMessage message, String emoji) async {
+    try {
+      await _messagingService.toggleReaction(
+        conversationId: widget.conversationId,
+        messageId: message.id,
+        emoji: emoji,
+      );
+    } catch (error) {
+      if (mounted) _showError(_errorMessage(error));
+    }
+  }
+
+  void _showReactionSheet(OjasMessage message) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor:
+          _chatTheme.isDark ? const Color(0xFF111827) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1D5DB),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (final emoji in MessageBubble.quickReactions)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(24),
+                        onTap: () {
+                          Navigator.pop(context);
+                          HapticFeedback.selectionClick();
+                          unawaited(_reactToMessage(message, emoji));
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Icon(Icons.reply_rounded, color: _chatTheme.accent),
+                  title: const Text('Reply'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() => _replyingTo = message);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _errorMessage(Object error) {
@@ -435,22 +441,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   void _showError(String message) {
     _lastError = message;
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
   Widget _buildImageBubble(OjasMessage message) {
     final url = message.mediaUrl;
-
-    if (url == null || url.trim().isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (url == null || url.trim().isEmpty) return const SizedBox.shrink();
     return SizedBox(
       width: 250,
       height: 250,
@@ -465,20 +463,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
-        errorWidget: (_, __, ___) => const Center(
-          child: Icon(Icons.broken_image_outlined),
-        ),
+        errorWidget: (_, __, ___) =>
+            const Center(child: Icon(Icons.broken_image_outlined)),
       ),
     );
   }
 
   Widget _buildVideoBubble(OjasMessage message) {
     final url = message.mediaUrl;
-
-    if (url == null || url.trim().isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+    if (url == null || url.trim().isEmpty) return const SizedBox.shrink();
     return SizedBox(
       width: 260,
       height: 170,
@@ -490,11 +483,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            const Icon(
-              Icons.play_circle_fill_rounded,
-              color: Colors.white,
-              size: 58,
-            ),
+            const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 58),
             Positioned(
               left: 12,
               bottom: 10,
@@ -544,11 +533,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   : null,
               child: _usableImage(widget.otherUser.photoUrl)
                   ? null
-                  : const Icon(
-                      Icons.person_outline_rounded,
-                      color: Color(0xFF6B7280),
-                      size: 19,
-                    ),
+                  : const Icon(Icons.person_outline_rounded,
+                      color: Color(0xFF6B7280), size: 19),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -603,10 +589,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: theme.theirsBubble,
                       borderRadius: BorderRadius.circular(16),
@@ -628,9 +611,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 stream: _messagingService.watchMessages(widget.conversationId),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Text(_errorMessage(snapshot.error!)),
-                    );
+                    return Center(child: Text(_errorMessage(snapshot.error!)));
                   }
 
                   final messages = _mergeMessages(
@@ -654,10 +635,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     return Center(
                       child: Text(
                         'Say hi to ${widget.otherUser.displayName.isEmpty ? 'them' : widget.otherUser.displayName}',
-                        style: TextStyle(
-                          color: theme.isDark
-                              ? const Color(0xFF9CA3AF)
-                              : const Color(0xFF9CA3AF),
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
                           fontSize: 15,
                         ),
                       ),
@@ -689,9 +668,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         message: message,
                         isMine: isMine,
                         theme: _chatTheme,
-                        onReply: () {
-                          setState(() => _replyingTo = message);
-                        },
+                        currentUid: currentUid,
+                        onReply: () => setState(() => _replyingTo = message),
+                        onLongPress: message.isDeleted
+                            ? null
+                            : () => _showReactionSheet(message),
+                        onReact: message.isDeleted
+                            ? null
+                            : (emoji) => unawaited(_reactToMessage(message, emoji)),
                         imageBuilder: message.isImage
                             ? () => _buildImageBubble(message)
                             : null,
@@ -793,8 +777,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           children: [
             IconButton(
               tooltip: 'Attach',
-              onPressed:
-                  _isUploadingMedia || _isSending ? null : _showAttachSheet,
+              onPressed: _isUploadingMedia || _isSending ? null : _showAttachSheet,
               icon: Icon(
                 Icons.add_circle_outline_rounded,
                 color: _chatTheme.accent,
@@ -1023,10 +1006,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           ),
                           child: Column(
                             children: [
-                              Text(
-                                item.emoji,
-                                style: const TextStyle(fontSize: 22),
-                              ),
+                              Text(item.emoji, style: const TextStyle(fontSize: 22)),
                               const SizedBox(height: 6),
                               Text(
                                 item.label,
