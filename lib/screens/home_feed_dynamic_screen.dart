@@ -125,9 +125,7 @@ class _DynamicHomeScreenState extends State<DynamicHomeScreen> with WidgetsBindi
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       // The global OJAS Home AppBar is owned by OjasHomePage in main.dart.
-      // Do not render a second AppBar here: it duplicates search/brand/notification
-      // controls and pushes the feed downward on Home.
-),
+      // This screen intentionally renders only the Home feed body.
       body: RefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>([_controller.refresh(), _loadStories()]);
