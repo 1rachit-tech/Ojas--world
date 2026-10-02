@@ -52,6 +52,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final List<OjasMessage> _loadedMessages = <OjasMessage>[];
 
   StreamSubscription<RealtimePresenceState>? _presenceSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _conversationSubscription;
   Timer? _typingTimer;
 
   bool _isSending = false;
@@ -59,6 +60,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _isLoadingOlder = false;
   bool _hasMoreOlder = true;
   bool _isTyping = false;
+  bool _otherUserTyping = false;
   bool _otherUserOnline = false;
   bool _didInitialLoad = false;
 
@@ -84,6 +86,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       onError: (_) {},
     );
 
+    // Watch other user's typing indicator from the conversation document.
+    _conversationSubscription = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted || !snapshot.exists) return;
+        final data = snapshot.data();
+        if (data == null) return;
+        final typingBy = data['typingBy'];
+        final otherUid = widget.otherUser.uid;
+        var isTyping = false;
+        if (typingBy is Map && otherUid.isNotEmpty) {
+          final value = typingBy[otherUid];
+          isTyping = value == true;
+        }
+        if (_otherUserTyping != isTyping) {
+          setState(() => _otherUserTyping = isTyping);
+        }
+      },
+      onError: (_) {},
+    );
+
     unawaited(_loadInitialMessages());
     _markRead();
   }
@@ -92,6 +118,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   void dispose() {
     _typingTimer?.cancel();
     _presenceSubscription?.cancel();
+    _conversationSubscription?.cancel();
     _messageController
       ..removeListener(_onTextChanged)
       ..dispose();
@@ -566,7 +593,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_isTyping)
+            if (_otherUserTyping)
               const Padding(
                 padding: EdgeInsets.fromLTRB(18, 4, 18, 6),
                 child: Align(
@@ -642,22 +669,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       return MessageBubble(
                         message: message,
                         isMine: isMine,
-                        onLongPress: () {
+                        onReply: () {
                           setState(() => _replyingTo = message);
                         },
-                        child: message.isImage
-                            ? _buildImageBubble(message)
-                            : message.isVideo
-                                ? _buildVideoBubble(message)
-                                : null,
+                        imageBuilder: message.isImage
+                            ? () => _buildImageBubble(message)
+                            : null,
+                        videoBuilder: message.isVideo
+                            ? () => _buildVideoBubble(message)
+                            : null,
                       );
                     },
                   );
                 },
               ),
             ),
-            if (_replyingTo != null) _buildReplyPreview(),
-            if (_isUploadingMedia) _buildUploadingIndicator(),
+            if (_replyingTo != null) _buildReplyBar(),
             _buildComposer(),
           ],
         ),
@@ -665,86 +692,43 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
-  Widget _buildReplyPreview() {
+  Widget _buildReplyBar() {
     final reply = _replyingTo!;
-
-    return Material(
-      color: const Color(0xFFF8F9FB),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 9, 8, 9),
-        child: Row(
-          children: [
-            Container(
-              width: 3,
-              height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827),
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Replying',
-                    style: TextStyle(
-                      color: Color(0xFF111827),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    reply.text.isEmpty
-                        ? (reply.isImage
-                            ? 'Photo'
-                            : reply.isVideo
-                                ? 'Video'
-                                : 'Message')
-                        : reply.text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              tooltip: 'Cancel reply',
-              onPressed: () => setState(() => _replyingTo = null),
-              icon: const Icon(
-                Icons.close_rounded,
-                size: 19,
-                color: Color(0xFF6B7280),
-              ),
-            ),
-          ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF4F5F7),
+        border: Border(
+          top: BorderSide(color: Color(0xFFE5E7EB)),
         ),
       ),
-    );
-  }
-
-  Widget _buildUploadingIndicator() {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(16, 5, 16, 5),
       child: Row(
         children: [
-          SizedBox.square(
-            dimension: 15,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          SizedBox(width: 8),
-          Text(
-            'Uploading media…',
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          const Icon(Icons.reply_rounded, size: 18, color: Color(0xFF6B7280)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              reply.text.isEmpty
+                  ? (reply.isImage
+                      ? 'Photo'
+                      : reply.isVideo
+                          ? 'Video'
+                          : 'Message')
+                  : reply.text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF374151),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Cancel reply',
+            onPressed: () => setState(() => _replyingTo = null),
+            icon: const Icon(Icons.close_rounded, size: 18),
           ),
         ],
       ),
@@ -752,100 +736,78 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   Widget _buildComposer() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 7, 10, 9),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Color(0xFFE5E7EB)),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          IconButton(
-            tooltip: 'Attach image',
-            onPressed: _isSending || _isUploadingMedia
-                ? null
-                : () => _pickAndSendImage(ImageSource.gallery),
-            icon: const Icon(
-              Icons.add_photo_alternate_outlined,
-              color: Color(0xFF111827),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              tooltip: 'Photo',
+              onPressed: _isUploadingMedia || _isSending
+                  ? null
+                  : () => _pickAndSendImage(ImageSource.gallery),
+              icon: const Icon(Icons.image_outlined, color: Color(0xFF111827)),
             ),
-          ),
-          IconButton(
-            tooltip: 'Attach video',
-            onPressed: _isSending || _isUploadingMedia
-                ? null
-                : _pickAndSendVideo,
-            icon: const Icon(
-              Icons.video_library_outlined,
-              color: Color(0xFF111827),
+            IconButton(
+              tooltip: 'Camera',
+              onPressed: _isUploadingMedia || _isSending
+                  ? null
+                  : () => _pickAndSendImage(ImageSource.camera),
+              icon: const Icon(Icons.photo_camera_outlined, color: Color(0xFF111827)),
             ),
-          ),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF4F5F7),
-                borderRadius: BorderRadius.circular(22),
-              ),
+            IconButton(
+              tooltip: 'Video',
+              onPressed: _isUploadingMedia || _isSending
+                  ? null
+                  : _pickAndSendVideo,
+              icon: const Icon(Icons.videocam_outlined, color: Color(0xFF111827)),
+            ),
+            Expanded(
               child: TextField(
                 controller: _messageController,
                 minLines: 1,
                 maxLines: 5,
-                enabled: !_isUploadingMedia,
-                textCapitalization: TextCapitalization.sentences,
-                textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
-                  hintText: 'Message',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 17,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendMessage(),
+                decoration: InputDecoration(
+                  hintText: 'Message…',
+                  filled: true,
+                  fillColor: const Color(0xFFF4F5F7),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
                     vertical: 12,
                   ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-                onSubmitted: (_) {
-                  if (_hasText) unawaited(_sendMessage());
-                },
               ),
             ),
-          ),
-          const SizedBox(width: 5),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 150),
-            child: _hasText
-                ? IconButton(
-                    key: const ValueKey('send'),
-                    tooltip: 'Send',
-                    onPressed: _isSending || _isUploadingMedia
-                        ? null
-                        : () => unawaited(_sendMessage()),
-                    icon: const Icon(
-                      Icons.arrow_upward_rounded,
-                      color: Color(0xFF111827),
-                    ),
-                  )
-                : IconButton(
-                    key: const ValueKey('camera'),
-                    tooltip: 'Camera',
-                    onPressed: _isSending || _isUploadingMedia
-                        ? null
-                        : () => _pickAndSendImage(ImageSource.camera),
-                    icon: const Icon(
-                      Icons.camera_alt_outlined,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            IconButton(
+              tooltip: 'Send',
+              onPressed: (_hasText && !_isSending && !_isUploadingMedia)
+                  ? _sendMessage
+                  : null,
+              icon: _isSending || _isUploadingMedia
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded, color: Color(0xFF111827)),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  bool _usableImage(String url) {
-    final value = url.trim();
-    return value.isNotEmpty &&
+  bool _usableImage(String value) {
+    return value.trim().isNotEmpty &&
         (value.startsWith('http://') || value.startsWith('https://'));
   }
 }
