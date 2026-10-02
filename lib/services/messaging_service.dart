@@ -400,23 +400,35 @@ class MessagingService extends WidgetsBindingObserver {
     required bool isTyping,
   }) async {
     final uid = currentUid;
-    if (uid == null) return;
-    await conversationReference(conversationId).set(
-      {'typingBy.$uid': isTyping},
-      SetOptions(merge: true),
-    );
+    if (uid == null || conversationId.trim().isEmpty) return;
+    try {
+      await conversationReference(conversationId).set(
+        {'typingBy.$uid': isTyping},
+        SetOptions(merge: true),
+      );
+    } on FirebaseException {
+      // Typing is non-critical; never surface a permissions/network error to chat UI.
+    } catch (_) {
+      // Keep typing state best-effort so messaging remains usable.
+    }
   }
 
   Future<void> markConversationRead(String conversationId) async {
     final uid = currentUid;
-    if (uid == null) return;
-    await conversationReference(conversationId).set(
-      {
-        'unreadCounts.$uid': 0,
-        'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    if (uid == null || conversationId.trim().isEmpty) return;
+    try {
+      await conversationReference(conversationId).set(
+        {
+          'unreadCounts.$uid': 0,
+          'lastReadAtBy.$uid': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } on FirebaseException {
+      // Read receipts are non-critical and must not interrupt chat.
+    } catch (_) {
+      // Keep the conversation usable during transient failures.
+    }
   }
 
   void registerPresenceConversation(String conversationId) {
