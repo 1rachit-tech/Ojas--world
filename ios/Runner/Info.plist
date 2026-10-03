@@ -40,7 +40,9 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OJAS uses your microphone to record voice notes in private chats.</string>
+	<string>OJAS uses your microphone for voice notes and audio/video calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OJAS uses your camera for video calls and photo messages.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
