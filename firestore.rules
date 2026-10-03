@@ -340,9 +340,6 @@ service cloud.firestore {
           && request.resource.data.lastMessage.size() <= 2000
           && request.resource.data.lastMessageSenderId is string;
 
-      // Message-summary updates are restricted to the fields used by the
-      // existing chat flow. Typing/read/delivery state has dedicated rules below
-      // so those lightweight updates do not depend on summary fields being present.
       allow update: if isConversationParticipant()
           && request.resource.data.participants == resource.data.participants
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -361,7 +358,6 @@ service cloud.firestore {
           && request.resource.data.unreadCounts is map
           && request.resource.data.unreadCounts.size() <= 2;
 
-      // Typing indicator: only the signed-in participant's own typing bit may change.
       allow update: if isConversationParticipant()
           && request.resource.data.participants == resource.data.participants
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['typingBy'])
@@ -369,7 +365,6 @@ service cloud.firestore {
           && request.resource.data.typingBy.size() <= 2
           && request.resource.data.typingBy[request.auth.uid] is bool;
 
-      // Read state: only unread count + last-read timestamp are mutable here.
       allow update: if isConversationParticipant()
           && request.resource.data.participants == resource.data.participants
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -381,7 +376,6 @@ service cloud.firestore {
           && request.resource.data.lastReadAtBy is map
           && request.resource.data.lastReadAtBy.size() <= 2;
 
-      // Delivery state: participants may update only the delivery watermark.
       allow update: if isConversationParticipant()
           && request.resource.data.participants == resource.data.participants
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveredAtBy'])
@@ -389,12 +383,37 @@ service cloud.firestore {
           && request.resource.data.deliveredAtBy.size() <= 2
           && request.resource.data.deliveredAtBy[request.auth.uid] is timestamp;
 
-      // Presence metadata is optional and separately isolated from chat content.
       allow update: if isConversationParticipant()
           && request.resource.data.participants == resource.data.participants
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presenceBy'])
           && request.resource.data.presenceBy is map
           && request.resource.data.presenceBy.size() <= 2;
+
+      match /callInvites/{callId} {
+        allow read: if signedIn()
+            && request.auth.uid in get(
+              /databases/$(database)/documents/conversations/$(conversationId)
+            ).data.participants;
+        allow create: if signedIn()
+            && request.auth.uid in get(
+              /databases/$(database)/documents/conversations/$(conversationId)
+            ).data.participants
+            && request.resource.data.callerId == request.auth.uid
+            && request.resource.data.calleeId is string
+            && request.resource.data.calleeId != request.auth.uid
+            && request.resource.data.status == 'ringing'
+            && request.resource.data.isVideo is bool
+            && request.resource.data.conversationId == conversationId;
+        allow update: if signedIn()
+            && request.auth.uid in get(
+              /databases/$(database)/documents/conversations/$(conversationId)
+            ).data.participants
+            && request.resource.data.callerId == resource.data.callerId
+            && request.resource.data.calleeId == resource.data.calleeId
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'endedBy', 'endedAt']);
+        allow delete: if false;
+      }
 
       match /messages/{messageId} {
         allow get, list: if signedIn()
