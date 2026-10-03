@@ -51,7 +51,6 @@ class MessagingService extends WidgetsBindingObserver {
         .limit(50)
         .snapshots()
         .asyncMap((snapshot) async {
-          // Security: never show chats with blocked peers in the inbox.
           final blocked = await SafetyService.instance.loadBlockedIds();
           final conversations = snapshot.docs
               .map(OjasConversation.fromFirestore)
@@ -124,7 +123,10 @@ class MessagingService extends WidgetsBindingObserver {
             OjasProfile.fromMap(document.data(), uid: document.id);
       }
     }
-    final users = results.values.toList();
+    final blocked = await SafetyService.instance.loadBlockedIds();
+    final users = results.values
+        .where((u) => !blocked.contains(u.uid))
+        .toList();
     users.sort((a, b) =>
         a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
     return users;
@@ -407,10 +409,7 @@ class MessagingService extends WidgetsBindingObserver {
         SetOptions(merge: true),
       );
     } on FirebaseException {
-      // Typing is non-critical; never surface a permissions/network error to chat UI.
-    } catch (_) {
-      // Keep typing state best-effort so messaging remains usable.
-    }
+    } catch (_) {}
   }
 
   Future<void> markConversationRead(String conversationId) async {
@@ -425,10 +424,7 @@ class MessagingService extends WidgetsBindingObserver {
         SetOptions(merge: true),
       );
     } on FirebaseException {
-      // Read receipts are non-critical and must not interrupt chat.
-    } catch (_) {
-      // Keep the conversation usable during transient failures.
-    }
+    } catch (_) {}
   }
 
   void registerPresenceConversation(String conversationId) {
