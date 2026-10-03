@@ -112,14 +112,6 @@ function previewBody(message: MessageData): string {
   }
 }
 
-/**
- * DM push — security:
- * - Trigger only on message create
- * - Per-sender rate limit
- * - Skip if either user blocked the other
- * - Short preview only (no full media URLs in notification body)
- * - Prune invalid FCM tokens
- */
 export const sendMessagePush = onDocumentCreated(
   'conversations/{conversationId}/messages/{messageId}',
   async (event) => {
@@ -217,10 +209,6 @@ export const sendMessagePush = onDocumentCreated(
   },
 );
 
-/**
- * LiveKit token — API key/secret stay in Secret Manager only.
- * Requires Firebase Auth + conversation membership + no block either way.
- */
 export const createLiveKitToken = onCall(
   {
     secrets: [livekitApiKey, livekitApiSecret, livekitUrl],
@@ -304,5 +292,76 @@ export const createLiveKitToken = onCall(
       identity: uid,
       isVideo,
     };
+  },
+);
+
+/** Incoming call FCM when callInvites/{callId} is created. */
+export const sendCallInvitePush = onDocumentCreated(
+  'conversations/{conversationId}/callInvites/{callId}',
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const data = snapshot.data() as Record<string, unknown>;
+    if (data['status'] !== 'ringing') return;
+
+    const callerId =
+      typeof data['callerId'] === 'string' ? data['callerId'] : '';
+    const calleeId =
+      typeof data['calleeId'] === 'string' ? data['calleeId'] : '';
+    const isVideo = data['isVideo'] === true;
+
+    if (!callerId || !calleeId || callerId === calleeId) return;
+
+    const firestore = getFirestore();
+    const [a, b] = await Promise.all([
+      firestore.doc(`userBlocks/${calleeId}/blocked/${callerId}`).get(),
+      firestore.doc(`userBlocks/${callerId}/blocked/${calleeId}`).get(),
+    ]);
+    if (a.exists || b.exists) return;
+
+    const calleeSnap = await firestore.doc(`users/${calleeId}`).get();
+    if (!calleeSnap.exists) return;
+    const tokens = tokenListFromUserData(calleeSnap.data() ?? {}).slice(0, 10);
+    if (tokens.length === 0) return;
+
+    let title = 'Incoming call';
+    try {
+      const conv = await firestore
+        .doc(`conversations/${event.params.conversationId}`)
+        .get();
+      const profiles = conv.data()?.participantProfiles;
+      if (profiles && typeof profiles === 'object') {
+        const p = (profiles as Record<string, unknown>)[callerId];
+        if (p && typeof p === 'object') {
+          const dn = (p as Record<string, unknown>)['displayName'];
+          if (typeof dn === 'string' && dn.trim()) {
+            title = dn.trim().slice(0, 80);
+          }
+        }
+      }
+    } catch (_) {}
+
+    await getMessaging().sendEachForMulticast({
+      tokens,
+      notification: {
+        title,
+        body: isVideo ? 'Video call' : 'Audio call',
+      },
+      data: {
+        type: 'call',
+        conversationId: event.params.conversationId,
+        callId: event.params.callId,
+        senderId: callerId,
+        isVideo: isVideo ? 'true' : 'false',
+      },
+      android: {
+        priority: 'high',
+        notification: {sound: 'default', channelId: 'calls'},
+      },
+      apns: {
+        payload: {aps: {sound: 'default'}},
+      },
+    });
   },
 );
