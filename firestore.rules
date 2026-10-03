@@ -191,6 +191,17 @@ service cloud.firestore {
       allow get, list: if signedIn();
       allow create: if isOwner(userId) && request.resource.data.uid == userId;
       allow update: if isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if signedIn()
+          && userId != request.auth.uid
+          && request.resource.data.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'followers',
+            'followersCount'
+          ])
+          && request.resource.data.followers is list
+          && request.resource.data.followersCount is number
+          && request.resource.data.followersCount >= 0
+          && request.resource.data.followers.size() <= 5000;
       allow delete: if false;
     }
 
