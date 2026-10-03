@@ -13,13 +13,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class NotificationOpenData {
   const NotificationOpenData({
     required this.conversationId,
-    required this.messageId,
     required this.senderId,
+    this.messageId = '',
+    this.isVideoCall = false,
+    this.openType = 'message',
   });
 
   final String conversationId;
   final String messageId;
   final String senderId;
+  final bool isVideoCall;
+  final String openType;
 }
 
 class NotificationService {
@@ -100,24 +104,37 @@ class NotificationService {
   void _handleOpenedMessage(RemoteMessage message) {
     final data = message.data;
     final conversationId = data['conversationId'];
-    final messageId = data['messageId'];
     final senderId = data['senderId'];
     final type = data['type'];
 
-    if (type != 'message' ||
-        conversationId is! String ||
-        messageId is! String ||
+    if (conversationId is! String ||
         senderId is! String ||
         conversationId.isEmpty ||
-        messageId.isEmpty ||
         senderId.isEmpty) {
       return;
     }
+
+    if (type == 'call') {
+      final openData = NotificationOpenData(
+        conversationId: conversationId,
+        senderId: senderId,
+        isVideoCall: data['isVideo'] == 'true' || data['isVideo'] == true,
+        openType: 'call',
+      );
+      _pendingOpen = openData;
+      _openStream.add(openData);
+      return;
+    }
+
+    if (type != 'message') return;
+    final messageId = data['messageId'];
+    if (messageId is! String || messageId.isEmpty) return;
 
     final openData = NotificationOpenData(
       conversationId: conversationId,
       messageId: messageId,
       senderId: senderId,
+      openType: 'message',
     );
     _pendingOpen = openData;
     _openStream.add(openData);
