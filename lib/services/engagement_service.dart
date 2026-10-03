@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'safety_service.dart';
+
 class EngagementService {
   EngagementService({FirebaseFirestore? firestore, FirebaseAuth? auth})
     : _firestore = firestore ?? FirebaseFirestore.instance,
@@ -20,6 +22,10 @@ class EngagementService {
       return;
     }
 
+    if (await SafetyService.instance.isBlocked(targetId)) {
+      throw StateError('Cannot follow a blocked user.');
+    }
+
     final currentUserRef = _firestore.collection('publicProfiles').doc(uid);
     final creatorRef = _firestore.collection('publicProfiles').doc(targetId);
 
@@ -34,7 +40,6 @@ class EngagementService {
       final currentData = currentSnapshot.data() ?? const <String, dynamic>{};
       final creatorData = creatorSnapshot.data() ?? const <String, dynamic>{};
       final currentFollowing = _stringList(currentData['following']);
-      final creatorFollowers = _stringList(creatorData['followers']);
       final alreadyFollowing = currentFollowing.contains(targetId);
 
       if (alreadyFollowing == following) return;
@@ -74,42 +79,15 @@ class EngagementService {
           SetOptions(merge: true),
         );
       }
-
-      // Keep these reads as the authoritative state check for idempotent UI retries.
-      if (following && creatorFollowers.contains(uid)) return;
-      if (!following && !creatorFollowers.contains(uid)) return;
     });
   }
 
+  /// Alias used by some UI call sites.
   Future<void> syncFollow({
     required String creatorId,
     required bool following,
-  }) async {
-    try {
-      await setFollowState(creatorId: creatorId, following: following);
-    } catch (error) {
-      // Background engagement must never block feed interaction.
-      // ignore: avoid_print
-      print('OJAS follow sync failed: $error');
-    }
-  }
-
-  Future<void> syncWatchMetrics({
-    required String reelId,
-    required int watchTimeMs,
-    int completionDelta = 0,
-  }) async {
-    if (reelId.trim().isEmpty || (watchTimeMs <= 0 && completionDelta == 0)) return;
-    try {
-      await _firestore.collection('reels').doc(reelId).set(<String, dynamic>{
-        'watchTimeMs': FieldValue.increment(watchTimeMs),
-        'completions': FieldValue.increment(completionDelta),
-      }, SetOptions(merge: true));
-    } catch (error) {
-      // ignore: avoid_print
-      print('OJAS watch metrics sync failed: $error');
-    }
-  }
+  }) =>
+      setFollowState(creatorId: creatorId, following: following);
 
   Future<void> syncInteraction({
     required String reelId,
