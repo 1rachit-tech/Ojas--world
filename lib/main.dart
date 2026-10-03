@@ -25,21 +25,59 @@ import 'widgets/ojas_brand_logo.dart';
 import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
+import 'services/incoming_call_service.dart';
+import 'widgets/incoming_call_overlay.dart';
 import 'screens/notification_chat_router.dart';
+import 'screens/livekit_call_screen.dart';
+import 'services/profile_service.dart';
 import 'screens/camera_screen.dart';
 
 final GlobalKey<NavigatorState> ojasNavigatorKey = GlobalKey<NavigatorState>();
 String? _lastOpenedMessageId;
 
 Future<void> _openNotificationChat(NotificationOpenData data) async {
-  if (_lastOpenedMessageId == data.messageId) {
+  final dedupeKey = data.openType == 'call'
+      ? 'call_${data.conversationId}_${data.senderId}'
+      : data.messageId;
+  if (dedupeKey.isNotEmpty && _lastOpenedMessageId == dedupeKey) {
     return;
   }
-  _lastOpenedMessageId = data.messageId;
+  _lastOpenedMessageId = dedupeKey;
   final navigator = ojasNavigatorKey.currentState;
   if (navigator == null) {
     return;
   }
+
+  if (data.openType == 'call') {
+    IncomingCallService.instance.clear();
+    String peerName = 'OJAS User';
+    String peerHandle = 'ojas';
+    try {
+      final profile = await ProfileService.instance.getProfile(data.senderId);
+      if (profile != null) {
+        if (profile.displayName.trim().isNotEmpty) {
+          peerName = profile.displayName.trim();
+        }
+        if (profile.ojasId.trim().isNotEmpty) {
+          peerHandle = profile.ojasId.trim();
+        }
+      }
+    } catch (_) {}
+    navigator.push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => LiveKitCallScreen(
+          conversationId: data.conversationId,
+          peerName: peerName,
+          peerHandle: peerHandle,
+          isVideoCall: data.isVideoCall,
+          isIncoming: true,
+        ),
+      ),
+    );
+    return;
+  }
+
   navigator.push(
     MaterialPageRoute(
       builder: (_) => NotificationChatRouter(openData: data),
@@ -67,6 +105,7 @@ Future<void> main() async {
     }
 
     await NotificationService.instance.initialize();
+    IncomingCallService.instance.start();
   } catch (_) {}
 
   runApp(const OjasApp());
@@ -259,6 +298,7 @@ class _OjasHomePageState extends State<OjasHomePage> {
             bottomNavigationBar: _buildMinimalBottomBar(isDark: isOjsDark),
           ),
           if (_authGateLoading) _buildAuthLoadingOverlay(),
+          const IncomingCallOverlay(),
         ],
       ),
     );
