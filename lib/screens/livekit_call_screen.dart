@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../services/call_signaling_service.dart';
 import '../services/livekit_call_service.dart';
 
 /// Real audio/video call using LiveKit.
@@ -15,20 +16,26 @@ class LiveKitCallScreen extends StatefulWidget {
     required this.conversationId,
     required this.peerName,
     required this.peerHandle,
+    this.calleeId,
     this.isVideoCall = true,
+    this.isIncoming = false,
   });
 
   final String conversationId;
   final String peerName;
   final String peerHandle;
+  final String? calleeId;
   final bool isVideoCall;
+  final bool isIncoming;
 
   static Future<void> startCall(
     BuildContext context, {
     required String conversationId,
     required String peerName,
     required String peerHandle,
+    String? calleeId,
     bool isVideoCall = true,
+    bool isIncoming = false,
   }) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -37,7 +44,9 @@ class LiveKitCallScreen extends StatefulWidget {
           conversationId: conversationId,
           peerName: peerName,
           peerHandle: peerHandle,
+          calleeId: calleeId,
           isVideoCall: isVideoCall,
+          isIncoming: isIncoming,
         ),
       ),
     );
@@ -62,6 +71,7 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
 
   VideoTrack? _remoteVideo;
   VideoTrack? _localVideo;
+  String? _callInviteId;
 
   @override
   void initState() {
@@ -76,7 +86,8 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
         if (mounted) {
           setState(() {
             _connecting = false;
-            _error = 'Microphone${widget.isVideoCall ? ' and camera' : ''} permission required.';
+            _error =
+                'Microphone${widget.isVideoCall ? ' and camera' : ''} permission required.';
           });
         }
         return;
@@ -86,6 +97,18 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
         conversationId: widget.conversationId,
         isVideo: widget.isVideoCall,
       );
+
+      if (!widget.isIncoming &&
+          widget.calleeId != null &&
+          widget.calleeId!.isNotEmpty) {
+        try {
+          _callInviteId = await CallSignalingService.instance.startCall(
+            conversationId: widget.conversationId,
+            calleeId: widget.calleeId!,
+            isVideo: widget.isVideoCall,
+          );
+        } catch (_) {}
+      }
 
       _listener = _room.createListener();
       _listener!
@@ -221,16 +244,26 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
   }
 
   Future<void> _toggleSpeaker() async {
-    // Prefer earpiece / speaker via Hardware API when available.
     try {
-      await Hardware.instance.setSpeakerphoneOn(!_speakerOn);
-    } catch (_) {}
+      await _room.setSpeakerOn(!_speakerOn);
+    } catch (_) {
+      try {
+        await Hardware.instance.setSpeakerphoneOn(!_speakerOn);
+      } catch (_) {}
+    }
     if (mounted) setState(() => _speakerOn = !_speakerOn);
     HapticFeedback.selectionClick();
   }
 
   Future<void> _hangUp() async {
     HapticFeedback.mediumImpact();
+    final inviteId = _callInviteId;
+    if (inviteId != null) {
+      unawaited(CallSignalingService.instance.endCall(
+        conversationId: widget.conversationId,
+        callId: inviteId,
+      ));
+    }
     try {
       await _room.disconnect();
     } catch (_) {}
@@ -263,7 +296,6 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Remote / placeholder
             if (_remoteVideo != null && widget.isVideoCall)
               VideoTrackRenderer(_remoteVideo!)
             else
@@ -310,8 +342,6 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                   ],
                 ),
               ),
-
-            // Local PiP
             if (widget.isVideoCall &&
                 _localVideo != null &&
                 !_cameraOff &&
@@ -331,8 +361,6 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                   ),
                 ),
               ),
-
-            // Status chip
             Positioned(
               top: 16,
               left: 16,
@@ -365,8 +393,8 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                             : (_error != null
                                 ? 'Call unavailable'
                                 : (widget.isVideoCall
-                                    ? 'Encrypted video · $_formatDuration(_callSeconds)'
-                                    : 'Encrypted audio · $_formatDuration(_callSeconds)')),
+                                    ? 'Encrypted video · ${_formatDuration(_callSeconds)}'
+                                    : 'Encrypted audio · ${_formatDuration(_callSeconds)}')),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -380,7 +408,6 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                 ),
               ),
             ),
-
             if (_error != null)
               Positioned(
                 left: 24,
@@ -415,8 +442,6 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                   ),
                 ),
               ),
-
-            // Controls
             Positioned(
               left: 0,
               right: 0,
@@ -435,7 +460,7 @@ class _LiveKitCallScreenState extends State<LiveKitCallScreen> {
                       icon: _cameraOff
                           ? Icons.videocam_off_rounded
                           : Icons.videocam_rounded,
-                      label: _cameraOff ? 'Camera' : 'Camera',
+                      label: 'Camera',
                       active: _cameraOff,
                       onTap: _connected ? _toggleCamera : null,
                     ),
