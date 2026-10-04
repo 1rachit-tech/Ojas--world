@@ -1,68 +1,28 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/social_interaction.dart';
+import '../services/social_interaction_service.dart';
+
+/// Real notifications: incoming follow requests + recent activity aggregates.
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // 🚀 Dummy Data for high-speed UI rendering (Zero Server Cost)
-    final List<Map<String, dynamic>> notifications = [
-      {
-        'type': 'super_thanks',
-        'name': 'Rohan Mehta',
-        'message': 'sent a Super Thanks on your video!',
-        'time': '2m ago',
-        'icon': Icons.stars_rounded,
-        'color': const Color(0xFFF59E0B), // Golden
-        'avatarColor': const Color(0xFF2563EB),
-      },
-      {
-        'type': 'like',
-        'name': 'Sneha Rao',
-        'message': 'liked your latest reel.',
-        'time': '15m ago',
-        'icon': Icons.favorite_rounded,
-        'color': const Color(0xFFEF4444), // Red
-        'avatarColor': const Color(0xFFDB2777),
-      },
-      {
-        'type': 'comment',
-        'name': 'Maya Chen',
-        'message': 'commented: "This lighting is absolutely magical! ✨"',
-        'time': '1h ago',
-        'icon': Icons.mode_comment_rounded,
-        'color': const Color(0xFF3B82F6), // Blue
-        'avatarColor': const Color(0xFFD97706),
-      },
-      {
-        'type': 'follow',
-        'name': 'Aarav',
-        'message': 'started following you.',
-        'time': '3h ago',
-        'icon': Icons.person_add_rounded,
-        'color': const Color(0xFF10B981), // Green
-        'avatarColor': const Color(0xFF4B5563),
-      },
-      {
-        'type': 'mention',
-        'name': 'OJAS Studio',
-        'message': 'mentioned you in a post.',
-        'time': '5h ago',
-        'icon': Icons.alternate_email_rounded,
-        'color': const Color(0xFF8B5CF6), // Purple
-        'avatarColor': const Color(0xFF059669),
-      },
-    ];
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
-      backgroundColor: Colors.white, // 🚀 100% Minimalist Pure White
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF111827), size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF111827), size: 20),
           onPressed: () {
             HapticFeedback.selectionClick();
             Navigator.pop(context);
@@ -78,166 +38,243 @@ class NotificationsScreen extends StatelessWidget {
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.done_all_rounded, color: Color(0xFF6B7280), size: 22),
-            onPressed: () {
-              HapticFeedback.mediumImpact();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('All caught up! ✅'),
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 1),
+      ),
+      body: uid == null
+          ? const Center(
+              child: Text(
+                'Sign in to see notifications',
+                style: TextStyle(color: Color(0xFF9CA3AF)),
+              ),
+            )
+          : ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                StreamBuilder<List<FollowRequest>>(
+                  stream: SocialInteractionService.instance
+                      .watchIncomingFollowRequests(),
+                  builder: (context, snap) {
+                    final requests = snap.data ?? const <FollowRequest>[];
+                    if (requests.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Text(
+                            'Follow requests',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                        ),
+                        ...requests.map((r) => _FollowRequestTile(request: r)),
+                        const Divider(height: 24, color: Color(0xFFF3F4F6)),
+                      ],
+                    );
+                  },
                 ),
-              );
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('notificationAggregates')
+                      .where('recipientId', isEqualTo: uid)
+                      .orderBy('updatedAt', descending: true)
+                      .limit(40)
+                      .snapshots(),
+                  builder: (context, snap) {
+                    final docs = snap.data?.docs ?? [];
+                    if (docs.isEmpty &&
+                        snap.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(40),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    }
+                    if (docs.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(40),
+                        child: Center(
+                          child: Text(
+                            'No new notifications',
+                            style: TextStyle(
+                              color: Color(0xFF9CA3AF),
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: docs.map((d) {
+                        final data = d.data();
+                        return _AggregateTile(data: data);
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _FollowRequestTile extends StatelessWidget {
+  const _FollowRequestTile({required this.request});
+
+  final FollowRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final name =
+        request.requesterName.trim().isEmpty ? 'OJAS User' : request.requesterName;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: CircleAvatar(
+        backgroundColor: const Color(0xFF111827),
+        child: Text(
+          name[0].toUpperCase(),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+      title: Text(
+        name,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+      ),
+      subtitle: const Text(
+        'requested to follow you',
+        style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton(
+            onPressed: () async {
+              HapticFeedback.mediumImpact();
+              try {
+                await SocialInteractionService.instance
+                    .acceptFollowRequest(request.id);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('$e')),
+                  );
+                }
+              }
             },
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFF111827),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Confirm', style: TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () async {
+              HapticFeedback.selectionClick();
+              await SocialInteractionService.instance
+                  .declineFollowRequest(request.id);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF6B7280),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Delete', style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
-      body: notifications.isEmpty
-          ? const Center(
-              child: Text(
-                'No new notifications',
-                style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 15),
-              ),
-            )
-          : ListView.separated(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: notifications.length,
-              separatorBuilder: (context, index) => const Divider(
-                color: Color(0xFFF3F4F6),
-                height: 1,
-                indent: 72,
-              ),
-              itemBuilder: (context, index) {
-                final item = notifications[index];
-                final isSuperThanks = item['type'] == 'super_thanks';
+    );
+  }
+}
 
-                return InkWell(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                  },
-                  highlightColor: const Color(0xFFF9FAFB),
-                  splashColor: const Color(0xFFF3F4F6),
-                  child: Container(
-                    color: isSuperThanks ? const Color(0xFFFEF3C7).withValues(alpha: 0.3) : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Avatar + Small Icon Indicator
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 22,
-                              backgroundColor: item['avatarColor'] as Color,
-                              child: Text(
-                                (item['name'] as String)[0],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  color: item['color'] as Color,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.5),
-                                ),
-                                child: Icon(
-                                  item['icon'] as IconData,
-                                  color: Colors.white,
-                                  size: 10,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 14),
-                        
-                        // Notification Content
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Color(0xFF374151),
-                                    fontFamily: 'sans-serif',
-                                    height: 1.4,
-                                  ),
-                                  children: [
-                                    TextSpan(
-                                      text: '${item['name']} ',
-                                      style: const TextStyle(
-                                        color: Color(0xFF111827),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: item['message'] as String,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item['time'] as String,
-                                style: const TextStyle(
-                                  color: Color(0xFF9CA3AF),
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        
-                        // Action Button (Follow Back or Thumbnail)
-                        if (item['type'] == 'follow')
-                          Container(
-                            margin: const EdgeInsets.only(left: 10),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF111827),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Follow',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          )
-                        else if (item['type'] != 'mention')
-                          Container(
-                            margin: const EdgeInsets.only(left: 10),
-                            width: 36,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFFE5E7EB)),
-                            ),
-                            child: const Icon(Icons.play_arrow_rounded, color: Color(0xFF9CA3AF), size: 16),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+class _AggregateTile extends StatelessWidget {
+  const _AggregateTile({required this.data});
+
+  final Map<String, dynamic> data;
+
+  String get _body {
+    final action = data['action'] as String? ?? '';
+    final count = (data['count'] as num?)?.toInt() ?? 1;
+    final actors = (data['actorIds'] as List?)?.whereType<String>().toList() ?? [];
+    final first = actors.isNotEmpty ? 'Someone' : 'Someone';
+    switch (action) {
+      case 'like':
+        return count > 1
+            ? '$first and ${count - 1} others liked your post'
+            : '$first liked your post';
+      case 'comment':
+        return count > 1
+            ? '$first and ${count - 1} others commented'
+            : '$first commented on your post';
+      case 'reply':
+        return '$first replied to a comment';
+      case 'comment_like':
+        return '$first liked your comment';
+      case 'follow':
+        return '$first started following you';
+      case 'follow_request':
+        return '$first requested to follow you';
+      default:
+        return '$first interacted with you';
+    }
+  }
+
+  IconData get _icon {
+    switch (data['action'] as String? ?? '') {
+      case 'like':
+      case 'comment_like':
+        return Icons.favorite_rounded;
+      case 'comment':
+      case 'reply':
+        return Icons.mode_comment_rounded;
+      case 'follow':
+      case 'follow_request':
+        return Icons.person_add_rounded;
+      default:
+        return Icons.notifications_rounded;
+    }
+  }
+
+  Color get _color {
+    switch (data['action'] as String? ?? '') {
+      case 'like':
+      case 'comment_like':
+        return const Color(0xFFEF4444);
+      case 'comment':
+      case 'reply':
+        return const Color(0xFF3B82F6);
+      case 'follow':
+      case 'follow_request':
+        return const Color(0xFF10B981);
+      default:
+        return const Color(0xFF6B7280);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      leading: CircleAvatar(
+        backgroundColor: _color.withValues(alpha: 0.15),
+        child: Icon(_icon, color: _color, size: 20),
+      ),
+      title: Text(
+        _body,
+        style: const TextStyle(
+          fontSize: 14,
+          color: Color(0xFF374151),
+          height: 1.35,
+        ),
+      ),
     );
   }
 }
