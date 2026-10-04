@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -26,6 +27,7 @@ import 'services/video_engine_service.dart';
 import 'services/auth_guard.dart';
 import 'services/notification_service.dart';
 import 'services/incoming_call_service.dart';
+import 'services/offline_interaction_queue.dart';
 import 'widgets/incoming_call_overlay.dart';
 import 'screens/notification_chat_router.dart';
 import 'screens/livekit_call_screen.dart';
@@ -106,6 +108,8 @@ Future<void> main() async {
 
     await NotificationService.instance.initialize();
     IncomingCallService.instance.start();
+    await OfflineInteractionQueue.instance.initialize();
+    unawaited(OfflineInteractionQueue.instance.flush());
   } catch (_) {}
 
   runApp(const OjasApp());
