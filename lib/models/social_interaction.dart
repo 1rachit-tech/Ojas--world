@@ -1,5 +1,4 @@
 /// Universal social interaction types for OJAS.
-/// Buttons are UI only — this is the shared language of the graph.
 
 enum InteractionTargetType {
   content,
@@ -22,6 +21,9 @@ enum InteractionActionType {
   unfollow,
   commentLike,
   commentUnlike,
+  followRequest,
+  followAccept,
+  followDecline,
 }
 
 enum InteractionSource {
@@ -47,6 +49,39 @@ enum RelationshipState {
   blocked,
 }
 
+enum CommentSort {
+  newest,
+  top,
+}
+
+class MentionRef {
+  const MentionRef({
+    required this.userId,
+    required this.startIndex,
+    required this.endIndex,
+    this.displayName = '',
+  });
+
+  final String userId;
+  final int startIndex;
+  final int endIndex;
+  final String displayName;
+
+  Map<String, dynamic> toMap() => {
+        'userId': userId,
+        'startIndex': startIndex,
+        'endIndex': endIndex,
+        'displayName': displayName,
+      };
+
+  factory MentionRef.fromMap(Map<String, dynamic> data) => MentionRef(
+        userId: (data['userId'] as String?) ?? '',
+        startIndex: (data['startIndex'] as num?)?.toInt() ?? 0,
+        endIndex: (data['endIndex'] as num?)?.toInt() ?? 0,
+        displayName: (data['displayName'] as String?) ?? '',
+      );
+}
+
 class SocialComment {
   const SocialComment({
     required this.id,
@@ -62,6 +97,8 @@ class SocialComment {
     this.editedAt,
     this.isDeleted = false,
     this.clientActionId,
+    this.mentions = const <MentionRef>[],
+    this.likedByMe = false,
   });
 
   final String id;
@@ -77,18 +114,56 @@ class SocialComment {
   final DateTime? editedAt;
   final bool isDeleted;
   final String? clientActionId;
+  final List<MentionRef> mentions;
+  final bool likedByMe;
 
   bool get isReply => parentCommentId != null && parentCommentId!.isNotEmpty;
+  bool get isEdited => editedAt != null;
 
-  factory SocialComment.fromMap(String id, Map<String, dynamic> data) {
+  SocialComment copyWith({
+    int? likeCount,
+    bool? likedByMe,
+    String? text,
+    DateTime? editedAt,
+    bool? isDeleted,
+  }) {
+    return SocialComment(
+      id: id,
+      contentId: contentId,
+      authorId: authorId,
+      authorName: authorName,
+      text: text ?? this.text,
+      parentCommentId: parentCommentId,
+      rootCommentId: rootCommentId,
+      likeCount: likeCount ?? this.likeCount,
+      replyCount: replyCount,
+      createdAt: createdAt,
+      editedAt: editedAt ?? this.editedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+      clientActionId: clientActionId,
+      mentions: mentions,
+      likedByMe: likedByMe ?? this.likedByMe,
+    );
+  }
+
+  factory SocialComment.fromMap(String id, Map<String, dynamic> data, {bool likedByMe = false}) {
     DateTime? ts(dynamic v) {
       if (v is DateTime) return v;
-      if (v != null && v is Object && v.runtimeType.toString().contains('Timestamp')) {
-        try {
-          return (v as dynamic).toDate() as DateTime;
-        } catch (_) {}
+      try {
+        return (v as dynamic).toDate() as DateTime;
+      } catch (_) {
+        return null;
       }
-      return null;
+    }
+
+    final rawMentions = data['mentions'];
+    final mentions = <MentionRef>[];
+    if (rawMentions is List) {
+      for (final m in rawMentions) {
+        if (m is Map) {
+          mentions.add(MentionRef.fromMap(Map<String, dynamic>.from(m)));
+        }
+      }
     }
 
     return SocialComment(
@@ -107,6 +182,8 @@ class SocialComment {
       editedAt: ts(data['editedAt']),
       isDeleted: data['isDeleted'] == true,
       clientActionId: data['clientActionId'] as String?,
+      mentions: mentions,
+      likedByMe: likedByMe,
     );
   }
 }
@@ -121,8 +198,85 @@ class ShareTrackEvent {
   });
 
   final String contentId;
-  final String channel; // internal | external | copy_link
-  final String intent; // opened | completed | copied
+  final String channel;
+  final String intent;
   final String? destination;
   final String? clientActionId;
+}
+
+class SaveCollection {
+  const SaveCollection({
+    required this.id,
+    required this.ownerId,
+    required this.name,
+    this.coverUrl = '',
+    this.itemCount = 0,
+    this.isPrivate = true,
+    this.createdAt,
+  });
+
+  final String id;
+  final String ownerId;
+  final String name;
+  final String coverUrl;
+  final int itemCount;
+  final bool isPrivate;
+  final DateTime? createdAt;
+
+  factory SaveCollection.fromMap(String id, Map<String, dynamic> data) {
+    DateTime? ts(dynamic v) {
+      try {
+        return (v as dynamic).toDate() as DateTime;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return SaveCollection(
+      id: id,
+      ownerId: (data['ownerId'] as String?) ?? '',
+      name: (data['name'] as String?) ?? 'Collection',
+      coverUrl: (data['coverUrl'] as String?) ?? '',
+      itemCount: (data['itemCount'] as num?)?.toInt() ?? 0,
+      isPrivate: data['isPrivate'] != false,
+      createdAt: ts(data['createdAt']),
+    );
+  }
+}
+
+class FollowRequest {
+  const FollowRequest({
+    required this.id,
+    required this.requesterId,
+    required this.targetId,
+    required this.status,
+    this.createdAt,
+    this.requesterName = '',
+  });
+
+  final String id;
+  final String requesterId;
+  final String targetId;
+  final String status; // pending | accepted | declined | cancelled
+  final DateTime? createdAt;
+  final String requesterName;
+
+  factory FollowRequest.fromMap(String id, Map<String, dynamic> data) {
+    DateTime? ts(dynamic v) {
+      try {
+        return (v as dynamic).toDate() as DateTime;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return FollowRequest(
+      id: id,
+      requesterId: (data['requesterId'] as String?) ?? '',
+      targetId: (data['targetId'] as String?) ?? '',
+      status: (data['status'] as String?) ?? 'pending',
+      createdAt: ts(data['createdAt']),
+      requesterName: (data['requesterName'] as String?) ?? '',
+    );
+  }
 }
