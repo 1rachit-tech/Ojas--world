@@ -1,4 +1,6 @@
 export {syncPublicProfileSearchIndex, syncReelSearchIndex} from './search_indexer';
+export {aggregateEngagementNotifications} from './notification_aggregate';
+export {onSocialEdgeWritten} from './social_edge_counters';
 
 import {initializeApp} from 'firebase-admin/app';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
@@ -295,7 +297,6 @@ export const createLiveKitToken = onCall(
   },
 );
 
-/** Incoming call FCM when callInvites/{callId} is created. */
 export const sendCallInvitePush = onDocumentCreated(
   'conversations/{conversationId}/callInvites/{callId}',
   async (event) => {
