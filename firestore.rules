@@ -42,8 +42,7 @@ service cloud.firestore {
     }
 
     function isConversationParticipant() {
-      return signedIn()
-          && request.auth.uid in resource.data.participants;
+      return signedIn() && request.auth.uid in resource.data.participants;
     }
 
     function validMessageType(type) {
@@ -57,48 +56,6 @@ service cloud.firestore {
     function validFcmTokens(data) {
       return !('fcmTokens' in data)
           || (data.fcmTokens is map && data.fcmTokens.size() <= 10);
-    }
-
-    function validImageMessage(data) {
-      return data.type != 'image'
-          || (
-            data.mediaUrl is string && data.mediaUrl.size() > 0 && data.mediaUrl.size() <= 2048
-            && data.mediaStoragePath is string && data.mediaStoragePath.size() > 0 && data.mediaStoragePath.size() <= 512
-            && data.mediaWidth is int && data.mediaWidth > 0 && data.mediaWidth <= 4096
-            && data.mediaHeight is int && data.mediaHeight > 0 && data.mediaHeight <= 4096
-            && data.mediaBytes is int && data.mediaBytes > 0 && data.mediaBytes <= 10485760
-          );
-    }
-
-    function validVideoMessage(data) {
-      return data.type != 'video'
-          || (
-            data.mediaUrl is string && data.mediaUrl.size() > 0 && data.mediaUrl.size() <= 2048
-            && data.mediaHash is string && data.mediaHash.size() == 64
-            && data.mediaStoragePath is string && data.mediaStoragePath.size() <= 512
-            && data.mediaBytes is int && data.mediaBytes > 0 && data.mediaBytes <= 52428800
-            && data.text == ''
-          );
-    }
-
-    function validAudioMessage(data) {
-      return data.type != 'audio'
-          || (
-            data.mediaUrl is string && data.mediaUrl.size() > 0 && data.mediaUrl.size() <= 2048
-            && data.mediaStoragePath is string && data.mediaStoragePath.size() > 0 && data.mediaStoragePath.size() <= 512
-            && data.mediaBytes is int && data.mediaBytes > 0 && data.mediaBytes <= 3145728
-            && data.text == ''
-          );
-    }
-
-    function validReplyFields(data) {
-      return !('replyToMessageId' in data)
-          || (
-            data.replyToMessageId is string && data.replyToMessageId.size() > 0 && data.replyToMessageId.size() <= 128
-            && data.replyToSenderId is string && data.replyToSenderId.size() > 0 && data.replyToSenderId.size() <= 128
-            && data.replyToText is string && data.replyToText.size() <= 200
-            && data.replyToType is string && validMessageType(data.replyToType)
-          );
     }
 
     match /users/{userId} {
@@ -118,36 +75,14 @@ service cloud.firestore {
 
     match /users/{userId}/feedFeedback/{contentId} {
       allow get, list: if isOwner(userId);
-      allow create, update: if isOwner(userId)
-          && request.resource.data.contentId == contentId
-          && request.resource.data.type is string
-          && request.resource.data.type.size() <= 64
-          && (!('creatorId' in request.resource.data) || request.resource.data.creatorId is string);
+      allow create, update: if isOwner(userId);
       allow delete: if isOwner(userId);
     }
 
     match /users/{userId}/feedEvents/{eventId} {
       allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId)
-          && request.resource.data.sessionId is string
-          && request.resource.data.contentId is string
-          && request.resource.data.eventType is string
-          && request.resource.data.position is int
-          && request.resource.data.watchTimeMs is int
-          && request.resource.data.metadata is map;
+      allow create: if isOwner(userId);
       allow update, delete: if false;
-    }
-
-    match /users/{userId}/storyViews/{storyId} {
-      allow get, list: if isOwner(userId);
-      allow create, update: if isOwner(userId) && request.resource.data.storyId == storyId;
-      allow delete: if isOwner(userId);
-    }
-
-    match /users/{userId}/feedProfile/{profileId} {
-      allow get: if isOwner(userId);
-      allow create, update: if isOwner(userId);
-      allow delete: if isOwner(userId);
     }
 
     match /users/{userId}/activity/{activityId} {
@@ -165,8 +100,43 @@ service cloud.firestore {
       allow create: if isOwner(userId)
           && request.resource.data.contentId is string
           && request.resource.data.channel is string
-          && request.resource.data.intent is string
-          && request.resource.data.clientActionId is string;
+          && request.resource.data.intent is string;
+      allow update, delete: if false;
+    }
+
+    match /users/{userId}/commentLikes/{likeId} {
+      allow read: if isOwner(userId);
+      allow create, update, delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/collections/{collectionId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 60;
+      allow delete: if isOwner(userId);
+      match /items/{contentId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+    }
+
+    match /users/{userId}/storyViews/{storyId} {
+      allow get, list: if isOwner(userId);
+      allow create, update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/feedProfile/{profileId} {
+      allow get: if isOwner(userId);
+      allow create, update, delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/searchEvents/{eventId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId);
       allow update, delete: if false;
     }
 
@@ -179,11 +149,8 @@ service cloud.firestore {
       allow get: if true;
       allow list: if false;
       allow create: if signedIn()
-          && request.resource.data.uid == request.auth.uid
-          && !exists(/databases/$(database)/documents/ojasIds/$(ojasId));
-      allow update: if signedIn()
-          && resource.data.uid == request.auth.uid
           && request.resource.data.uid == request.auth.uid;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid;
       allow delete: if false;
     }
 
@@ -194,23 +161,16 @@ service cloud.firestore {
       allow update: if signedIn()
           && userId != request.auth.uid
           && request.resource.data.uid == userId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'followers',
-            'followersCount'
-          ])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers', 'followersCount'])
           && request.resource.data.followers is list
           && request.resource.data.followersCount is number
-          && request.resource.data.followersCount >= 0
-          && request.resource.data.followers.size() <= 5000;
+          && request.resource.data.followersCount >= 0;
       allow delete: if false;
     }
 
     match /reels/{reelId} {
       allow get, list: if signedIn();
-      allow create: if signedIn()
-          && request.resource.data.creatorId == request.auth.uid
-          && request.resource.data.videoUrl is string
-          && request.resource.data.videoUrl.size() > 0;
+      allow create: if signedIn() && request.resource.data.creatorId == request.auth.uid;
 
       allow update: if signedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'saves'])
@@ -218,28 +178,18 @@ service cloud.firestore {
           && request.resource.data.saves is number
           && request.resource.data.likes >= 0
           && request.resource.data.saves >= 0
-          && request.resource.data.likes
-              == resource.data.likes
-              + (afterLiked(reelId) ? 1 : 0)
-              - (currentLiked(reelId) ? 1 : 0)
-          && request.resource.data.saves
-              == resource.data.saves
-              + (afterSaved(reelId) ? 1 : 0)
-              - (currentSaved(reelId) ? 1 : 0);
+          && request.resource.data.likes == resource.data.likes + (afterLiked(reelId) ? 1 : 0) - (currentLiked(reelId) ? 1 : 0)
+          && request.resource.data.saves == resource.data.saves + (afterSaved(reelId) ? 1 : 0) - (currentSaved(reelId) ? 1 : 0);
 
       allow update: if signedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'commentsCount'])
           && request.resource.data.comments is number
-          && request.resource.data.comments >= 0
-          && request.resource.data.commentsCount is number
-          && request.resource.data.commentsCount >= 0;
+          && request.resource.data.comments >= 0;
 
       allow update: if signedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shares', 'shareCount'])
           && request.resource.data.shares is number
-          && request.resource.data.shares >= 0
-          && request.resource.data.shareCount is number
-          && request.resource.data.shareCount >= 0;
+          && request.resource.data.shares >= 0;
 
       allow delete: if false;
 
@@ -253,116 +203,31 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 1000
             && request.resource.data.isDeleted == false
             && request.resource.data.status == 'published'
-            && request.resource.data.likeCount == 0
-            && request.resource.data.replyCount == 0
             && request.resource.data.clientActionId is string
-            && request.resource.data.clientActionId.size() > 0
-            && request.resource.data.clientActionId.size() <= 128
             && request.resource.data.createdAt == request.time;
         allow update: if signedIn()
             && resource.data.authorId == request.auth.uid
-            && request.resource.data.authorId == resource.data.authorId
-            && request.resource.data.contentId == resource.data.contentId
-            && (
-              (
-                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
-                && request.resource.data.text is string
-                && request.resource.data.text.size() > 0
-                && request.resource.data.text.size() <= 1000
-              )
-              || (
-                request.resource.data.isDeleted == true
-                && resource.data.isDeleted == false
-                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted', 'text', 'updatedAt'])
-              )
-              || (
-                request.resource.data.diff(resource.data).affectedKeys().hasOnly(['replyCount'])
-                && request.resource.data.replyCount is number
-                && request.resource.data.replyCount >= 0
-              )
-            );
+            && request.resource.data.authorId == resource.data.authorId;
+        allow update: if signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount', 'replyCount'])
+            && request.resource.data.likeCount is number
+            && request.resource.data.likeCount >= 0;
         allow delete: if false;
       }
     }
 
-    match /mediaIndex/{mediaHash} {
-      allow get: if signedIn();
-      allow list, create, update, delete: if false;
-    }
-
-    match /conversations/{conversationId} {
-      allow get: if isConversationParticipant();
-      allow list: if signedIn() && request.auth.uid in resource.data.participants;
+    match /followRequests/{requestId} {
+      allow read: if signedIn()
+          && (resource.data.requesterId == request.auth.uid || resource.data.targetId == request.auth.uid);
       allow create: if signedIn()
-          && validParticipants(request.resource.data)
-          && request.auth.uid in request.resource.data.participants;
-
-      allow update: if isConversationParticipant()
-          && request.resource.data.participants == resource.data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'lastMessage', 'lastMessageSenderId', 'lastMessageAt', 'unreadCounts'
-          ]);
-
-      allow update: if isConversationParticipant()
-          && request.resource.data.participants == resource.data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['typingBy'])
-          && request.resource.data.typingBy is map
-          && request.resource.data.typingBy[request.auth.uid] is bool;
-
-      allow update: if isConversationParticipant()
-          && request.resource.data.participants == resource.data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadCounts', 'lastReadAtBy']);
-
-      allow update: if isConversationParticipant()
-          && request.resource.data.participants == resource.data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deliveredAtBy']);
-
-      allow update: if isConversationParticipant()
-          && request.resource.data.participants == resource.data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presenceBy']);
-
-      match /callInvites/{callId} {
-        allow read: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        allow create: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-            && request.resource.data.callerId == request.auth.uid
-            && request.resource.data.calleeId is string
-            && request.resource.data.calleeId != request.auth.uid
-            && request.resource.data.status == 'ringing'
-            && request.resource.data.isVideo is bool
-            && request.resource.data.conversationId == conversationId;
-        allow update: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-            && request.resource.data.callerId == resource.data.callerId
-            && request.resource.data.calleeId == resource.data.calleeId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'endedBy', 'endedAt']);
-        allow delete: if false;
-      }
-
-      match /messages/{messageId} {
-        allow get, list: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
-        allow create: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-            && request.resource.data.conversationId == conversationId
-            && request.resource.data.senderId == request.auth.uid
-            && request.resource.data.text is string
-            && request.resource.data.text.size() <= 2000
-            && validMessageType(request.resource.data.type)
-            && request.resource.data.isDeleted == false
-            && validReactionMap(request.resource.data.reactions)
-            && request.resource.data.createdAt == request.time
-            && validImageMessage(request.resource.data)
-            && validVideoMessage(request.resource.data)
-            && validAudioMessage(request.resource.data)
-            && validReplyFields(request.resource.data);
-        allow update: if signedIn()
-            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
-            && request.resource.data.senderId == resource.data.senderId
-            && request.resource.data.conversationId == resource.data.conversationId;
-        allow delete: if false;
-      }
+          && request.resource.data.requesterId == request.auth.uid
+          && request.resource.data.targetId is string
+          && request.resource.data.targetId != request.auth.uid
+          && request.resource.data.status == 'pending';
+      allow update: if signedIn()
+          && (resource.data.requesterId == request.auth.uid || resource.data.targetId == request.auth.uid)
+          && request.resource.data.status in ['pending', 'accepted', 'declined', 'cancelled'];
+      allow delete: if false;
     }
 
     match /socialEdges/{edgeId} {
@@ -377,17 +242,47 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /conversations/{conversationId} {
+      allow get: if isConversationParticipant();
+      allow list: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create: if signedIn() && validParticipants(request.resource.data)
+          && request.auth.uid in request.resource.data.participants;
+      allow update: if isConversationParticipant()
+          && request.resource.data.participants == resource.data.participants;
+
+      match /callInvites/{callId} {
+        allow read: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow create: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+            && request.resource.data.callerId == request.auth.uid
+            && request.resource.data.status == 'ringing';
+        allow update: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow delete: if false;
+      }
+
+      match /messages/{messageId} {
+        allow get, list: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow create: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+            && request.resource.data.senderId == request.auth.uid
+            && request.resource.data.conversationId == conversationId;
+        allow update: if signedIn()
+            && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow delete: if false;
+      }
+    }
+
     match /userBlocks/{userId}/blocked/{blockedUserId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && request.resource.data.blockedUserId == blockedUserId;
+      allow create: if isOwner(userId);
       allow update, delete: if isOwner(userId);
     }
 
     match /reports/{reportId} {
-      allow create: if signedIn()
-          && request.resource.data.reporterId == request.auth.uid
-          && request.resource.data.reason is string
-          && request.resource.data.reason.size() <= 500;
+      allow create: if signedIn() && request.resource.data.reporterId == request.auth.uid;
       allow read, update, delete: if false;
     }
 
@@ -396,10 +291,9 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    match /users/{userId}/searchEvents/{eventId} {
-      allow get, list: if isOwner(userId);
-      allow create: if isOwner(userId);
-      allow update, delete: if false;
+    match /notificationAggregates/{aggId} {
+      allow read: if signedIn() && resource.data.recipientId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
     match /{document=**} {
