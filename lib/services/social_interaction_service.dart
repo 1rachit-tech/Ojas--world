@@ -7,8 +7,7 @@ import '../models/social_interaction.dart';
 import 'engagement_service.dart';
 import 'safety_service.dart';
 
-/// Master interaction command layer.
-/// UI never talks to raw collections for social actions — only through here.
+/// Master interaction command layer for OJAS social graph.
 class SocialInteractionService {
   SocialInteractionService._();
   static final SocialInteractionService instance = SocialInteractionService._();
@@ -26,7 +25,7 @@ class SocialInteractionService {
     return 'ca_${t}_${r.nextInt(1 << 32).toRadixString(16)}';
   }
 
-  // ─── LIKE / SAVE (delegates to engagement + interactions path) ───
+  // ─── LIKE / SAVE ───
 
   Future<void> setContentLike({
     required String contentId,
@@ -54,6 +53,7 @@ class SocialInteractionService {
     required String contentId,
     required bool saved,
     required bool currentlyLiked,
+    String? collectionId,
     String? clientActionId,
   }) async {
     final uid = _uid;
@@ -64,15 +64,77 @@ class SocialInteractionService {
       saved: saved,
       saveDelta: saved ? 1 : -1,
     );
+    if (saved && collectionId != null && collectionId.isNotEmpty) {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('collections')
+          .doc(collectionId)
+          .collection('items')
+          .doc(contentId)
+          .set({
+        'contentId': contentId,
+        'savedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('collections')
+          .doc(collectionId)
+          .set({'itemCount': FieldValue.increment(1)}, SetOptions(merge: true));
+    }
     await _writeActivity(
       action: saved ? 'save' : 'unsave',
       targetType: 'content',
       targetId: contentId,
       clientActionId: clientActionId,
+      metadata: {if (collectionId != null) 'collectionId': collectionId},
     );
   }
 
-  // ─── FOLLOW / UNFOLLOW ───
+  // ─── COLLECTIONS ───
+
+  Future<SaveCollection> createCollection(String name, {bool isPrivate = true}) async {
+    final uid = _uid;
+    if (uid == null) throw const SocialInteractionException('Sign in required.');
+    final clean = name.trim();
+    if (clean.isEmpty || clean.length > 60) {
+      throw const SocialInteractionException('Invalid collection name.');
+    }
+    final ref = _db.collection('users').doc(uid).collection('collections').doc();
+    await ref.set({
+      'ownerId': uid,
+      'name': clean,
+      'coverUrl': '',
+      'itemCount': 0,
+      'isPrivate': isPrivate,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return SaveCollection(
+      id: ref.id,
+      ownerId: uid,
+      name: clean,
+      isPrivate: isPrivate,
+      createdAt: DateTime.now().toUtc(),
+    );
+  }
+
+  Stream<List<SaveCollection>> watchCollections() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(const <SaveCollection>[]);
+    return _db
+        .collection('users')
+        .doc(uid)
+        .collection('collections')
+        .orderBy('createdAt', descending: true)
+        .limit(40)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => SaveCollection.fromMap(d.id, d.data()))
+            .toList());
+  }
+
+  // ─── FOLLOW + PRIVATE REQUESTS ───
 
   Future<void> setFollow({
     required String targetUserId,
@@ -85,15 +147,25 @@ class SocialInteractionService {
     if (uid == null || target.isEmpty || uid == target) {
       throw const SocialInteractionException('Invalid follow target.');
     }
-
     if (await _safety.isBlocked(target)) {
       throw const SocialInteractionException('Cannot follow a blocked user.');
     }
 
-    // Edge doc for scalable graph queries (unique follower→following).
+    if (following) {
+      final profile = await _db.collection('publicProfiles').doc(target).get();
+      final isPrivate = profile.data()?['isPrivate'] == true;
+      if (isPrivate) {
+        await _sendFollowRequest(
+          targetId: target,
+          source: source,
+          clientActionId: clientActionId,
+        );
+        return;
+      }
+    }
+
     final edgeId = '${uid}_$target';
     final edgeRef = _db.collection('socialEdges').doc(edgeId);
-
     if (following) {
       await edgeRef.set({
         'followerId': uid,
@@ -109,11 +181,17 @@ class SocialInteractionService {
         'state': 'inactive',
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      // Cancel pending request if any
+      final reqId = '${uid}_$target';
+      try {
+        await _db.collection('followRequests').doc(reqId).set({
+          'status': 'cancelled',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
     }
 
-    // Keep publicProfiles counts/lists in sync (existing UI depends on this).
     await _engagement.setFollowState(creatorId: target, following: following);
-
     await _writeActivity(
       action: following ? 'follow' : 'unfollow',
       targetType: 'profile',
@@ -123,6 +201,112 @@ class SocialInteractionService {
     );
   }
 
+  Future<void> _sendFollowRequest({
+    required String targetId,
+    required InteractionSource source,
+    String? clientActionId,
+  }) async {
+    final uid = _uid!;
+    final reqId = '${uid}_$targetId';
+    String requesterName = 'OJAS User';
+    try {
+      final p = await _db.collection('publicProfiles').doc(uid).get();
+      final dn = p.data()?['displayName'];
+      if (dn is String && dn.trim().isNotEmpty) requesterName = dn.trim();
+    } catch (_) {}
+
+    await _db.collection('followRequests').doc(reqId).set({
+      'requesterId': uid,
+      'targetId': targetId,
+      'requesterName': requesterName,
+      'status': 'pending',
+      'source': source.name,
+      'clientActionId': clientActionId ?? newClientActionId(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await _writeActivity(
+      action: 'follow_request',
+      targetType: 'profile',
+      targetId: targetId,
+      clientActionId: clientActionId,
+    );
+  }
+
+  Future<void> acceptFollowRequest(String requestId) async {
+    final uid = _uid;
+    if (uid == null || requestId.isEmpty) return;
+    final ref = _db.collection('followRequests').doc(requestId);
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data()!;
+    if (data['targetId'] != uid || data['status'] != 'pending') {
+      throw const SocialInteractionException('Invalid follow request.');
+    }
+    final requesterId = data['requesterId'] as String? ?? '';
+    if (requesterId.isEmpty) return;
+
+    final batch = _db.batch();
+    batch.set(ref, {
+      'status': 'accepted',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    batch.set(_db.collection('socialEdges').doc('${requesterId}_$uid'), {
+      'followerId': requesterId,
+      'followingId': uid,
+      'state': 'active',
+      'source': 'follow_request',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit();
+
+    // Update counts via engagement as the requester would
+    // Direct count update on both profiles
+    await _db.collection('publicProfiles').doc(requesterId).set({
+      'following': FieldValue.arrayUnion([uid]),
+      'followingCount': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+    await _db.collection('publicProfiles').doc(uid).set({
+      'followers': FieldValue.arrayUnion([requesterId]),
+      'followersCount': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+
+    await _writeActivity(
+      action: 'follow_accept',
+      targetType: 'profile',
+      targetId: requesterId,
+    );
+  }
+
+  Future<void> declineFollowRequest(String requestId) async {
+    final uid = _uid;
+    if (uid == null || requestId.isEmpty) return;
+    final ref = _db.collection('followRequests').doc(requestId);
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    if (snap.data()?['targetId'] != uid) return;
+    await ref.set({
+      'status': 'declined',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Stream<List<FollowRequest>> watchIncomingFollowRequests() {
+    final uid = _uid;
+    if (uid == null) return Stream.value(const <FollowRequest>[]);
+    return _db
+        .collection('followRequests')
+        .where('targetId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .limit(30)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => FollowRequest.fromMap(d.id, d.data()))
+            .toList());
+  }
+
   Future<RelationshipState> relationshipWith(String otherUserId) async {
     final uid = _uid;
     final other = otherUserId.trim();
@@ -130,6 +314,16 @@ class SocialInteractionService {
       return RelationshipState.none;
     }
     if (await _safety.isBlocked(other)) return RelationshipState.blocked;
+
+    final reqId = '${uid}_$other';
+    final req = await _db.collection('followRequests').doc(reqId).get();
+    if (req.exists && req.data()?['status'] == 'pending') {
+      return RelationshipState.requestSent;
+    }
+    final incoming = await _db.collection('followRequests').doc('${other}_$uid').get();
+    if (incoming.exists && incoming.data()?['status'] == 'pending') {
+      return RelationshipState.requestReceived;
+    }
 
     final a = await _db.collection('socialEdges').doc('${uid}_$other').get();
     final b = await _db.collection('socialEdges').doc('${other}_$uid').get();
@@ -146,18 +340,75 @@ class SocialInteractionService {
   CollectionReference<Map<String, dynamic>> _comments(String contentId) =>
       _db.collection('reels').doc(contentId).collection('comments');
 
-  Stream<List<SocialComment>> watchComments(String contentId, {int limit = 50}) {
+  Stream<List<SocialComment>> watchComments(
+    String contentId, {
+    int limit = 50,
+    CommentSort sort = CommentSort.newest,
+  }) {
     if (contentId.isEmpty) {
       return Stream.value(const <SocialComment>[]);
     }
-    return _comments(contentId)
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => SocialComment.fromMap(d.id, d.data()))
-            .where((c) => !c.isDeleted)
-            .toList());
+    Query<Map<String, dynamic>> q = _comments(contentId);
+    if (sort == CommentSort.top) {
+      q = q.orderBy('likeCount', descending: true).orderBy('createdAt', descending: true);
+    } else {
+      q = q.orderBy('createdAt', descending: true);
+    }
+    return q.limit(limit).snapshots().asyncMap((snap) async {
+      final uid = _uid;
+      final likedIds = <String>{};
+      if (uid != null && snap.docs.isNotEmpty) {
+        try {
+          final likesSnap = await _db
+              .collection('users')
+              .doc(uid)
+              .collection('commentLikes')
+              .where('contentId', isEqualTo: contentId)
+              .limit(100)
+              .get();
+          for (final d in likesSnap.docs) {
+            final cid = d.data()['commentId'] as String?;
+            if (cid != null) likedIds.add(cid);
+          }
+        } catch (_) {}
+      }
+      return snap.docs
+          .map((d) => SocialComment.fromMap(
+                d.id,
+                d.data(),
+                likedByMe: likedIds.contains(d.id),
+              ))
+          .where((c) => !c.isDeleted)
+          .toList();
+    });
+  }
+
+  /// Parse @mentions of form @ojasId from text against publicProfiles.
+  Future<List<MentionRef>> resolveMentions(String text) async {
+    final regex = RegExp(r'@([a-zA-Z0-9_]{2,32})');
+    final matches = regex.allMatches(text);
+    if (matches.isEmpty) return const [];
+    final result = <MentionRef>[];
+    for (final m in matches) {
+      final handle = m.group(1)!;
+      try {
+        final q = await _db
+            .collection('publicProfiles')
+            .where('ojasId', isEqualTo: handle.toLowerCase())
+            .limit(1)
+            .get();
+        if (q.docs.isEmpty) continue;
+        final doc = q.docs.first;
+        final dn = doc.data()['displayName'] as String? ?? handle;
+        result.add(MentionRef(
+          userId: doc.id,
+          startIndex: m.start,
+          endIndex: m.end,
+          displayName: dn,
+        ));
+      } catch (_) {}
+    }
+    return result;
   }
 
   Future<SocialComment> postComment({
@@ -180,8 +431,6 @@ class SocialInteractionService {
     }
 
     final actionId = clientActionId ?? newClientActionId();
-
-    // Idempotency: if same clientActionId already exists under this content, return it.
     final existing = await _comments(contentId)
         .where('clientActionId', isEqualTo: actionId)
         .limit(1)
@@ -198,6 +447,8 @@ class SocialInteractionService {
       if (dn is String && dn.trim().isNotEmpty) authorName = dn.trim();
     } catch (_) {}
 
+    final mentions = await resolveMentions(clean);
+
     final ref = _comments(contentId).doc();
     final data = <String, dynamic>{
       'contentId': contentId,
@@ -211,6 +462,7 @@ class SocialInteractionService {
       'isDeleted': false,
       'status': 'published',
       'clientActionId': actionId,
+      'mentions': mentions.map((m) => m.toMap()).toList(),
       'createdAt': FieldValue.serverTimestamp(),
     };
 
@@ -241,6 +493,8 @@ class SocialInteractionService {
       metadata: {
         'commentId': ref.id,
         if (parentCommentId != null) 'parentCommentId': parentCommentId,
+        if (mentions.isNotEmpty)
+          'mentionedUserIds': mentions.map((m) => m.userId).toList(),
       },
     );
 
@@ -253,8 +507,33 @@ class SocialInteractionService {
       parentCommentId: parentCommentId,
       rootCommentId: rootCommentId ?? parentCommentId,
       clientActionId: actionId,
+      mentions: mentions,
       createdAt: DateTime.now().toUtc(),
     );
+  }
+
+  Future<void> editComment({
+    required String contentId,
+    required String commentId,
+    required String text,
+  }) async {
+    final uid = _uid;
+    if (uid == null) throw const SocialInteractionException('Sign in required.');
+    final clean = text.trim();
+    if (clean.isEmpty || clean.length > 1000) {
+      throw const SocialInteractionException('Invalid comment text.');
+    }
+    final ref = _comments(contentId).doc(commentId);
+    final snap = await ref.get();
+    if (!snap.exists || snap.data()?['authorId'] != uid) {
+      throw const SocialInteractionException('You can only edit your own comments.');
+    }
+    final mentions = await resolveMentions(clean);
+    await ref.set({
+      'text': clean,
+      'mentions': mentions.map((m) => m.toMap()).toList(),
+      'editedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> deleteComment({
@@ -293,13 +572,62 @@ class SocialInteractionService {
     await batch.commit();
   }
 
+  Future<void> setCommentLike({
+    required String contentId,
+    required String commentId,
+    required bool liked,
+    String? clientActionId,
+  }) async {
+    final uid = _uid;
+    if (uid == null || contentId.isEmpty || commentId.isEmpty) return;
+
+    final likeRef = _db
+        .collection('users')
+        .doc(uid)
+        .collection('commentLikes')
+        .doc('${contentId}_$commentId');
+    final commentRef = _comments(contentId).doc(commentId);
+
+    final existing = await likeRef.get();
+    final already = existing.exists;
+    if (liked == already) return; // idempotent
+
+    final batch = _db.batch();
+    if (liked) {
+      batch.set(likeRef, {
+        'contentId': contentId,
+        'commentId': commentId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'clientActionId': clientActionId ?? newClientActionId(),
+      });
+      batch.set(commentRef, {'likeCount': FieldValue.increment(1)}, SetOptions(merge: true));
+    } else {
+      batch.delete(likeRef);
+      batch.set(commentRef, {'likeCount': FieldValue.increment(-1)}, SetOptions(merge: true));
+    }
+    await batch.commit();
+
+    await _writeActivity(
+      action: liked ? 'comment_like' : 'comment_unlike',
+      targetType: 'comment',
+      targetId: commentId,
+      clientActionId: clientActionId,
+      metadata: {'contentId': contentId},
+    );
+  }
+
   // ─── SHARE TRACKING ───
 
   Future<void> trackShare(ShareTrackEvent event) async {
     final uid = _uid;
     if (uid == null || event.contentId.isEmpty) return;
     final actionId = event.clientActionId ?? newClientActionId();
-    await _db.collection('users').doc(uid).collection('shareEvents').doc(actionId).set({
+    await _db
+        .collection('users')
+        .doc(uid)
+        .collection('shareEvents')
+        .doc(actionId)
+        .set({
       'contentId': event.contentId,
       'channel': event.channel,
       'intent': event.intent,
@@ -307,7 +635,6 @@ class SocialInteractionService {
       'clientActionId': actionId,
       'createdAt': FieldValue.serverTimestamp(),
     });
-    // Soft counter — analytics only; not ranking-critical alone.
     if (event.intent == 'completed' || event.intent == 'copied') {
       try {
         await _db.collection('reels').doc(event.contentId).set({
@@ -316,9 +643,20 @@ class SocialInteractionService {
         }, SetOptions(merge: true));
       } catch (_) {}
     }
+    await _writeActivity(
+      action: 'share',
+      targetType: 'content',
+      targetId: event.contentId,
+      clientActionId: actionId,
+      metadata: {
+        'channel': event.channel,
+        'intent': event.intent,
+        if (event.destination != null) 'destination': event.destination,
+      },
+    );
   }
 
-  // ─── ACTIVITY (private, for recommendation / history) ───
+  // ─── ACTIVITY ───
 
   Future<void> _writeActivity({
     required String action,
@@ -344,9 +682,7 @@ class SocialInteractionService {
         'metadata': metadata ?? <String, dynamic>{},
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-    } catch (_) {
-      // Activity is best-effort — never fail the user action.
-    }
+    } catch (_) {}
   }
 }
 
