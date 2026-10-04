@@ -45,14 +45,6 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in resource.data.participants;
     }
 
-    function validMessageType(type) {
-      return type == 'text' || type == 'image' || type == 'video' || type == 'audio';
-    }
-
-    function validReactionMap(reactions) {
-      return reactions is map && reactions.size() <= 2;
-    }
-
     function validFcmTokens(data) {
       return !('fcmTokens' in data)
           || (data.fcmTokens is map && data.fcmTokens.size() <= 10);
@@ -235,10 +227,14 @@ service cloud.firestore {
           && (resource.data.followerId == request.auth.uid || resource.data.followingId == request.auth.uid);
       allow list: if signedIn();
       allow create, update: if signedIn()
-          && request.resource.data.followerId == request.auth.uid
+          && request.resource.data.followerId is string
           && request.resource.data.followingId is string
-          && request.resource.data.followingId != request.auth.uid
-          && request.resource.data.state in ['active', 'inactive'];
+          && request.resource.data.followerId != request.resource.data.followingId
+          && request.resource.data.state in ['active', 'inactive']
+          && (
+            request.resource.data.followerId == request.auth.uid
+            || request.resource.data.followingId == request.auth.uid
+          );
       allow delete: if false;
     }
 
