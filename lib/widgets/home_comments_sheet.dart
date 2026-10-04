@@ -5,8 +5,6 @@ import 'package:flutter/services.dart';
 import '../models/social_interaction.dart';
 import '../services/social_interaction_service.dart';
 
-/// Real comments for a content item (reel).
-/// [postId] is the content/reel id (kept for existing call sites).
 class HomeCommentsSheet extends StatefulWidget {
   const HomeCommentsSheet({
     super.key,
@@ -52,6 +50,8 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
   bool _sending = false;
   String? _error;
   SocialComment? _replyingTo;
+  SocialComment? _editing;
+  CommentSort _sort = CommentSort.newest;
 
   @override
   void dispose() {
@@ -68,19 +68,45 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
       _error = null;
     });
     try {
-      await SocialInteractionService.instance.postComment(
-        contentId: widget.postId,
-        text: text,
-        parentCommentId: _replyingTo?.id,
-        rootCommentId: _replyingTo?.rootCommentId ?? _replyingTo?.id,
-      );
+      if (_editing != null) {
+        await SocialInteractionService.instance.editComment(
+          contentId: widget.postId,
+          commentId: _editing!.id,
+          text: text,
+        );
+        if (mounted) setState(() => _editing = null);
+      } else {
+        await SocialInteractionService.instance.postComment(
+          contentId: widget.postId,
+          text: text,
+          parentCommentId: _replyingTo?.id,
+          rootCommentId: _replyingTo?.rootCommentId ?? _replyingTo?.id,
+        );
+        if (mounted) setState(() => _replyingTo = null);
+      }
       _controller.clear();
-      if (mounted) setState(() => _replyingTo = null);
       HapticFeedback.lightImpact();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _toggleLike(SocialComment c) async {
+    HapticFeedback.selectionClick();
+    try {
+      await SocialInteractionService.instance.setCommentLike(
+        contentId: widget.postId,
+        commentId: c.id,
+        liked: !c.likedByMe,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
     }
   }
 
@@ -97,6 +123,15 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
         );
       }
     }
+  }
+
+  void _startEdit(SocialComment c) {
+    setState(() {
+      _editing = c;
+      _replyingTo = null;
+      _controller.text = c.text;
+    });
+    _focus.requestFocus();
   }
 
   String _timeAgo(DateTime? dt) {
@@ -134,7 +169,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
               child: Row(
                 children: [
                   const Expanded(
@@ -146,6 +181,17 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                         color: Color(0xFF111827),
                       ),
                     ),
+                  ),
+                  _SortChip(
+                    label: 'Newest',
+                    selected: _sort == CommentSort.newest,
+                    onTap: () => setState(() => _sort = CommentSort.newest),
+                  ),
+                  const SizedBox(width: 6),
+                  _SortChip(
+                    label: 'Top',
+                    selected: _sort == CommentSort.top,
+                    onTap: () => setState(() => _sort = CommentSort.top),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
@@ -164,8 +210,10 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
               ),
             Expanded(
               child: StreamBuilder<List<SocialComment>>(
-                stream: SocialInteractionService.instance
-                    .watchComments(widget.postId),
+                stream: SocialInteractionService.instance.watchComments(
+                  widget.postId,
+                  sort: _sort,
+                ),
                 builder: (context, snapshot) {
                   final comments = snapshot.data ?? const <SocialComment>[];
                   final cb = widget.onCommentsUpdated;
@@ -189,14 +237,14 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                     );
                   }
                   return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                     itemCount: comments.length,
                     itemBuilder: (context, index) {
                       final c = comments[index];
                       final isMine = uid != null && c.authorId == uid;
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 4,
+                          horizontal: 8,
                           vertical: 2,
                         ),
                         leading: CircleAvatar(
@@ -233,45 +281,104 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                                 fontSize: 11,
                               ),
                             ),
+                            if (c.isEdited)
+                              const Text(
+                                ' · edited',
+                                style: TextStyle(
+                                  color: Color(0xFF9CA3AF),
+                                  fontSize: 11,
+                                ),
+                              ),
                           ],
                         ),
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            c.text,
-                            style: const TextStyle(
-                              color: Color(0xFF374151),
-                              fontSize: 14,
-                              height: 1.35,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.text,
+                                style: const TextStyle(
+                                  color: Color(0xFF374151),
+                                  fontSize: 14,
+                                  height: 1.35,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => _toggleLike(c),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          c.likedByMe
+                                              ? Icons.favorite_rounded
+                                              : Icons.favorite_border_rounded,
+                                          size: 14,
+                                          color: c.likedByMe
+                                              ? const Color(0xFFEF4444)
+                                              : const Color(0xFF9CA3AF),
+                                        ),
+                                        if (c.likeCount > 0) ...[
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            '${c.likeCount}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF6B7280),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _replyingTo = c;
+                                        _editing = null;
+                                      });
+                                      _focus.requestFocus();
+                                    },
+                                    child: const Text(
+                                      'Reply',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF6B7280),
+                                      ),
+                                    ),
+                                  ),
+                                  if (isMine) ...[
+                                    const SizedBox(width: 14),
+                                    GestureDetector(
+                                      onTap: () => _startEdit(c),
+                                      child: const Text(
+                                        'Edit',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF6B7280),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    GestureDetector(
+                                      onTap: () => _delete(c),
+                                      child: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 16,
+                                        color: Color(0xFF9CA3AF),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                setState(() => _replyingTo = c);
-                                _focus.requestFocus();
-                              },
-                              child: const Text(
-                                'Reply',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                            ),
-                            if (isMine)
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline_rounded,
-                                  size: 18,
-                                  color: Color(0xFF9CA3AF),
-                                ),
-                                onPressed: () => _delete(c),
-                              ),
-                          ],
                         ),
                       );
                     },
@@ -279,7 +386,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                 },
               ),
             ),
-            if (_replyingTo != null)
+            if (_replyingTo != null || _editing != null)
               Container(
                 width: double.infinity,
                 color: const Color(0xFFF3F4F6),
@@ -289,7 +396,9 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Replying to ${_replyingTo!.authorName}',
+                        _editing != null
+                            ? 'Editing comment'
+                            : 'Replying to ${_replyingTo!.authorName}',
                         style: const TextStyle(
                           fontSize: 12.5,
                           color: Color(0xFF6B7280),
@@ -297,7 +406,11 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => setState(() => _replyingTo = null),
+                      onTap: () => setState(() {
+                        _replyingTo = null;
+                        _editing = null;
+                        _controller.clear();
+                      }),
                       child: const Icon(Icons.close, size: 16),
                     ),
                   ],
@@ -320,7 +433,7 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
                         onSubmitted: (_) => _send(),
                         decoration: InputDecoration(
                           counterText: '',
-                          hintText: 'Add a comment…',
+                          hintText: 'Add a comment…  @mention',
                           filled: true,
                           fillColor: const Color(0xFFF9FAFB),
                           contentPadding: const EdgeInsets.symmetric(
@@ -353,6 +466,40 @@ class _HomeCommentsSheetState extends State<HomeCommentsSheet> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SortChip extends StatelessWidget {
+  const _SortChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF111827) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : const Color(0xFF6B7280),
+          ),
         ),
       ),
     );
